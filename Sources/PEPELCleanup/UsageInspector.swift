@@ -31,7 +31,10 @@ public enum UsageInspector {
             if let projectID = item.projectID {
                 let projectScoped: Set<ArtifactCategory> = [.buildOutput, .dependencies, .virtualEnvironment, .dependencyCache, .testArtifact, .toolCache]
                 if projectScoped.contains(item.category) {
-                    if let a = working.first(where: { $0.projectID == projectID && $0.role != .agent }) {
+                    // Linter and test caches are recreated on demand: a language server or an
+                    // agent's helper in the project does not need them, only a running build or test.
+                    let blockers = item.category == .toolCache ? builders : working
+                    if let a = blockers.first(where: { $0.projectID == projectID && $0.role != .agent }) {
                         result[item.id] = "\(a.process.name) (PID \(a.process.pid)) is running in this project."
                         continue
                     }

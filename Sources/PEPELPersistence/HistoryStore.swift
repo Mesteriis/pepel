@@ -78,7 +78,8 @@ extension PepelStore {
         if baseline?.isEmpty ?? true {
             baseline = try? db.query("SELECT ts, disk_total - disk_available FROM telemetry ORDER BY ts ASC LIMIT 1")
         }
-        guard let end = latest?.first, let start = baseline?.first, end[0].double > start[0].double else { return nil }
+        // A few seconds of history say nothing about growth; wait for at least five minutes.
+        guard let end = latest?.first, let start = baseline?.first, end[0].double - start[0].double >= 300 else { return nil }
         return GrowthFigure(
             requestedWindow: window, actualSpan: min(window, end[0].double - start[0].double),
             deltaBytes: end[1].int - start[1].int)

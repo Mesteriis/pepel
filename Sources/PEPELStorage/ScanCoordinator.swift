@@ -139,7 +139,12 @@ public actor ScanCoordinator {
         let known = Set(items.map(\.path))
         cache = cache.filter { known.contains($0.key) }
 
-        result.items = items.sorted { $0.occupiedBytes > $1.occupiedBytes }
+        // An empty directory frees nothing; listing it is noise.
+        items.removeAll { item in
+            guard !item.hasPseudoPath, item.safety != .protected, let size = item.size, size.complete else { return false }
+            return size.fileCount == 0 && size.inaccessibleCount == 0
+        }
+        result.items = items.sorted { ($0.reclaimableBytes, $0.occupiedBytes) > ($1.reclaimableBytes, $1.occupiedBytes) }
         result.finishedAt = Date()
         return result
     }

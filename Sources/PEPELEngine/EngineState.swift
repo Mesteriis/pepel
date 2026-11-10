@@ -20,6 +20,9 @@ public struct LiveState: Codable, Sendable {
     public var activeBuildCount: Int
     public var userProcessCount: Int
     public var sampledAt: Date
+    /// Memory grouped by who is responsible for it, largest first.
+    public var memoryOwners: [MemoryOwner] = []
+    public var memoryExplanation = ""
 
     public var abandoned: [ProcessAssessment] { assessments.filter { $0.lifecycle.isAbandonedCandidate } }
 }

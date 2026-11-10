@@ -45,8 +45,14 @@ public actor PepelEngine {
         self.settings = self.store.loadSettings(home: paths.home)
         let saved = self.store.loadCodable(StorageState.self, key: "storage.state")
         self.storage = saved
-        self.projects = saved?.projects ?? []
-        self.projectIndex = ProjectIndex(saved?.projects ?? [])
+        var known = saved?.projects ?? []
+        if known.isEmpty, let cache = self.store.loadCodable(ProjectCache.self, key: "projects.cache"),
+            cache.roots == self.settings.projectRoots, Date().timeIntervalSince(cache.savedAt) < 86_400
+        {
+            known = cache.projects
+        }
+        self.projects = known
+        self.projectIndex = ProjectIndex(known)
     }
 
     // MARK: Settings and rules
@@ -92,7 +98,15 @@ public actor PepelEngine {
 
     public func refreshProjects() async -> [Project] {
         adopt(projects: await Self.discover(settings: settings, home: paths.home))
+        // Kept apart from the scan result so the first commands after install are not slow.
+        try? store.saveCodable(ProjectCache(roots: settings.projectRoots, savedAt: Date(), projects: projects), key: "projects.cache")
         return projects
+    }
+
+    struct ProjectCache: Codable {
+        var roots: [String]
+        var savedAt: Date
+        var projects: [Project]
     }
 
     public func knownProjects() -> [Project] { projects }
@@ -135,9 +149,13 @@ public actor PepelEngine {
         }
 
         record(processes: processes, developer: Set(assessments.map(\.process.identity)), telemetry: telemetry, now: now)
-        let state = LiveState(
+        let index = projectIndex
+        let owners = MemoryAttributor.attribute(processes: processes, assessments: assessments, sessions: sessions) { index.project(id: $0)?.name }
+        var state = LiveState(
             telemetry: telemetry, assessments: assessments, agentSessions: sessions, memory: advice,
             activeBuildCount: buildRoots.count, userProcessCount: processes.count, sampledAt: now)
+        state.memoryOwners = owners
+        state.memoryExplanation = MemoryAttributor.explanation(owners: owners, telemetry: telemetry)
         live = state
         return state
     }

@@ -71,7 +71,8 @@ func printReport(_ report: CleanupReport) {
         case .skipped(let reason): text = "skipped — \(reason)"
         case .failed(let reason): text = "FAILED — \(reason)"
         }
-        print("  \(Bytes.format(outcome.estimatedBytes).padding(toLength: 10, withPad: " ", startingAt: 0)) \(Out.truncate(outcome.title, 40).padding(toLength: 40, withPad: " ", startingAt: 0)) \(text)")
+        let place = outcome.path.hasPrefix("tool://") ? "" : "  " + Out.truncate(PathUtil.display(outcome.path, home: appPaths.home), 64)
+        print("  \(Bytes.format(outcome.estimatedBytes).padding(toLength: 10, withPad: " ", startingAt: 0)) \(Out.truncate(outcome.title, 34).padding(toLength: 34, withPad: " ", startingAt: 0)) \(text)\(place)")
     }
     if report.dryRun {
         print("\nDry run: nothing was removed. Up to \(Bytes.format(report.estimatedBytes)) would be affected.")
@@ -147,11 +148,26 @@ case "builds":
 
 case "memory":
     let live = await engine.refreshLive()
-    if arguments.json { Out.json(live.memory); break }
+    if arguments.json {
+        struct MemoryReport: Encodable { var advice: MemoryAdvice, explanation: String, owners: [MemoryOwner] }
+        Out.json(MemoryReport(advice: live.memory, explanation: live.memoryExplanation, owners: live.memoryOwners))
+        break
+    }
     let t = live.telemetry
     print("\(live.memory.headline). \(live.memory.detail)\n")
+    print("Where it went: \(live.memoryExplanation)\n")
+    Out.table(
+        ["CHARGED", "IN RAM", "NOT IN RAM", "PROCS", "KIND", "OWNER"],
+        live.memoryOwners.prefix(arguments.flags.contains("all") ? 10_000 : 16).map {
+            [
+                Bytes.format($0.footprintBytes), Bytes.format($0.residentBytes), $0.notInRAMBytes > 50 * Bytes.mb ? "≈ " + Bytes.format($0.notInRAMBytes) : "—",
+                String($0.processCount), $0.kind.rawValue, $0.name + ($0.confidence == .verified ? "" : " (\($0.confidence.rawValue))"),
+            ]
+        })
+    print("\n“Charged” is what the kernel bills to the owner, including compressed and swapped pages; “in RAM” is resident now.\n")
     print("Physical \(Bytes.format(t.memoryTotalBytes)) · App \(Bytes.format(t.appMemoryBytes)) · Wired \(Bytes.format(t.wiredBytes)) · Compressed \(Bytes.format(t.compressedBytes)) · Cached files \(Bytes.format(t.cachedFileBytes)) · Swap \(Bytes.format(t.swapUsedBytes))")
     print("Developer processes hold \(Bytes.format(live.memory.developerFootprintBytes)).\n")
+    print("Largest single processes:")
     Out.table(["FOOTPRINT", "PID", "DEV", "PROCESS"], live.memory.topConsumers.map { [Bytes.format($0.footprintBytes), String($0.identity.pid), $0.isDeveloperWorkload ? "yes" : "", $0.name] })
 
 case "processes":

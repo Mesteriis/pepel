@@ -299,6 +299,71 @@ struct ProcessTests {
         #expect(calm.proposals.isEmpty)
     }
 
+    // MARK: Memory attribution
+
+    @Test("Memory is grouped by owner: apps with their helpers, agent sessions with their tools, VMs with their runtime")
+    func memoryAttribution() {
+        let f = Fixture()
+        let project = f.dir(f.projects + "/alpha")
+        let index = ProjectIndex([Project(id: project, name: "alpha", kinds: [.git])])
+        func p(_ pid: Int32, _ parent: Int32, _ name: String, _ path: String, footprint: Int64, resident: Int64, cwd: String? = nil, start: UInt64 = 1_000_000, args: [String]? = nil) -> ProcessSnapshot {
+            var s = process(pid, parent: parent, name: name, path: path, args: args, cwd: cwd, start: start, footprint: footprint)
+            s.residentBytes = resident
+            return s
+        }
+        let gb = Bytes.gb
+        let processes = [
+            // Docker Desktop: the VM is a child of launchd and is tied to the runtime by start time.
+            p(100, 1, "com.docker.backend", "/Applications/Docker.app/Contents/MacOS/com.docker.backend", footprint: gb / 2, resident: gb / 2, start: 5_000_000),
+            p(101, 1, "com.apple.Virtualization.VirtualMachine", "/System/Library/Frameworks/Virtualization.framework/Versions/A/XPCServices/com.apple.Virtualization.VirtualMachine.xpc/Contents/MacOS/com.apple.Virtualization.VirtualMachine", footprint: 34 * gb, resident: 7 * gb, start: 5_400_000),
+            // An application with a deeply nested helper.
+            p(200, 1, "Dia", "/Applications/Dia.app/Contents/MacOS/Dia", footprint: gb, resident: gb),
+            p(201, 200, "Browser Helper (Renderer)", "/Applications/Dia.app/Contents/Frameworks/ArcCore.framework/Helpers/Browser Helper (Renderer).app/Contents/MacOS/Browser Helper (Renderer)", footprint: 2 * gb, resident: gb, start: 1_000_100),
+            // An agent session: the CLI, a shell, an MCP server and a build.
+            p(300, 1, "claude", "/Users/x/.local/bin/claude", footprint: gb / 4, resident: gb / 4, cwd: project),
+            p(301, 300, "zsh", "/bin/zsh", footprint: gb / 100, resident: gb / 100, start: 1_000_100),
+            p(302, 300, "python3", "/usr/bin/python3", footprint: gb / 10, resident: gb / 10, cwd: project, start: 1_000_100, args: ["python3", "serena", "start-mcp-server"]),
+            p(303, 301, "swift-build", "/usr/bin/swift-build", footprint: gb / 2, resident: gb / 2, cwd: project, start: 1_000_200),
+            // A stand-alone program started by hand, twice.
+            p(400, 1, "xerj", "/Users/x/.local/bin/xerj", footprint: 2 * gb, resident: gb),
+            p(401, 1, "xerj", "/Users/x/.local/bin/xerj", footprint: gb, resident: gb, start: 2_000_000),
+            p(500, 1, "cfprefsd", "/usr/sbin/cfprefsd", footprint: gb / 50, resident: gb / 50),
+        ]
+        let sessions = AgentDetector.sessions(processes: processes, attributor: index)
+        let assessments = ProcessGuardian.assess(AssessmentContext(processes: processes, attributor: index))
+        let owners = MemoryAttributor.attribute(processes: processes, assessments: assessments, sessions: sessions) { index.project(id: $0)?.name }
+        let byID = Dictionary(uniqueKeysWithValues: owners.map { ($0.id, $0) })
+
+        #expect(owners.first?.id == "vm:Docker Desktop", "largest first")
+        let vm = byID["vm:Docker Desktop"]
+        #expect(vm?.kind == .virtualMachine && vm?.processCount == 2 && vm?.footprintBytes == 34 * gb + gb / 2)
+        #expect(vm?.notInRAMBytes == 27 * gb, "footprint minus resident, per process")
+        #expect(vm?.confidence == .probable, "the VM's owner is inferred from start time, not proven")
+
+        let app = byID["app:/Applications/Dia.app"]
+        #expect(app?.name == "Dia" && app?.processCount == 2 && app?.footprintBytes == 3 * gb && app?.notInRAMBytes == gb)
+
+        let agent = owners.first { $0.kind == .agentSession }
+        #expect(agent?.name == "Claude Code · alpha" && agent?.processCount == 4 && agent?.projectID == project)
+        #expect(byID["exe:xerj"]?.processCount == 2 && byID["exe:xerj"]?.footprintBytes == 3 * gb)
+        #expect(byID["system"]?.processCount == 1)
+        // Every process is counted exactly once.
+        #expect(owners.reduce(0) { $0 + $1.processCount } == processes.count)
+        #expect(owners.reduce(Int64(0)) { $0 + $1.footprintBytes } == processes.reduce(Int64(0)) { $0 + $1.footprintBytes })
+
+        let telemetry = SystemTelemetry(memoryTotalBytes: 68 * gb, compressedBytes: 26 * gb, pressure: .elevated, swapUsedBytes: 13 * gb)
+        let text = MemoryAttributor.explanation(owners: owners, telemetry: telemetry)
+        #expect(text.contains("Docker Desktop is charged 34.5 GB") && text.contains("about 27.0 GB is not in RAM") && text.contains("estimate"))
+    }
+
+    @Test("A virtual machine with no runtime nearby is reported as unidentified, not guessed")
+    func unidentifiedVirtualMachine() {
+        let vm = process(101, name: "com.apple.Virtualization.VirtualMachine", path: "/System/Library/Frameworks/Virtualization.framework/x/com.apple.Virtualization.VirtualMachine", footprint: 8 * Bytes.gb)
+        let owners = MemoryAttributor.attribute(processes: [vm], assessments: [], sessions: []) { _ in nil }
+        #expect(owners.first?.kind == .virtualMachine && owners.first?.confidence == .unknown)
+        #expect(owners.first?.name.contains("not identified") == true)
+    }
+
     // MARK: Agents
 
     @Test("Several concurrent agents are detected with their process trees and projects")

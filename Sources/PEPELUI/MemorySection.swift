@@ -5,12 +5,14 @@ struct MemorySection: View {
     @Environment(AppModel.self) private var model
     @State private var search = ""
     @State private var showAgentOwned = false
+    @State private var expandedOwners = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             if let live = model.live {
                 SectionTitle(title: "Memory", subtitle: live.memory.headline + ". " + live.memory.detail)
                 composition(live.telemetry, developer: live.memory.developerFootprintBytes)
+                owners(live)
                 if let report = model.terminationReport { terminationResult(report) }
                 candidates(live)
                 HStack(alignment: .top, spacing: 10) {
@@ -60,6 +62,72 @@ struct MemorySection: View {
                 .font(.system(size: 11)).foregroundStyle(Theme.tertiary)
         }
         .panel()
+    }
+
+    /// Who holds the memory, with the part that macOS has already squeezed out of RAM.
+    private func owners(_ live: LiveState) -> some View {
+        let shown = Array(live.memoryOwners.prefix(expandedOwners ? 40 : 8))
+        let scale = CGFloat(max(1, live.memoryOwners.first?.footprintBytes ?? 1))
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Caption("Where the memory went")
+                Spacer()
+                HStack(spacing: 10) {
+                    HStack(spacing: 4) { Circle().fill(Theme.forest).frame(width: 6, height: 6); Text("in RAM") }
+                    HStack(spacing: 4) { Circle().fill(Theme.amber).frame(width: 6, height: 6); Text("compressed or swapped (estimate)") }
+                }
+                .font(.system(size: 10)).foregroundStyle(Theme.secondary)
+            }
+            Text(live.memoryExplanation).font(.system(size: 12)).foregroundStyle(Theme.text).fixedSize(horizontal: false, vertical: true)
+            ForEach(shown) { owner in
+                HStack(spacing: 10) {
+                    Text(Bytes.format(owner.footprintBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 66, alignment: .trailing)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(owner.name).font(.system(size: 12)).lineLimit(1)
+                            Badge(text: ownerLabel(owner.kind), tint: owner.kind == .agentSession ? Theme.forest : Theme.secondary)
+                            if owner.confidence != .verified { ConfidenceBadge(confidence: owner.confidence) }
+                            Text("\(owner.processCount) process\(owner.processCount == 1 ? "" : "es")").font(.system(size: 10)).foregroundStyle(Theme.tertiary)
+                            Spacer(minLength: 0)
+                            if owner.notInRAMBytes > 50 * Bytes.mb {
+                                Text("≈ \(Bytes.format(owner.notInRAMBytes)) not in RAM").font(.system(size: 10)).monospacedDigit().foregroundStyle(Theme.amber)
+                            }
+                        }
+                        GeometryReader { proxy in
+                            let total = proxy.size.width * CGFloat(owner.footprintBytes) / scale
+                            let squeezed = owner.footprintBytes > 0 ? total * CGFloat(owner.notInRAMBytes) / CGFloat(owner.footprintBytes) : 0
+                            HStack(spacing: 0) {
+                                Rectangle().fill(Theme.forest).frame(width: max(1, total - squeezed))
+                                Rectangle().fill(Theme.amber).frame(width: max(0, squeezed))
+                            }
+                            .clipShape(Capsule())
+                        }
+                        .frame(height: 4)
+                    }
+                }
+                .foregroundStyle(Theme.text)
+                .help(owner.detail + "\n" + owner.largest.map { "\($0.name) (PID \($0.identity.pid)): \(Bytes.format($0.footprintBytes))" }.joined(separator: "\n"))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(owner.name): \(Bytes.format(owner.footprintBytes)), \(owner.processCount) processes")
+            }
+            if live.memoryOwners.count > 8 {
+                Button(expandedOwners ? "Show fewer" : "Show all \(live.memoryOwners.count) owners") { expandedOwners.toggle() }
+                    .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Theme.copper)
+            }
+        }
+        .panel()
+    }
+
+    private func ownerLabel(_ kind: MemoryOwnerKind) -> String {
+        switch kind {
+        case .virtualMachine: "VM"
+        case .agentSession: "agent"
+        case .application: "app"
+        case .project: "project"
+        case .developerTool: "dev tool"
+        case .system: "system"
+        case .other: "other"
+        }
     }
 
     private func stat(_ label: String, _ value: String, _ tint: Color) -> some View {
