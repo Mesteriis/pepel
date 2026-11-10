@@ -10,7 +10,9 @@ import SwiftUI
 /// the area menu bar managers such as Hidden Bar collapse. A named `NSStatusItem` keeps its place.
 @MainActor
 final class StatusItemController: NSObject, NSPopoverDelegate {
-    private static let autosaveName = "PEPEL"
+    /// Changing this name makes macOS treat the item as new and honour the seeded position again;
+    /// a position the user (or an earlier build) stored under the old name no longer applies.
+    private static let autosaveName = "PEPELStatus"
     private let model: AppModel
     private let item: NSStatusItem
     private let popover = NSPopover()
@@ -22,12 +24,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         // First launch only: start among the always-visible icons on the right (the value is the
         // distance from the right edge of the menu bar). After that the user's own placement wins.
         let positionKey = "NSStatusItem Preferred Position \(Self.autosaveName)"
-        // Seeded once per seed version. 240 lies between the system's Wi-Fi and Battery items,
-        // which sit to the right of any menu bar manager's separator.
-        let seedVersion = 2
-        if UserDefaults.standard.integer(forKey: "MenuBarSeedVersion") < seedVersion {
-            UserDefaults.standard.set(240.0, forKey: positionKey)
-            UserDefaults.standard.set(seedVersion, forKey: "MenuBarSeedVersion")
+        // Seeded once. macOS only reads this for an item it has not placed before; afterwards the
+        // user's own placement wins. 200 lies between the system's Spotlight (188) and Battery
+        // (220) items, to the right of Wi-Fi and of any menu bar manager's separator.
+        if UserDefaults.standard.object(forKey: positionKey) == nil {
+            UserDefaults.standard.set(200.0, forKey: positionKey)
         }
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.autosaveName = Self.autosaveName
