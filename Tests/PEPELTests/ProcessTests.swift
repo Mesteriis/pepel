@@ -451,6 +451,27 @@ struct ProcessTests {
         #expect(state(burst).state == .idle)
     }
 
+    @Test("An agent binary running as a server for an application is never asleep, however quiet")
+    func agentServersAreNotSessions() {
+        let now = Date()
+        let cli = "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"
+        let server = process(40, parent: 30, name: "codex", path: cli, args: [cli, "-c", "forced_login_method=\"chatgpt\"", "exec-server", "--concurrent-requests", "32"])
+        let session = process(41, name: "codex", path: "/opt/homebrew/bin/codex", args: ["codex", "resume"])
+        #expect(AgentActivity.isService(server) && !AgentActivity.isService(session))
+        #expect(AgentActivity.isService(process(42, name: "claude", args: ["claude", "mcp", "serve"])))
+
+        let quiet = stride(from: 300.0, through: 1, by: -30).map { ProcessObservation(timestamp: now.addingTimeInterval(-$0 * 60), cpuTimeNs: 0, footprintBytes: 1) }
+        let history = [server.identity: quiet, session.identity: quiet]
+        func verdict(_ p: ProcessSnapshot) -> AgentActivity.Verdict {
+            AgentActivity.verdict(root: p, members: [], history: history, activeBuildCount: 0, hasActiveLease: false, now: now, sleepWindow: 2 * 3600)
+        }
+        #expect(verdict(server).state == .idle && verdict(server).evidence.first?.contains("server") == true)
+        #expect(verdict(session).state == .sleeping, "the same silence on a real session does count")
+
+        let sessions = AgentDetector.sessions(processes: [server, session], attributor: nil, history: history, now: now)
+        #expect(sessions.first { $0.root.pid == 40 }?.isService == true && sessions.first { $0.root.pid == 41 }?.isService == false)
+    }
+
     @Test("A sleeping session is terminated automatically only when enabled; a working one never; its tool servers go with it")
     func sleepingAgentPolicy() {
         let f = Fixture()

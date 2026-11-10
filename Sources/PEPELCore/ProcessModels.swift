@@ -250,6 +250,10 @@ public struct AgentSession: Codable, Sendable, Identifiable, Hashable {
     public var recentlyActive: Bool?
     public var startedAt: Date
     public var state: AgentActivityState = .idle
+    /// True when the agent binary runs as a long-lived server for an application (`codex
+    /// app-server`, `claude mcp serve`) rather than as a session someone talks to. Servers are
+    /// quiet by nature and are never treated as asleep.
+    public var isService = false
     /// When the session last showed activity, as far back as PEPEL's observations reach.
     public var quietSince: Date?
     /// How long PEPEL has been watching this session.

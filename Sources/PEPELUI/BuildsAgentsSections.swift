@@ -124,7 +124,7 @@ struct AgentsSection: View {
                         )
                         .frame(width: 62, alignment: .leading)
                         .help(session.evidence.joined(separator: "\n"))
-                        Text(session.kind.displayName).font(.system(size: 12, weight: .semibold)).frame(width: 92, alignment: .leading)
+                        Text(session.kind.displayName + (session.isService ? " server" : "")).font(.system(size: 12, weight: .semibold)).frame(width: 110, alignment: .leading).lineLimit(1)
                         VStack(alignment: .leading, spacing: 1) {
                             HStack(spacing: 6) {
                                 Text(model.projectName(session.projectID) ?? "No known project").font(.system(size: 12))

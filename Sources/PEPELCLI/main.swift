@@ -203,7 +203,7 @@ case "agents":
         ["PID", "AGENT", "STATE", "QUIET FOR", "MEMORY", "PROCS", "PROJECT", "WHY"],
         live.agentSessions.map {
             [
-                String($0.root.pid), $0.kind.displayName, $0.state.rawValue,
+                String($0.root.pid), $0.kind.displayName + ($0.isService ? " (server)" : ""), $0.state.rawValue,
                 $0.quietSince.map { TimeFormat.age(Date().timeIntervalSince($0)) } ?? "—", Bytes.format($0.footprintBytes),
                 String($0.processCount), Out.truncate($0.projectID.map { ($0 as NSString).lastPathComponent } ?? "—", 18),
                 Out.truncate($0.evidence.first ?? "", 90),

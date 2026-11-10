@@ -18,6 +18,14 @@ public enum AgentActivity {
     /// A session active this recently is "working".
     public static let workingWindow: TimeInterval = 5 * 60
 
+    /// Sub-commands that make an agent binary a server instead of a session.
+    static let serviceTokens: Set<String> = ["app-server", "exec-server", "mcp-server", "serve", "server", "daemon", "proxy"]
+
+    /// Whether this agent process is infrastructure for an application rather than a session.
+    public static func isService(_ p: ProcessSnapshot) -> Bool {
+        !Set(p.arguments.dropFirst().prefix(12).map { $0.lowercased() }).isDisjoint(with: serviceTokens)
+    }
+
     public struct Verdict: Sendable, Equatable {
         public var state: AgentActivityState
         public var quietSince: Date?
@@ -70,6 +78,11 @@ public enum AgentActivity {
             }
         }
 
+        if isService(root) {
+            return Verdict(
+                state: .idle, quietSince: last?.date, observedFor: observedFor,
+                evidence: ["Runs as a server (\(root.arguments.dropFirst().first { serviceTokens.contains($0.lowercased()) } ?? "service")) for another program; servers are never treated as asleep."])
+        }
         if activeBuildCount > 0 {
             return Verdict(state: .working, quietSince: nil, observedFor: observedFor, evidence: ["A build or test is running under this session."])
         }
