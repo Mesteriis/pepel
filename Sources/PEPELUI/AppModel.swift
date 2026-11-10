@@ -182,7 +182,10 @@ public final class AppModel {
         }
         let managers = ["com.dwarvesv.minimalbar": "Hidden Bar", "com.jordanbaird.Ice": "Ice", "com.surteesstudios.Bartender": "Bartender", "com.stonerl.Thaw": "Thaw"]
         let running = NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier.flatMap { managers[$0] } }.first
-        if let running {
+        let installed = Bundle.main.bundlePath.hasPrefix("/Applications/")
+        if let running, !installed {
+            menuBarNotice = "macOS is not showing PEPEL's menu bar icon. On macOS 27, \(running) hides apps that do not run from /Applications: install PEPEL there (Scripts/install.sh, or drag PEPEL.app into Applications), then expand \(running) and collapse it again. Opening PEPEL.app again shows this window."
+        } else if let running {
             menuBarNotice = "macOS is not showing PEPEL's menu bar icon. \(running) hides every app that was not running when it last collapsed: expand \(running) and collapse it again, and the icon appears to the right of its arrow. Until then, opening PEPEL.app again shows this window."
         } else {
             menuBarNotice = "macOS is not showing PEPEL's menu bar icon. Check System Settings › Menu Bar › Allow in the Menu Bar, and whether the menu bar has room for it. Opening PEPEL.app again shows this window."

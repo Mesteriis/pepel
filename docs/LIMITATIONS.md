@@ -63,20 +63,30 @@ Stated plainly so that nothing in the UI is mistaken for more than it is.
 
 On macOS 27, Hidden Bar (1.11+) no longer hides icons by stretching a separator. When it
 collapses it reads, through Accessibility, which apps have an icon to the right of its arrow and
-hands macOS an allow-list of those apps; macOS hides every other third-party icon itself. Two
-consequences for PEPEL, neither of which it can change from its side:
+hands macOS an allow-list of those apps; macOS hides every other third-party icon itself.
 
-- **An app started while Hidden Bar is collapsed is hidden until Hidden Bar is expanded and
-  collapsed once more**, because the allow-list is only rebuilt on collapse. This applies to
-  every app, not only PEPEL. PEPEL notices that macOS gave its icon no place, says so in the
-  Overview and in a notification, and opening `PEPEL.app` again always shows the dashboard.
-- Hiding is per application. PEPEL seeds its icon next to the system icons, to the right of the
-  arrow; if you drag it to the left of the arrow it is hidden on the next collapse, as intended.
+What was established on a real machine, by reading the menu bar layout through Accessibility
+while Hidden Bar collapsed:
 
-PEPEL records where macOS actually placed its icon in
+- **PEPEL must run from `/Applications`.** Started from the build folder in the home directory
+  it was hidden on every collapse, wherever its icon stood and however it was signed. The same
+  bundle, signed with a development certificate and copied to `/Applications`, stays visible.
+  `Scripts/install.sh` installs it there. Another ad-hoc signed app run from `~/Applications`
+  behaved the same way as the uninstalled PEPEL. Whether an *ad-hoc signed* PEPEL in
+  `/Applications` is enough was not tested; the build script signs with a real identity when one
+  exists.
+- **An app started while Hidden Bar is collapsed stays hidden until Hidden Bar is expanded and
+  collapsed once more**, because the allow-list is rebuilt only on collapse. This applies to
+  every app and is Hidden Bar's documented behaviour. PEPEL notices that macOS gave its icon no
+  place, says so in the Overview and in a notification, and opening `PEPEL.app` again always
+  shows the dashboard.
+- A hidden icon keeps reporting its last position, so an app cannot tell that it was hidden
+  *after* it had been placed; PEPEL only detects the case where it was never placed.
+
+PEPEL records where macOS placed its icon in
 `~/Library/Application Support/PEPEL/menubar-placement.log` (a zero-height frame means "not
 shown"). macOS does not let an app read the "Allow in the Menu Bar" switch or another app's
-allow-list, so PEPEL can report the symptom but not which of the two caused it.
+allow-list.
 
 ## Not implemented
 

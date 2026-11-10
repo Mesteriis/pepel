@@ -24,10 +24,25 @@ cp Resources/AppIcon.icns "$staging/Contents/Resources/AppIcon.icns"
 cp Resources/MenuBarIcon.png Resources/MenuBarIcon@2x.png Resources/MenuBarIcon@3x.png \
    Resources/Glyph.png Resources/Glyph@2x.png Resources/NotificationIcon.png "$staging/Contents/Resources/"
 
-# Ad-hoc signature: enough for local use, notifications and the login item. Distribution to
-# other Macs needs a Developer ID signature and notarisation.
-codesign --force --sign - "$staging/Contents/Helpers/pepel"
-codesign --force --sign - "$staging"
+# Signing identity. A real certificate matters on macOS 27: the system only gives a status item
+# an application identity when the app is signed with one, and menu bar managers (Hidden Bar
+# 1.11+) hide every app they cannot name in their allow-list. An ad-hoc signed PEPEL therefore
+# disappears whenever such a manager collapses.
+#   PEPEL_SIGN_IDENTITY="Developer ID Application: …"  use this identity
+#   PEPEL_SIGN_IDENTITY=-                              force ad-hoc
+#   (unset)                                            first valid code-signing identity, else ad-hoc
+identity="${PEPEL_SIGN_IDENTITY:-}"
+if [ -z "$identity" ]; then
+    identity="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(.*\)".*/\1/p' | head -1)"
+fi
+if [ -z "$identity" ]; then identity="-"; fi
+if [ "$identity" = "-" ]; then
+    echo "warning: signing ad hoc. On macOS 27 a menu bar manager such as Hidden Bar will hide PEPEL's icon." >&2
+else
+    echo "signing with: $identity"
+fi
+codesign --force --sign "$identity" "$staging/Contents/Helpers/pepel"
+codesign --force --sign "$identity" "$staging"
 
 if [ -d "$app" ]; then find "$app" -depth -delete; fi
 mv "$staging" "$app"

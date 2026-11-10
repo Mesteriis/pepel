@@ -32,18 +32,22 @@ guesses.
 ## Build and run
 
 ```bash
-Scripts/build-app.sh release
+Scripts/install.sh
 ```
 
-```bash
-open dist/PEPEL.app
-```
+This builds `dist/PEPEL.app`, installs it to `/Applications/PEPEL.app` and starts it. Run it from
+`/Applications`, not from the build folder: on macOS 27 a menu bar manager such as Hidden Bar
+hides the icon of an app that runs from elsewhere (see [Known limitations](docs/LIMITATIONS.md)),
+and the login item needs it there too. To build without installing: `Scripts/build-app.sh release`.
+
+The bundle is signed with the first code-signing identity in your keychain, or ad hoc when there
+is none (`PEPEL_SIGN_IDENTITY` overrides this).
 
 The bundle contains the app and the `pepel` command-line tool
-(`dist/PEPEL.app/Contents/Helpers/pepel`). To have it on your `PATH`:
+(`/Applications/PEPEL.app/Contents/Helpers/pepel`). To have it on your `PATH`:
 
 ```bash
-ln -s "$PWD/dist/PEPEL.app/Contents/Helpers/pepel" /usr/local/bin/pepel
+ln -s /Applications/PEPEL.app/Contents/Helpers/pepel /usr/local/bin/pepel
 ```
 
 For development:
