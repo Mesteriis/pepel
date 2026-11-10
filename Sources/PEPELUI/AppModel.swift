@@ -1,0 +1,329 @@
+import AppKit
+import Observation
+import PEPELEngine
+import SwiftUI
+
+public enum DashboardSection: String, CaseIterable, Identifiable, Sendable {
+    case overview, storage, memory, builds, projects, agents, cleanup, history, settings
+
+    public var id: String { rawValue }
+    public var title: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
+
+    public var symbol: String {
+        switch self {
+        case .overview: "gauge.with.dots.needle.33percent"
+        case .storage: "internaldrive"
+        case .memory: "memorychip"
+        case .builds: "hammer"
+        case .projects: "folder"
+        case .agents: "sparkles"
+        case .cleanup: "flame"
+        case .history: "chart.xyaxis.line"
+        case .settings: "gearshape"
+        }
+    }
+}
+
+public enum HealthLevel: Sendable {
+    case healthy, attention, critical
+}
+
+/// UI state. All work happens in the engine; this object only mirrors results onto the main actor.
+@MainActor
+@Observable
+public final class AppModel {
+    public let engine: PepelEngine
+    let monitor: MonitorService
+    private var apiServer: LocalAPIServer?
+    private var notified = Set<String>()
+
+    public var live: LiveState?
+    public var storage: StorageState?
+    public var growth: GrowthState?
+    public var alerts: [PepelAlert] = []
+    public var settings = PepelSettings()
+    public var scanProgress: ScanProgress?
+    public var isScanning = false
+    public var cadence = ""
+    public var section: DashboardSection = .overview
+
+    public var audit: [AuditEntry] = []
+    public var telemetryHistory: [TelemetryPoint] = []
+    public var protections: [ProtectionRule] = []
+    public var leases: [ResourceLease] = []
+
+    public var plan: CleanupPlan?
+    public var isPlanning = false
+    public var isCleaning = false
+    public var cleanupReport: CleanupReport?
+    public var pendingTermination: TerminationDecision?
+    public var terminationReport: TerminationReport?
+    public var message: String?
+    public var apiStatus = "Not started"
+    public var loginItemStatus = LoginItem.statusText
+
+    public init(engine: PepelEngine) {
+        self.engine = engine
+        self.monitor = MonitorService(engine: engine)
+    }
+
+    public static func make() -> AppModel {
+        let environment = ProcessInfo.processInfo.environment
+        let paths = AppPaths(home: environment["PEPEL_HOME"] ?? NSHomeDirectory(), supportDirectory: environment["PEPEL_SUPPORT_DIR"])
+        do {
+            return AppModel(engine: try PepelEngine(paths: paths))
+        } catch {
+            // Keep the app usable without persistence rather than failing to launch.
+            let fallback = try! PepelEngine(paths: paths, store: try! PepelStore.inMemory())
+            let model = AppModel(engine: fallback)
+            model.message = "PEPEL could not open its database (\(error)). Running without history."
+            return model
+        }
+    }
+
+    // MARK: Lifecycle
+
+    public func start() {
+        Task {
+            settings = await engine.currentSettings()
+            storage = await engine.storage
+            refreshSecondary()
+            let stream = await monitor.events()
+            await monitor.start()
+            startAgentAPI()
+            for await event in stream { handle(event) }
+        }
+    }
+
+    private func handle(_ event: EngineEvent) {
+        switch event {
+        case .live(let state):
+            withAnimation(.easeOut(duration: 0.25)) { live = state }
+        case .scanStarted:
+            isScanning = true
+            scanProgress = ScanProgress(phase: "Starting")
+        case .scanProgress(let progress):
+            scanProgress = progress
+        case .storage(let state):
+            withAnimation(.easeOut(duration: 0.3)) { storage = state }
+            isScanning = false
+            scanProgress = nil
+            refreshSecondary()
+        case .alerts(let current):
+            alerts = current
+            notify(current)
+        case .automatic(let cleanup, let terminations):
+            if let cleanup, cleanup.succeededCount > 0 {
+                Notifier.post(
+                    id: "auto-cleanup-\(Int(cleanup.finishedAt.timeIntervalSince1970))", title: "Safe cleanup finished",
+                    body: "\(cleanup.succeededCount) item\(cleanup.succeededCount == 1 ? "" : "s") cleaned, up to \(Bytes.format(cleanup.estimatedBytes)).")
+            }
+            for report in terminations where report.exited {
+                Notifier.post(id: "auto-term-\(report.target.pid)", title: "Abandoned process terminated", body: "\(report.name) (PID \(report.target.pid)) was idle and orphaned.")
+            }
+            refreshSecondary()
+        case .cadence(let reason):
+            cadence = reason
+        }
+    }
+
+    private func notify(_ alerts: [PepelAlert]) {
+        let current = Set(alerts.map(\.id))
+        notified.formIntersection(current)
+        guard settings.notificationsEnabled, !settings.paused,
+            !settings.quietHours.contains(hour: Calendar.current.component(.hour, from: Date()))
+        else { return }
+        for alert in alerts where alert.severity != .info && notified.insert(alert.id).inserted {
+            Notifier.post(id: alert.id, title: alert.title, body: alert.message)
+        }
+    }
+
+    private func startAgentAPI() {
+        do {
+            try engine.paths.ensureSupportDirectory()
+            let token = try APIToken.loadOrCreate(at: engine.paths.token)
+            let server = LocalAPIServer(socketPath: engine.paths.socket, token: token, service: engine.makeAgentService())
+            try server.start()
+            apiServer = server
+            apiStatus = "Listening"
+        } catch {
+            apiStatus = "Unavailable: \(error)"
+        }
+    }
+
+    /// History, rules and leases: cheap reads that change rarely.
+    public func refreshSecondary() {
+        let store = engine.store
+        Task {
+            growth = engine.growth()
+            audit = store.audit(limit: 300)
+            telemetryHistory = store.telemetryHistory(since: Date().addingTimeInterval(-7 * 86_400))
+            protections = store.protections()
+            leases = store.leases()
+        }
+    }
+
+    // MARK: Derived
+
+    public var health: HealthLevel {
+        if alerts.contains(where: { $0.severity == .critical }) { return .critical }
+        if alerts.contains(where: { $0.severity == .warning }) || !(live?.abandoned.isEmpty ?? true) { return .attention }
+        return .healthy
+    }
+
+    public var healthSentence: String {
+        if settings.paused { return "Monitoring is paused." }
+        switch health {
+        case .critical: return alerts.first { $0.severity == .critical }?.title ?? "Needs attention now."
+        case .attention: return alerts.first { $0.severity == .warning }?.title ?? "\(live?.abandoned.count ?? 0) process(es) look abandoned."
+        case .healthy: return "Workstation is healthy."
+        }
+    }
+
+    public var reclaimableText: String {
+        guard let storage else { return "—" }
+        return Bytes.format(storage.reclaimableBytes)
+    }
+
+    public var menuBarText: String? {
+        switch settings.menuBarMode {
+        case .iconOnly: return nil
+        case .reclaimable: return storage == nil ? nil : reclaimableText
+        case .memoryPressure: return live.map { $0.telemetry.pressure == .normal ? "OK" : $0.telemetry.pressure.rawValue.capitalized }
+        case .activeBuilds: return live.map { "\($0.activeBuildCount)" }
+        }
+    }
+
+    public func item(_ id: String) -> StorageItem? { storage?.items.first { $0.id == id } }
+
+    public func projectName(_ projectID: String?) -> String? {
+        guard let projectID else { return nil }
+        return storage?.projects.first { $0.id == projectID }?.name ?? (projectID as NSString).lastPathComponent
+    }
+
+    // MARK: Actions
+
+    public func scanNow() {
+        Task { await monitor.requestScan(incremental: false) }
+    }
+
+    public func cancelScan() {
+        Task { await monitor.cancelScan() }
+    }
+
+    public func updateSettings(_ mutate: @escaping @Sendable (inout PepelSettings) -> Void) {
+        Task {
+            do {
+                settings = try await engine.update(mutate)
+                await engine.reevaluateStorage()
+                storage = await engine.storage
+                await monitor.poke()
+            } catch {
+                message = "Settings could not be saved: \(error)"
+            }
+        }
+    }
+
+    public func togglePause() {
+        updateSettings { $0.paused.toggle() }
+    }
+
+    public func setLaunchAtLogin(_ enabled: Bool) {
+        if let problem = LoginItem.set(enabled) { message = problem }
+        loginItemStatus = LoginItem.statusText
+        let registered = LoginItem.isEnabled
+        updateSettings { $0.launchAtLogin = registered }
+    }
+
+    public func prepareCleanup() {
+        guard !isPlanning else { return }
+        isPlanning = true
+        cleanupReport = nil
+        Task {
+            plan = await engine.cleanupPlan(initiator: .user)
+            isPlanning = false
+        }
+    }
+
+    public func runCleanup(selected: Set<String>, dryRun: Bool) {
+        guard var plan, !isCleaning else { return }
+        plan.decisions = plan.decisions.filter { selected.contains($0.id) }
+        isCleaning = true
+        Task {
+            cleanupReport = await engine.executeCleanup(plan, confirmed: selected, dryRun: dryRun)
+            isCleaning = false
+            if !dryRun {
+                storage = await engine.storage
+                self.plan = await engine.cleanupPlan(initiator: .user)
+            }
+            refreshSecondary()
+        }
+    }
+
+    public func requestTermination(_ assessment: ProcessAssessment) {
+        Task {
+            pendingTermination = await engine.terminationDecision(assessment.process.identity, initiator: .user)
+            if pendingTermination == nil { message = "That process has already exited." }
+        }
+    }
+
+    public func confirmTermination(force: Bool) {
+        guard let decision = pendingTermination else { return }
+        pendingTermination = nil
+        Task {
+            switch await engine.terminate(decision.target.process.identity, confirmed: true, force: force, initiator: .user) {
+            case .completed(let report): terminationReport = report
+            case .denied(let d), .needsConfirmation(let d): message = "Not terminated: \(d.reasons.joined(separator: " "))"
+            case .notFound: message = "That process has already exited."
+            }
+            live = await engine.live
+            refreshSecondary()
+        }
+    }
+
+    public func protect(_ kind: ProtectionKind, _ value: String, note: String = "") {
+        Task {
+            do {
+                _ = try await engine.protect(kind, value: value, note: note)
+                await engine.reevaluateStorage()
+                storage = await engine.storage
+                refreshSecondary()
+            } catch {
+                message = "Could not add the protection: \(error)"
+            }
+        }
+    }
+
+    public func unprotect(_ rule: ProtectionRule) {
+        Task {
+            try? await engine.unprotect(id: rule.id)
+            await engine.reevaluateStorage()
+            storage = await engine.storage
+            refreshSecondary()
+        }
+    }
+
+    public func setPinned(_ path: String, _ pinned: Bool) {
+        Task {
+            try? await engine.setPinned(path, pinned)
+            await engine.reevaluateStorage()
+            storage = await engine.storage
+            refreshSecondary()
+        }
+    }
+
+    public func restore(_ entry: AuditEntry) {
+        guard let trashed = entry.detail["trashedTo"], let original = entry.detail["path"] else { return }
+        message = engine.restore(trashedPath: trashed, originalPath: original).map { "Could not restore: \($0)" } ?? "Restored \(PathUtil.display(original))."
+        refreshSecondary()
+    }
+
+    public func reveal(_ path: String) {
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+    }
+
+    public func open(_ section: DashboardSection) {
+        self.section = section
+        if section == .cleanup { prepareCleanup() }
+    }
+}

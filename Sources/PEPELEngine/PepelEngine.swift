@@ -1,0 +1,287 @@
+import Foundation
+
+/// The single entry point used by the app, the CLI and the agent API. It owns no policy of its
+/// own: it gathers current facts and hands them to the guardians and the cleanup policy engine.
+public actor PepelEngine {
+    public nonisolated let paths: AppPaths
+    public nonisolated let store: PepelStore
+    public nonisolated let tools: ToolRunner
+    public nonisolated let coordinator: ScanCoordinator
+    nonisolated let processSource: any ProcessSource
+    nonisolated let readTelemetry: @Sendable () -> SystemTelemetry
+    nonisolated let policy = CleanupPolicyEngine()
+
+    var settings: PepelSettings
+    var projects: [Project] = []
+    var projectIndex = ProjectIndex([])
+    var history: [ProcessIdentity: [ProcessObservation]] = [:]
+    var historyLoaded = false
+    var lastObservationWrite = Date.distantPast
+    var lastTelemetryWrite = Date.distantPast
+    var lastProcesses: [ProcessSnapshot] = []
+    public private(set) var live: LiveState?
+    public private(set) var storage: StorageState?
+    public private(set) var scanning = false
+
+    public init(
+        paths: AppPaths = AppPaths(), store: PepelStore? = nil, tools: ToolRunner? = nil,
+        analyzers: [any StorageAnalyzer]? = nil, processSource: any ProcessSource = ProcessEnumerator(),
+        telemetry: (@Sendable () -> SystemTelemetry)? = nil
+    ) throws {
+        self.paths = paths
+        if let store {
+            self.store = store
+        } else {
+            try paths.ensureSupportDirectory()
+            self.store = try PepelStore(path: paths.database)
+        }
+        // A redirected PEPEL may consult git about its fixture repositories and nothing else:
+        // docker, go, simctl and friends would report on, and act on, the real machine.
+        self.tools = tools ?? ToolRunner(home: paths.home, allowedTools: paths.isRedirected ? ["git"] : nil)
+        self.coordinator = ScanCoordinator(analyzers: (analyzers ?? AnalyzerRegistry.all()) + [AgentDisposableAnalyzer(store: self.store)])
+        self.processSource = processSource
+        let home = paths.home
+        self.readTelemetry = telemetry ?? { TelemetryReader().read(volumePath: home) }
+        self.settings = self.store.loadSettings(home: paths.home)
+        let saved = self.store.loadCodable(StorageState.self, key: "storage.state")
+        self.storage = saved
+        self.projects = saved?.projects ?? []
+        self.projectIndex = ProjectIndex(saved?.projects ?? [])
+    }
+
+    // MARK: Settings and rules
+
+    public func currentSettings() -> PepelSettings { settings }
+
+    public func update(_ mutate: @Sendable (inout PepelSettings) -> Void) throws -> PepelSettings {
+        mutate(&settings)
+        try store.saveSettings(settings)
+        return settings
+    }
+
+    public nonisolated func protections() -> [ProtectionRule] { store.protections() }
+
+    public func protect(_ kind: ProtectionKind, value: String, note: String = "") throws -> ProtectionRule {
+        let normalised = kind == .path || kind == .pin || kind == .project ? PathUtil.canonical(value, home: paths.home) : value
+        let rule = ProtectionRule(kind: kind, value: normalised, note: note)
+        try store.addProtection(rule)
+        store.appendAudit(AuditEntry(kind: .protection, initiator: "user", subject: normalised, outcome: "protected (\(kind.rawValue))"))
+        return rule
+    }
+
+    public func unprotect(id: String) throws {
+        try store.removeProtection(id: id)
+        store.appendAudit(AuditEntry(kind: .protection, initiator: "user", subject: id, outcome: "protection removed"))
+    }
+
+    public func setPinned(_ path: String, _ pinned: Bool) throws {
+        if pinned { _ = try protect(.pin, value: path) } else { try store.removeProtection(kind: .pin, value: path) }
+    }
+
+    private func adopt(projects: [Project]) {
+        self.projects = projects
+        projectIndex = ProjectIndex(projects)
+    }
+
+    // MARK: Live state
+
+    private nonisolated static func discover(settings: PepelSettings, home: String) async -> [Project] {
+        ProjectDiscovery(maxDepth: settings.discoveryDepth, home: home)
+            .discover(roots: settings.projectRoots, registered: settings.registeredProjects, excluded: settings.excludedPaths)
+    }
+
+    public func refreshProjects() async -> [Project] {
+        adopt(projects: await Self.discover(settings: settings, home: paths.home))
+        return projects
+    }
+
+    public func knownProjects() -> [Project] { projects }
+
+    private func loadHistoryIfNeeded(now: Date) {
+        guard !historyLoaded else { return }
+        historyLoaded = true
+        history = store.observations(since: now.addingTimeInterval(-3 * 3600))
+    }
+
+    /// Samples telemetry and the process table and re-assesses every developer process.
+    @discardableResult
+    public func refreshLive(now: Date = Date()) async -> LiveState {
+        if projects.isEmpty { _ = await refreshProjects() }
+        loadHistoryIfNeeded(now: now)
+
+        var processes = processSource.snapshot()
+        for index in processes.indices {
+            let role = RoleClassifier.role(of: processes[index], attributor: projectIndex)
+            if role == .devServer || role == .projectBinary || role == .testRunner {
+                processes[index].listeningPorts = processSource.listeningPorts(of: processes[index].pid)
+            }
+        }
+        lastProcesses = processes
+
+        let context = AssessmentContext(
+            processes: processes, history: history, protections: store.protections(), attributor: projectIndex, now: now,
+            idleWindow: TimeInterval(settings.idleMinutesBeforeAbandoned) * 60)
+        let assessments = ProcessGuardian.assess(context)
+        let sessions = AgentDetector.sessions(processes: processes, attributor: projectIndex, history: history, now: now)
+        let telemetry = readTelemetry()
+        let advice = MemoryGuardian.advise(telemetry: telemetry, processes: processes, assessments: assessments, history: history)
+
+        // One build is many compiler processes: count the topmost active process of each tree.
+        let tree = ProcessTree(processes)
+        let active = Set(assessments.filter { $0.lifecycle == .activeBuildOrTest }.map(\.process.pid))
+        let buildRoots = active.filter { pid in
+            guard let p = tree.byPID[pid] else { return false }
+            return !tree.ancestors(of: p).contains { active.contains($0.pid) }
+        }
+
+        record(processes: processes, developer: Set(assessments.map(\.process.identity)), telemetry: telemetry, now: now)
+        let state = LiveState(
+            telemetry: telemetry, assessments: assessments, agentSessions: sessions, memory: advice,
+            activeBuildCount: buildRoots.count, userProcessCount: processes.count, sampledAt: now)
+        live = state
+        return state
+    }
+
+    private func record(processes: [ProcessSnapshot], developer: Set<ProcessIdentity>, telemetry: SystemTelemetry, now: Date) {
+        let alive = Set(processes.map(\.identity))
+        let horizon = now.addingTimeInterval(-3 * 3600)
+        history = history.filter { alive.contains($0.key) }
+        for p in processes {
+            var series = history[p.identity] ?? []
+            // One point per ~20 s is plenty for idle detection and keeps memory flat.
+            if let last = series.last, now.timeIntervalSince(last.timestamp) < 20 { continue }
+            series.append(ProcessObservation(timestamp: now, cpuTimeNs: p.cpuTimeNs, footprintBytes: p.footprintBytes))
+            if let first = series.first, first.timestamp < horizon, series.count > 2 { series.removeFirst() }
+            history[p.identity] = series
+        }
+        if now.timeIntervalSince(lastObservationWrite) >= 60 {
+            lastObservationWrite = now
+            store.recordObservations(processes.filter { developer.contains($0.identity) }, at: now)
+        }
+        if now.timeIntervalSince(lastTelemetryWrite) >= 300 {
+            lastTelemetryWrite = now
+            store.recordTelemetry(telemetry, reclaimable: storage?.reclaimableBytes)
+        }
+    }
+
+    // MARK: Storage scan
+
+    /// Full storage scan. With `changes`, items nothing changed under reuse their previous size.
+    @discardableResult
+    public func scan(changes: ChangeSet? = nil, progress: (@Sendable (ScanProgress) -> Void)? = nil) async -> StorageState {
+        scanning = true
+        defer { scanning = false }
+        let now = Date()
+        progress?(ScanProgress(phase: "Discovering projects"))
+        _ = await refreshProjects()
+        let discovered = Date()
+        progress?(ScanProgress(phase: "Looking inside \(projects.count) projects"))
+        let hits = await ProjectArtifactWalker().walk(projectIndex, consultGit: tools.locate("git") != nil)
+        let walked = Date()
+        let context = ScanContext(
+            home: paths.home, temporaryDirectory: paths.temporaryDirectory, sharedTemporaryDirectory: paths.sharedTemporaryDirectory,
+            projects: projectIndex, settings: settings, now: now, tools: tools, hits: hits)
+        let result = await coordinator.scan(context: context, changes: changes, progress: progress)
+
+        let liveState = await refreshLive()
+        let state = buildStorageState(scan: result, live: liveState, now: Date())
+        storage = state
+        if !result.cancelled {
+            try? store.saveCodable(state, key: "storage.state")
+            store.recordUsage(scope: "project", entries: state.projectUsage.map { ($0.id, $0.name, $0.artifactBytes) }, at: now)
+            var byCategory: [ArtifactCategory: Int64] = [:]
+            for item in state.items { byCategory[item.category, default: 0] += item.occupiedBytes }
+            store.recordUsage(scope: "category", entries: byCategory.map { ($0.key.rawValue, $0.key.displayName, $0.value) }, at: now)
+            store.recordTelemetry(liveState.telemetry, reclaimable: state.reclaimableBytes)
+            lastTelemetryWrite = now
+            store.appendAudit(
+                AuditEntry(
+                    kind: .scan, initiator: "engine", subject: "storage scan",
+                    outcome: "\(state.items.count) items, \(Bytes.format(state.reclaimableBytes)) reclaimable",
+                    bytes: state.reclaimableBytes,
+                    detail: [
+                        "discoverSeconds": String(format: "%.1f", discovered.timeIntervalSince(now)),
+                        "walkSeconds": String(format: "%.1f", walked.timeIntervalSince(discovered)),
+                        "measureSeconds": String(format: "%.1f", result.finishedAt.timeIntervalSince(result.startedAt)),
+                        "reused": String(result.reusedMeasurements),
+                    ]))
+        }
+        return state
+    }
+
+    func runningWrappedBuilds() -> [BuildRecord] {
+        store.builds(limit: 50).filter { $0.exitCode == nil && processSource.identity(of: $0.wrapperPID) != nil }
+    }
+
+    private func buildStorageState(scan: ScanResult, live: LiveState, now: Date) -> StorageState {
+        let records = store.builds()
+        let usage = UsageInspector.inspect(
+            items: scan.items, processes: lastProcesses, assessments: live.assessments, runningWrappedBuilds: runningWrappedBuilds())
+        let pins = Set(store.protections().filter { $0.kind == .pin }.map(\.value))
+        let source = processSource
+        let report = BuildGuardian.report(
+            items: scan.items, projects: projectIndex, groupName: { [projectIndex] in projectIndex.groupName($0) }, records: records,
+            pinned: pins, activity: usage, settings: settings, now: now, isAlive: { source.identity(of: $0) != nil })
+        var adjusted = scan
+        adjusted.items = report.items
+
+        let dayAgo = store.usage(scope: "project", atOrBefore: now.addingTimeInterval(-86_400))
+        let earliest = dayAgo.isEmpty ? store.usage(scope: "project", atOrBefore: now.addingTimeInterval(-600)) : dayAgo
+        var usageByGroup: [String: ProjectUsage] = [:]
+        for project in projects {
+            var entry = usageByGroup[project.groupID] ?? ProjectUsage(
+                id: project.groupID, name: project.groupName, roots: [], branches: [], kinds: [], artifactBytes: 0,
+                reclaimableBytes: 0, itemCount: 0, growth: nil, processCount: 0, agentCount: 0)
+            entry.roots.append(project.id)
+            if let branch = project.git?.branch, !entry.branches.contains(branch) { entry.branches.append(branch) }
+            entry.kinds = Array(Set(entry.kinds).union(project.kinds)).sorted { $0.rawValue < $1.rawValue }
+            entry.processCount += live.assessments.filter { $0.projectID == project.id }.count
+            entry.agentCount += live.agentSessions.filter { $0.projectID == project.id }.count
+            usageByGroup[project.groupID] = entry
+        }
+        for item in adjusted.items {
+            guard let projectID = item.projectID, let group = projectIndex.project(id: projectID)?.groupID else { continue }
+            usageByGroup[group]?.artifactBytes += item.occupiedBytes
+            usageByGroup[group]?.itemCount += 1
+            if item.safety != .protected { usageByGroup[group]?.reclaimableBytes += item.reclaimableBytes }
+        }
+        for (group, entry) in usageByGroup {
+            if let before = earliest[group] {
+                usageByGroup[group]?.growth = GrowthFigure(
+                    requestedWindow: 86_400, actualSpan: min(86_400, now.timeIntervalSince(before.timestamp)),
+                    deltaBytes: entry.artifactBytes - before.bytes)
+            }
+        }
+        return StorageState(
+            scan: adjusted, builds: report.summaries, buildTotalBytes: report.totalBytes,
+            globalBuildBudgetBytes: report.globalBudgetBytes, projects: projects,
+            projectUsage: usageByGroup.values.sorted { $0.artifactBytes > $1.artifactBytes }, inUse: usage)
+    }
+
+    /// Re-applies retention and usage to the last scan without touching the disk (after a
+    /// settings change, a pin, or a cleanup).
+    public func reevaluateStorage() async {
+        guard let storage else { return }
+        let liveState = await refreshLive()
+        self.storage = buildStorageState(scan: storage.scan, live: liveState, now: Date())
+    }
+
+    func dropItems(_ ids: Set<String>) {
+        guard var storage else { return }
+        storage.scan.items.removeAll { ids.contains($0.id) }
+        self.storage = storage
+    }
+
+    // MARK: History
+
+    public nonisolated func growth(now: Date = Date()) -> GrowthState {
+        GrowthState(
+            hour: store.diskGrowth(window: 3600, now: now), day: store.diskGrowth(window: 86_400, now: now),
+            week: store.diskGrowth(window: 7 * 86_400, now: now),
+            spikes: store.storageSpikes(since: now.addingTimeInterval(-7 * 86_400)).map { GrowthState.Spike(at: $0.at, deltaBytes: $0.deltaBytes) })
+    }
+
+    public func alerts() -> [PepelAlert] {
+        AlertEvaluator.alerts(live: live, storage: storage, growth: growth(), settings: settings)
+    }
+}

@@ -1,0 +1,69 @@
+# Known limitations
+
+Stated plainly so that nothing in the UI is mistaken for more than it is.
+
+## Storage accounting
+
+- **APFS clones are invisible.** macOS offers no cheap way to tell that two files share blocks
+  through copy-on-write. Cloned data (for example packages `uv` clones from its cache into a
+  virtual environment) is counted in both places, so sums can overstate real usage and removing
+  one copy can free less than shown. Sizes are therefore labelled as upper bounds, not promises.
+- **Snapshots keep blocks alive.** With local Time Machine snapshots, removed files free space
+  only when the snapshot expires. PEPEL reports the observed change in available space next to
+  its estimate so the difference is visible.
+- **Hard links** are counted once per scan, in whichever item was measured first; the others
+  show a lower figure and are marked approximate.
+- **Unreadable folders** make a size a lower bound; the count of unreadable entries is shown.
+- **Trashed items** free nothing until the Trash is emptied.
+- Docker figures come from `docker system df`. The "reclaimable" number Docker reports for images
+  includes unused tagged images, which PEPEL does not prune; the amount actually freed is smaller.
+- The amount `pnpm store prune` will free is not known in advance and is not claimed.
+
+## Builds
+
+- The outcome of a build is known only for builds run through `pepel run`. For everything else
+  the status is *unknown* and such builds are kept under the "last N builds" rule.
+- Branch and commit shown for a generation are the project's **current** ones, not necessarily
+  those it was built from (accurate for one-branch-per-worktree workflows, approximate otherwise).
+- Plain `make` output has no reliable marker and is not detected. Go has no per-project build
+  directory; only its shared caches are tracked.
+- Xcode test results and logs inside DerivedData are part of their DerivedData generation, not
+  separate items.
+- PEPEL cannot prevent tools from writing. Budgets warn and drive proposals; hard enforcement
+  exists only as `pepel run --enforce-budget`, which declines to start a build.
+
+## Processes and agents
+
+- Only the current user's processes are visible without elevated rights.
+- A process started moments ago cannot be judged: abandonment needs the full idle window (30
+  minutes by default) of observation. Observations survive restarts of the app for three hours.
+- Role classification is by executable name and command line. An unusual wrapper script is
+  classified as a generic project binary, which is never terminated automatically.
+- Agent sessions are recognised by process name (`claude`, `codex`, `opencode`, `hermes`).
+  PEPEL does not read agent session files, so it knows a session's working directory and process
+  tree, not which task it is on. A binary named `hermes` that is not the Hermes agent would be
+  misread as one (the effect is extra protection, not deletion).
+- Which Xcode workspace the Xcode app has open is not visible; DerivedData is protected through
+  recent writes and running build processes instead.
+- Leases and disposable marks require an agent to cooperate through the API or `pepel agent`.
+
+## Platform and distribution
+
+- Not sandboxed, by necessity (see [SECURITY.md](SECURITY.md)); not suitable for the Mac App Store.
+- The build script signs ad hoc. Developer ID signing and notarisation are not set up.
+- Launch at login requires the app to run from its bundle, ideally in `/Applications`.
+- Verified on macOS 27 / Apple Silicon. The deployment target is macOS 14; older systems and
+  Intel Macs were not tested.
+- The local API socket path must fit the 104-byte limit of Unix sockets, which the default
+  support directory does; a very long custom `PEPEL_SUPPORT_DIR` disables the API.
+- The menu bar item itself cannot be screenshotted without screen-recording permission;
+  `Scripts/screenshots.sh` renders the same views off-screen instead.
+
+## Not implemented
+
+- Per-project retention overrides exist in the settings model and the engine
+  (`projectRetention`) but have no editor in the UI yet; use `pepel config set projectRetention '{…}'`.
+- No MCP server yet. The agent API service is transport-independent so one can be added.
+- No localisation; the interface is English only.
+- Memory "growth over time" is shown per process since PEPEL started observing it; there is no
+  long-term per-process memory history.
