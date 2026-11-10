@@ -88,6 +88,7 @@ enum Out {
           pepel builds                     Build generations, retention verdicts and budgets
           pepel memory                     Memory pressure, swap and the largest consumers
           pepel processes [--all]          Developer processes and whether they look abandoned
+          pepel agents                     Agent sessions: working, idle or asleep, and why
           pepel cleanup [--dry-run]        Preview what cleanup would do (default)
           pepel cleanup --safe [--yes]     Remove items classified safe
           pepel cleanup --review           Decide interactively on items that need review

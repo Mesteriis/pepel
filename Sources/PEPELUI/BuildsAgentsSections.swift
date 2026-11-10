@@ -118,8 +118,12 @@ struct AgentsSection: View {
             if let live = model.live, !live.agentSessions.isEmpty {
                 ForEach(live.agentSessions) { session in
                     HStack(spacing: 10) {
-                        Circle().fill(session.recentlyActive == true ? Theme.forest : Theme.tertiary).frame(width: 7, height: 7)
-                            .help(session.recentlyActive == nil ? "Activity not yet known" : session.recentlyActive == true ? "Used CPU since the last sample" : "Idle since the last sample")
+                        Badge(
+                            text: session.state == .working ? "working" : session.state == .sleeping ? "asleep" : "idle",
+                            tint: session.state == .working ? Theme.forest : session.state == .sleeping ? Theme.amber : Theme.tertiary
+                        )
+                        .frame(width: 62, alignment: .leading)
+                        .help(session.evidence.joined(separator: "\n"))
                         Text(session.kind.displayName).font(.system(size: 12, weight: .semibold)).frame(width: 92, alignment: .leading)
                         VStack(alignment: .leading, spacing: 1) {
                             HStack(spacing: 6) {
@@ -131,6 +135,10 @@ struct AgentsSection: View {
                             if let cwd = session.workingDirectory { PathText(path: cwd) }
                         }
                         Spacer(minLength: 4)
+                        if let quiet = session.quietSince, session.state != .working {
+                            Text("quiet \(TimeFormat.age(Date().timeIntervalSince(quiet)))").font(.system(size: 11)).monospacedDigit()
+                                .foregroundStyle(session.state == .sleeping ? Theme.amber : Theme.secondary)
+                        }
                         Text("\(session.processCount) proc").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
                         Text(Bytes.format(session.footprintBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)
                         Text(TimeFormat.age(Date().timeIntervalSince(session.startedAt))).font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.tertiary).frame(width: 64, alignment: .trailing)
@@ -140,6 +148,13 @@ struct AgentsSection: View {
                 }
                 Text("While a session runs in a project, that project's build output is not cleaned automatically, and cleaning it by hand asks for confirmation.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary)
+                Text(
+                    "A session is asleep after \(model.settings.agentSleepMinutes) minutes without disk writes, CPU bursts, new processes or a build. "
+                        + (model.settings.terminateSleepingAgents
+                            ? "Sleeping sessions are terminated automatically, together with the tool servers they started."
+                            : "Sleeping sessions are only reported; automatic termination is off (Settings › Process guardian).")
+                )
+                .font(.system(size: 11)).foregroundStyle(model.settings.terminateSleepingAgents ? Theme.amber : Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             } else {
                 Text("No Claude Code, Codex, OpenCode or Hermes session is running.").font(.system(size: 12)).foregroundStyle(Theme.secondary)
             }

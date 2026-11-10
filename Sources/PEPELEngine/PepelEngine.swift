@@ -114,7 +114,7 @@ public actor PepelEngine {
     private func loadHistoryIfNeeded(now: Date) {
         guard !historyLoaded else { return }
         historyLoaded = true
-        history = store.observations(since: now.addingTimeInterval(-3 * 3600))
+        history = store.observations(since: now.addingTimeInterval(-max(3 * 3600, TimeInterval(settings.agentSleepMinutes) * 90)))
     }
 
     /// Samples telemetry and the process table and re-assesses every developer process.
@@ -132,11 +132,14 @@ public actor PepelEngine {
         }
         lastProcesses = processes
 
-        let context = AssessmentContext(
+        let sessions = AgentDetector.sessions(
+            processes: processes, attributor: projectIndex, history: history, now: now,
+            sleepWindow: TimeInterval(settings.agentSleepMinutes) * 60, leases: store.leases(now: now))
+        var context = AssessmentContext(
             processes: processes, history: history, protections: store.protections(), attributor: projectIndex, now: now,
             idleWindow: TimeInterval(settings.idleMinutesBeforeAbandoned) * 60)
+        for session in sessions where session.state == .sleeping { context.sleepingAgents[session.root] = session.evidence }
         let assessments = ProcessGuardian.assess(context)
-        let sessions = AgentDetector.sessions(processes: processes, attributor: projectIndex, history: history, now: now)
         let telemetry = readTelemetry()
         let advice = MemoryGuardian.advise(telemetry: telemetry, processes: processes, assessments: assessments, history: history)
 
@@ -162,13 +165,14 @@ public actor PepelEngine {
 
     private func record(processes: [ProcessSnapshot], developer: Set<ProcessIdentity>, telemetry: SystemTelemetry, now: Date) {
         let alive = Set(processes.map(\.identity))
-        let horizon = now.addingTimeInterval(-3 * 3600)
+        // Long enough to judge the agent sleep window with some margin.
+        let horizon = now.addingTimeInterval(-max(3 * 3600, TimeInterval(settings.agentSleepMinutes) * 90))
         history = history.filter { alive.contains($0.key) }
         for p in processes {
             var series = history[p.identity] ?? []
             // One point per ~20 s is plenty for idle detection and keeps memory flat.
             if let last = series.last, now.timeIntervalSince(last.timestamp) < 20 { continue }
-            series.append(ProcessObservation(timestamp: now, cpuTimeNs: p.cpuTimeNs, footprintBytes: p.footprintBytes))
+            series.append(ProcessObservation(timestamp: now, cpuTimeNs: p.cpuTimeNs, footprintBytes: p.footprintBytes, diskBytesWritten: p.diskBytesWritten))
             if let first = series.first, first.timestamp < horizon, series.count > 2 { series.removeFirst() }
             history[p.identity] = series
         }

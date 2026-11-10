@@ -9,6 +9,8 @@ public struct AssessmentContext: Sendable {
     public var now: Date
     /// How long a process must be observed doing nothing before it can count as abandoned.
     public var idleWindow: TimeInterval
+    /// Agent sessions found asleep, with the evidence for it. Everything else about agents stays protected.
+    public var sleepingAgents: [ProcessIdentity: [String]] = [:]
 
     public init(
         processes: [ProcessSnapshot], history: [ProcessIdentity: [ProcessObservation]] = [:],
@@ -117,7 +119,12 @@ public enum ProcessGuardian {
         switch role {
         case .agent:
             evidence.append("This is an AI coding agent session.")
-            return result(.agentSession, .verified, .never(reason: "Agent sessions are never terminated by PEPEL."))
+            if let asleep = context.sleepingAgents[p.identity] {
+                evidence += asleep
+                evidence.append("A session waiting for your reply looks the same as a sleeping one.")
+                return result(.agentSession, .verified, .automaticEligible)
+            }
+            return result(.agentSession, .verified, .never(reason: "Agent sessions that are working or only briefly idle are never terminated."))
         case .container:
             evidence.append("Container runtime process; containers may hold databases and volumes.")
             return result(.backgroundService, .probable, .never(reason: "Container runtimes are managed through their own tools."))

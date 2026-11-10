@@ -8,6 +8,8 @@ public protocol ProcessSource: Sendable {
     func listeningPorts(of pid: Int32) -> [UInt16]
     /// Identity currently behind a PID, or nil when the process is gone.
     func identity(of pid: Int32) -> ProcessIdentity?
+    /// Delivers a signal. Part of the source so that a test's fake table never reaches a real PID.
+    func send(_ signal: Int32, to pid: Int32) -> Bool
 }
 
 /// Enumerates processes with libproc and sysctl. Without elevated rights the kernel only exposes
@@ -91,6 +93,7 @@ public struct ProcessEnumerator: ProcessSource {
         if usageResult == 0 {
             snapshot.residentBytes = Int64(usage.ri_resident_size)
             snapshot.footprintBytes = Int64(usage.ri_phys_footprint)
+            snapshot.diskBytesWritten = usage.ri_diskio_byteswritten
             let ticks = usage.ri_user_time &+ usage.ri_system_time
             snapshot.cpuTimeNs = ticks &* timebase.numer / timebase.denom
         }
@@ -130,6 +133,7 @@ public struct ProcessEnumerator: ProcessSource {
 
     public func listeningPorts(of pid: Int32) -> [UInt16] { Self.listeningPorts(of: pid) }
     public func identity(of pid: Int32) -> ProcessIdentity? { Self.identity(of: pid) }
+    public func send(_ signal: Int32, to pid: Int32) -> Bool { kill(pid, signal) == 0 }
 
     /// TCP ports the process is listening on.
     public static func listeningPorts(of pid: pid_t) -> [UInt16] {

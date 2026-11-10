@@ -5,7 +5,7 @@ struct SourceProcessControl: ProcessControl {
     let source: any ProcessSource
 
     func identity(of pid: Int32) -> ProcessIdentity? { source.identity(of: pid) }
-    func send(_ signal: Int32, to pid: Int32) -> Bool { kill(pid, signal) == 0 }
+    func send(_ signal: Int32, to pid: Int32) -> Bool { source.send(signal, to: pid) }
 }
 
 public enum TerminationResult: Sendable {
@@ -88,6 +88,15 @@ extension PepelEngine {
                 let plan = await cleanupPlan(itemIDs: safe, initiator: .automatic)
                 if plan.decisions.contains(where: { $0.verdict == .allowed }) {
                     cleanup = await executeCleanup(plan, confirmed: [], dryRun: false)
+                }
+            }
+        }
+        if settings.terminateSleepingAgents, let live {
+            // Independent of memory pressure: a session nobody has touched for hours is the user's
+            // stated wish to clean up, not an emergency measure.
+            for session in live.agentSessions where session.state == .sleeping {
+                if case .completed(let report) = await terminate(session.root, confirmed: false, force: false, initiator: .automatic) {
+                    terminations.append(report)
                 }
             }
         }

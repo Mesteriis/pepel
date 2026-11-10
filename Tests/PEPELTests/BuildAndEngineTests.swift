@@ -429,6 +429,55 @@ struct EngineTests {
         #expect(store.audit(kinds: [.termination]).isEmpty, "nothing was signalled")
     }
 
+    @Test("With the setting on, the engine terminates a sleeping session and its servers, and leaves a working one alone")
+    func engineTerminatesSleepingAgents() async throws {
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        let alpha = f.gitRepo(f.projects + "/alpha"), beta = f.gitRepo(f.projects + "/beta")
+        let now = Date()
+        var sleeper = process(10, name: "claude", path: "/Users/x/.local/bin/claude", cwd: alpha, footprint: 300_000_000)
+        sleeper.diskBytesWritten = 5_000_000
+        let sleeperServer = process(11, parent: 10, name: "python3", args: ["python3", "mcp-server"], cwd: alpha, start: 1_000_100, footprint: 100_000_000)
+        var worker = process(20, name: "claude", path: "/Users/x/.local/bin/claude", cwd: beta)
+        worker.diskBytesWritten = 9_000_000
+        // Three hours of recorded history: the sleeper never wrote; the worker wrote a minute ago.
+        func record(_ p: ProcessSnapshot, written: [(minutesAgo: Double, bytes: UInt64)]) {
+            for point in written {
+                var copy = p
+                copy.diskBytesWritten = point.bytes
+                store.recordObservations([copy], at: now.addingTimeInterval(-point.minutesAgo * 60))
+            }
+        }
+        record(sleeper, written: [(170, 5_000_000), (120, 5_000_000), (60, 5_000_000), (2, 5_000_000)])
+        record(sleeperServer, written: [(170, 0), (2, 0)])
+        record(worker, written: [(170, 1_000_000), (60, 4_000_000), (1, 8_500_000)])
+
+        let source = FakeProcessSource(processes: [sleeper, sleeperServer, worker])
+        var settings = PepelSettings()
+        settings.projectRoots = [f.projects]
+        settings.gracefulTerminationSeconds = 2
+        try store.saveSettings(settings)
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled,
+            analyzers: [], processSource: source, telemetry: { SystemTelemetry() })
+
+        let live = await engine.refreshLive()
+        let states = Dictionary(uniqueKeysWithValues: live.agentSessions.map { ($0.root.pid, $0.state) })
+        #expect(states[10] == .sleeping && states[20] == .working)
+
+        // Off by default: nothing happens.
+        let off = await engine.automaticPass()
+        #expect(off.terminations.isEmpty && source.signals.isEmpty)
+
+        _ = try await engine.update { $0.terminateSleepingAgents = true }
+        let on = await engine.automaticPass()
+        #expect(on.terminations.map(\.target.pid) == [10])
+        #expect(source.signals.map(\.pid) == [10, 11], "the session, then the server it left behind")
+        #expect(source.signals.allSatisfy { $0.signal == SIGTERM })
+        #expect(source.snapshot().map(\.pid) == [20], "the working session is untouched")
+        #expect(store.audit(kinds: [.termination]).first?.initiator == "automatic")
+    }
+
     @Test("Alerts warn about low disk space and budgets without claiming to prevent growth")
     func alerts() {
         let live = LiveState(

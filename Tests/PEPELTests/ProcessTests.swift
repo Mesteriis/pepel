@@ -388,6 +388,106 @@ struct ProcessTests {
         #expect(sessions.first { $0.kind == .openCode }?.projectID == nil)
     }
 
+    // MARK: Sleeping agent sessions
+
+    /// A history with one point every five minutes; `writes` and `cpu` give cumulative values per point.
+    private func series(minutes: [Double], written: [UInt64], cpuSeconds: [Double]? = nil, now: Date) -> [ProcessObservation] {
+        zip(minutes.indices, minutes).map { index, ago in
+            ProcessObservation(
+                timestamp: now.addingTimeInterval(-ago * 60), cpuTimeNs: UInt64((cpuSeconds?[index] ?? 0) * 1e9), footprintBytes: 1,
+                diskBytesWritten: written[index])
+        }
+    }
+
+    @Test("A session that keeps writing is working; one silent for the whole window is asleep; in between it is idle")
+    func agentSleepStates() {
+        let now = Date()
+        let window: TimeInterval = 2 * 3600
+        var root = process(10, name: "claude", path: "/Users/x/.local/bin/claude")
+        let helper = process(11, parent: 10, name: "python3", args: ["python3", "mcp-server"], start: 1_000_100)
+        func state(_ history: [ProcessIdentity: [ProcessObservation]], builds: Int = 0, lease: Bool = false, members: [ProcessSnapshot]? = nil) -> AgentActivity.Verdict {
+            AgentActivity.verdict(root: root, members: members ?? [helper], history: history, activeBuildCount: builds, hasActiveLease: lease, now: now, sleepWindow: window)
+        }
+
+        // Wrote 300 KB two minutes ago.
+        root.diskBytesWritten = 1_300_000
+        let writing = [root.identity: series(minutes: [180, 60, 2], written: [1_000_000, 1_000_000, 1_300_000], now: now)]
+        #expect(state(writing).state == .working)
+
+        // Silent for three hours of observation: idle polling CPU only (0.4 % of a core), no writes.
+        root.diskBytesWritten = 1_000_000
+        root.cpuTimeNs = UInt64(43.2 * 1e9)
+        let silent = [
+            root.identity: series(minutes: [180, 120, 60, 1], written: [1_000_000, 1_000_000, 1_000_000, 1_000_000], cpuSeconds: [0, 14.4, 28.8, 43.0], now: now),
+            helper.identity: series(minutes: [180, 1], written: [5, 5], now: now),
+        ]
+        let asleep = state(silent)
+        #expect(asleep.state == .sleeping)
+        #expect(asleep.evidence.contains { $0.contains("No disk writes") })
+
+        // The same silence, but a build is running, or a lease is held: not asleep.
+        #expect(state(silent, builds: 1).state == .working)
+        #expect(state(silent, lease: true).state == .idle)
+
+        // Last write 90 minutes ago: idle, with the time left stated.
+        root.cpuTimeNs = 0
+        let recent = [root.identity: series(minutes: [180, 95, 90, 1], written: [900_000, 900_000, 1_000_000, 1_000_000], now: now)]
+        let idle = state(recent)
+        #expect(idle.state == .idle)
+        #expect(idle.evidence.contains { $0.contains("to go") })
+
+        // Silent, but PEPEL has only watched for 40 minutes: it cannot claim two hours of quiet.
+        let short = [root.identity: series(minutes: [40, 1], written: [1_000_000, 1_000_000], now: now)]
+        #expect(state(short).state == .idle)
+
+        // A tool server started ten minutes ago is activity, even with no writes.
+        let fresh = process(12, parent: 10, name: "node", start: UInt64((now.timeIntervalSince1970 - 600) * 1_000_000))
+        #expect(state(silent, members: [helper, fresh]).state == .idle)
+
+        // A real CPU burst (30 % of a core for five minutes) one hour ago resets the clock.
+        root.cpuTimeNs = UInt64(120 * 1e9)
+        let burst = [root.identity: series(minutes: [180, 65, 60, 1], written: [1, 1, 1, 1], cpuSeconds: [0, 10, 100, 119], now: now)]
+        root.diskBytesWritten = 1
+        #expect(state(burst).state == .idle)
+    }
+
+    @Test("A sleeping session is terminated automatically only when enabled; a working one never; its tool servers go with it")
+    func sleepingAgentPolicy() {
+        let f = Fixture()
+        let project = f.dir(f.projects + "/app")
+        let now = Date()
+        let agent = process(500, name: "claude", path: "/Users/x/.local/bin/claude", cwd: project)
+        let server = process(501, parent: 500, name: "python3", args: ["python3", "mcp-server"], cwd: project, start: 1_000_100)
+        var context = AssessmentContext(processes: [agent, server], attributor: ProjectIndex([Project(id: project, name: "app", kinds: [.git])]), now: now)
+
+        // Awake: protected, whatever the settings say.
+        var awake = ProcessGuardian.assess(context).first { $0.process.pid == 500 }!
+        var settings = PepelSettings()
+        settings.terminateSleepingAgents = true
+        let engine = CleanupPolicyEngine()
+        func verdict(_ a: ProcessAssessment, _ initiator: Initiator, descendants: [ProcessAssessment] = []) -> CleanupVerdict {
+            engine.evaluateTermination(a, descendants: [server], descendantAssessments: descendants, initiator: initiator, settings: settings, ownPID: 1).verdict
+        }
+        #expect(awake.eligibility.isNever && verdict(awake, .automatic) == .denied && verdict(awake, .user) == .denied)
+
+        // Asleep: eligible, and the helper it owns does not block it.
+        context.sleepingAgents = [agent.identity: ["Quiet for 3h."]]
+        let assessed = ProcessGuardian.assess(context)
+        awake = assessed.first { $0.process.pid == 500 }!
+        let helper = assessed.filter { $0.process.pid == 501 }
+        #expect(awake.eligibility == .automaticEligible && awake.lifecycle == .agentSession)
+        #expect(helper.first?.eligibility.isNever == true)
+        #expect(verdict(awake, .automatic, descendants: helper) == .allowed)
+        #expect(verdict(awake, .user, descendants: helper) == .needsConfirmation)
+        #expect(verdict(awake, .agent, descendants: helper) == .denied, "one agent cannot have another terminated")
+
+        settings.terminateSleepingAgents = false
+        #expect(verdict(awake, .automatic, descendants: helper) == .denied)
+        // The abandoned-process switch does not unlock agent sessions.
+        settings.autoTerminateAbandoned = true
+        #expect(verdict(awake, .automatic, descendants: helper) == .denied)
+    }
+
     // MARK: Real macOS behaviour
 
     @Test("The real process table contains this test process with a stable identity")

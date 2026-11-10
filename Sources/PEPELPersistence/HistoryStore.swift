@@ -135,10 +135,11 @@ extension PepelStore {
         try? db.transaction {
             for p in processes {
                 try db.execute(
-                    "INSERT INTO observations(pid, start, ts, cpu, footprint) VALUES(?,?,?,?,?)",
+                    "INSERT INTO observations(pid, start, ts, cpu, footprint, written) VALUES(?,?,?,?,?,?)",
                     [
                         .int(Int64(p.identity.pid)), .int(Int64(bitPattern: p.identity.startTime)),
                         .double(timestamp.timeIntervalSince1970), .int(Int64(bitPattern: p.cpuTimeNs)), .int(p.footprintBytes),
+                        .int(Int64(bitPattern: p.diskBytesWritten)),
                     ])
             }
         }
@@ -146,14 +147,14 @@ extension PepelStore {
 
     public func observations(since: Date) -> [ProcessIdentity: [ProcessObservation]] {
         let rows = (try? db.query(
-            "SELECT pid, start, ts, cpu, footprint FROM observations WHERE ts >= ? ORDER BY ts", [.double(since.timeIntervalSince1970)])) ?? []
+            "SELECT pid, start, ts, cpu, footprint, written FROM observations WHERE ts >= ? ORDER BY ts", [.double(since.timeIntervalSince1970)])) ?? []
         var result: [ProcessIdentity: [ProcessObservation]] = [:]
         for row in rows {
             let identity = ProcessIdentity(pid: Int32(truncatingIfNeeded: row[0].int), startTime: UInt64(bitPattern: row[1].int))
             result[identity, default: []].append(
                 ProcessObservation(
                     timestamp: Date(timeIntervalSince1970: row[2].double), cpuTimeNs: UInt64(bitPattern: row[3].int),
-                    footprintBytes: row[4].int))
+                    footprintBytes: row[4].int, diskBytesWritten: UInt64(bitPattern: row[5].int)))
         }
         return result
     }

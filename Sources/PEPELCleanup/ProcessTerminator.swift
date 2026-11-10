@@ -53,7 +53,10 @@ extension CleanupPolicyEngine {
         case .automaticEligible:
             break
         }
-        for child in descendantAssessments {
+        // A sleeping agent session goes down with the tool servers it started; they are "owned by
+        // an agent session" only for as long as that session is worth keeping.
+        let sleepingAgent = target.lifecycle == .agentSession && target.eligibility == .automaticEligible
+        for child in descendantAssessments where !sleepingAgent {
             if case .never(let reason) = child.eligibility {
                 denials.append("Its descendant \(child.process.name) (PID \(child.process.pid)) must not be terminated: \(reason)")
             }
@@ -66,9 +69,13 @@ extension CleanupPolicyEngine {
         case .agent:
             denials.append("Agents cannot request process termination.")
         case .automatic:
-            if !settings.autoTerminateAbandoned { denials.append("Automatic termination is not enabled.") }
-            if target.eligibility != .automaticEligible || target.lifecycle != .abandonedSubprocess || target.confidence != .verified {
-                denials.append("Only verified abandoned build and test processes are terminated automatically.")
+            if sleepingAgent {
+                if !settings.terminateSleepingAgents { denials.append("Terminating sleeping agent sessions is not enabled.") }
+            } else {
+                if !settings.autoTerminateAbandoned { denials.append("Automatic termination is not enabled.") }
+                if target.eligibility != .automaticEligible || target.lifecycle != .abandonedSubprocess || target.confidence != .verified {
+                    denials.append("Only verified abandoned build and test processes are terminated automatically.")
+                }
             }
         case .user, .cli:
             if target.eligibility == .automaticEligible { confirmations.append("Termination always needs your confirmation when requested manually.") }

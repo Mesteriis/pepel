@@ -35,6 +35,8 @@ public struct ProcessSnapshot: Codable, Sendable, Identifiable, Hashable {
     public var footprintBytes: Int64
     /// Cumulative user + system CPU time in nanoseconds.
     public var cpuTimeNs: UInt64
+    /// Cumulative bytes the process has written to disk, from the kernel's I/O accounting.
+    public var diskBytesWritten: UInt64 = 0
     public var state: ProcessState
     public var hasControllingTerminal: Bool
     public var listeningPorts: [UInt16]
@@ -202,11 +204,13 @@ public struct ProcessObservation: Codable, Sendable, Hashable {
     public var timestamp: Date
     public var cpuTimeNs: UInt64
     public var footprintBytes: Int64
+    public var diskBytesWritten: UInt64
 
-    public init(timestamp: Date, cpuTimeNs: UInt64, footprintBytes: Int64) {
+    public init(timestamp: Date, cpuTimeNs: UInt64, footprintBytes: Int64, diskBytesWritten: UInt64 = 0) {
         self.timestamp = timestamp
         self.cpuTimeNs = cpuTimeNs
         self.footprintBytes = footprintBytes
+        self.diskBytesWritten = diskBytesWritten
     }
 }
 
@@ -223,6 +227,15 @@ public enum AgentKind: String, Codable, Sendable, CaseIterable {
     }
 }
 
+public enum AgentActivityState: String, Codable, Sendable {
+    /// Wrote to disk, burned CPU, spawned a process or ran a build within the last few minutes.
+    case working
+    /// Quiet, but not yet for the whole sleep window (or not observed that long).
+    case idle
+    /// Quiet for the whole sleep window: no disk writes, no CPU bursts, no new processes, no build.
+    case sleeping
+}
+
 /// An agent session observed through its root process. Nothing here comes from agent-internal files.
 public struct AgentSession: Codable, Sendable, Identifiable, Hashable {
     public var kind: AgentKind
@@ -236,6 +249,13 @@ public struct AgentSession: Codable, Sendable, Identifiable, Hashable {
     /// True when the session's process tree used CPU since the previous observation.
     public var recentlyActive: Bool?
     public var startedAt: Date
+    public var state: AgentActivityState = .idle
+    /// When the session last showed activity, as far back as PEPEL's observations reach.
+    public var quietSince: Date?
+    /// How long PEPEL has been watching this session.
+    public var observedFor: TimeInterval = 0
+    /// What the state was concluded from.
+    public var evidence: [String] = []
 
     public var id: ProcessIdentity { root }
 

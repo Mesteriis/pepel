@@ -167,12 +167,28 @@ final class FakeProcessControl: ProcessControl, @unchecked Sendable {
     }
 }
 
-struct FakeProcessSource: ProcessSource {
-    var processes: [ProcessSnapshot]
+/// A process table held in memory. Signals only ever change this table.
+final class FakeProcessSource: ProcessSource, @unchecked Sendable {
+    private let lock = NSLock()
+    private var table: [ProcessSnapshot]
+    private var delivered: [(pid: Int32, signal: Int32)] = []
 
-    func snapshot() -> [ProcessSnapshot] { processes }
-    func listeningPorts(of pid: Int32) -> [UInt16] { processes.first { $0.pid == pid }?.listeningPorts ?? [] }
-    func identity(of pid: Int32) -> ProcessIdentity? { processes.first { $0.pid == pid }?.identity }
+    init(processes: [ProcessSnapshot]) { table = processes }
+
+    func snapshot() -> [ProcessSnapshot] { lock.lock(); defer { lock.unlock() }; return table }
+    func listeningPorts(of pid: Int32) -> [UInt16] { snapshot().first { $0.pid == pid }?.listeningPorts ?? [] }
+    func identity(of pid: Int32) -> ProcessIdentity? { snapshot().first { $0.pid == pid }?.identity }
+
+    func send(_ signal: Int32, to pid: Int32) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        delivered.append((pid, signal))
+        guard table.contains(where: { $0.pid == pid }) else { return false }
+        table.removeAll { $0.pid == pid }
+        return true
+    }
+
+    var signals: [(pid: Int32, signal: Int32)] { lock.lock(); defer { lock.unlock() }; return delivered }
 }
 
 extension CleanupExecutor {

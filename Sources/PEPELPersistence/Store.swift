@@ -14,6 +14,13 @@ public final class PepelStore: Sendable {
 
     private func migrate() throws {
         let version = try db.query("PRAGMA user_version").first?.first?.int ?? 0
+        if version == 1 {
+            // v2: disk-write accounting per observation, used to tell a working agent from a sleeping one.
+            try db.transaction {
+                try db.execute("ALTER TABLE observations ADD COLUMN written INTEGER NOT NULL DEFAULT 0")
+                try db.execute("PRAGMA user_version = 2")
+            }
+        }
         guard version < 1 else { return }
         try db.transaction {
             for sql in [
@@ -36,9 +43,9 @@ public final class PepelStore: Sendable {
                   created REAL NOT NULL, expires REAL NOT NULL, released REAL)
                 """,
                 "CREATE TABLE IF NOT EXISTS builds(id TEXT PRIMARY KEY, started REAL NOT NULL, json TEXT NOT NULL)",
-                "CREATE TABLE IF NOT EXISTS observations(pid INTEGER NOT NULL, start INTEGER NOT NULL, ts REAL NOT NULL, cpu INTEGER NOT NULL, footprint INTEGER NOT NULL)",
+                "CREATE TABLE IF NOT EXISTS observations(pid INTEGER NOT NULL, start INTEGER NOT NULL, ts REAL NOT NULL, cpu INTEGER NOT NULL, footprint INTEGER NOT NULL, written INTEGER NOT NULL DEFAULT 0)",
                 "CREATE INDEX IF NOT EXISTS observations_id ON observations(pid, start, ts)",
-                "PRAGMA user_version = 1",
+                "PRAGMA user_version = 2",
             ] { try db.execute(sql) }
         }
     }

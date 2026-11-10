@@ -122,7 +122,9 @@ public final class AppModel {
                     body: "\(cleanup.succeededCount) item\(cleanup.succeededCount == 1 ? "" : "s") cleaned, up to \(Bytes.format(cleanup.estimatedBytes)).")
             }
             for report in terminations where report.exited {
-                Notifier.post(id: "auto-term-\(report.target.pid)", title: "Abandoned process terminated", body: "\(report.name) (PID \(report.target.pid)) was idle and orphaned.")
+                Notifier.post(
+                    id: "auto-term-\(report.target.pid)", title: "PEPEL terminated \(report.name)",
+                    body: "PID \(report.target.pid) had been idle past its threshold. It held \(Bytes.format(report.footprintBefore)) with its child processes.")
             }
             refreshSecondary()
         case .cadence(let reason):

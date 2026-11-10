@@ -194,6 +194,24 @@ case "processes":
         print("\nProcesses marked unknown have not been observed long enough to judge. Keep PEPEL running, or check again later.")
     }
 
+case "agents":
+    let live = await engine.refreshLive()
+    if arguments.json { Out.json(live.agentSessions); break }
+    let settings = await engine.currentSettings()
+    if live.agentSessions.isEmpty { print("No agent sessions are running.") }
+    Out.table(
+        ["PID", "AGENT", "STATE", "QUIET FOR", "MEMORY", "PROCS", "PROJECT", "WHY"],
+        live.agentSessions.map {
+            [
+                String($0.root.pid), $0.kind.displayName, $0.state.rawValue,
+                $0.quietSince.map { TimeFormat.age(Date().timeIntervalSince($0)) } ?? "—", Bytes.format($0.footprintBytes),
+                String($0.processCount), Out.truncate($0.projectID.map { ($0 as NSString).lastPathComponent } ?? "—", 18),
+                Out.truncate($0.evidence.first ?? "", 90),
+            ]
+        })
+    let asleep = live.agentSessions.filter { $0.state == .sleeping }
+    print("\nSessions asleep for \(settings.agentSleepMinutes) minutes are \(settings.terminateSleepingAgents ? "terminated automatically" : "only reported (automatic termination is off)"). \(asleep.count) asleep now, holding \(Bytes.format(asleep.reduce(0) { $0 + $1.footprintBytes })).")
+
 case "cleanup":
     let state = await currentStorage()
     let wantSafe = arguments.flags.contains("safe")

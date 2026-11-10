@@ -80,6 +80,11 @@ public struct PepelSettings: Codable, Sendable, Equatable {
 
     /// Opt-in. Limited to verified, idle, orphaned build/test processes with resolved ownership.
     public var autoTerminateAbandoned = false
+    /// Opt-in. Terminates agent sessions that have been asleep for `agentSleepMinutes`: no disk
+    /// writes, no CPU bursts, no new processes and no build in that whole time. A session waiting
+    /// for the user's reply is indistinguishable from a sleeping one and is terminated too.
+    public var terminateSleepingAgents = false
+    public var agentSleepMinutes = 120
     public var idleMinutesBeforeAbandoned = 30
     public var gracefulTerminationSeconds = 10
 
