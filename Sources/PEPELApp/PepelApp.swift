@@ -1,53 +1,161 @@
 import AppKit
+import Observation
 import PEPELUI
 import SwiftUI
 
+/// The menu bar item, owned directly through AppKit.
+///
+/// SwiftUI's `MenuBarExtra` gives the item no stable autosave name, so macOS never remembered
+/// where the user dragged it and put it back at the far left on every launch — which is exactly
+/// the area menu bar managers such as Hidden Bar collapse. A named `NSStatusItem` keeps its place.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    static let model = AppModel.make()
+final class StatusItemController: NSObject, NSPopoverDelegate {
+    private static let autosaveName = "PEPEL"
+    private let model: AppModel
+    private let item: NSStatusItem
+    private let popover = NSPopover()
+    private let openDashboard: (DashboardSection) -> Void
+
+    init(model: AppModel, openDashboard: @escaping (DashboardSection) -> Void) {
+        self.model = model
+        self.openDashboard = openDashboard
+        // First launch only: start among the always-visible icons on the right (the value is the
+        // distance from the right edge of the menu bar). After that the user's own placement wins.
+        let positionKey = "NSStatusItem Preferred Position \(Self.autosaveName)"
+        if UserDefaults.standard.object(forKey: positionKey) == nil {
+            UserDefaults.standard.set(300.0, forKey: positionKey)
+        }
+        item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.autosaveName = Self.autosaveName
+        item.behavior = []
+        item.isVisible = true
+        super.init()
+
+        if let button = item.button {
+            button.imagePosition = .imageLeading
+            button.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+            button.target = self
+            button.action = #selector(toggle)
+        }
+        popover.behavior = .transient
+        popover.animates = true
+        popover.delegate = self
+        let host = NSHostingController(
+            rootView: PopoverView { [weak self] section in
+                self?.popover.performClose(nil)
+                self?.openDashboard(section)
+            }
+            .environment(model))
+        host.sizingOptions = .preferredContentSize
+        popover.contentViewController = host
+        observe()
+    }
+
+    /// Redraws the item whenever the state it shows changes.
+    private func observe() {
+        withObservationTracking {
+            guard let button = item.button else { return }
+            button.image = MenuBarContent.image(model)
+            let title = MenuBarContent.title(model)
+            button.title = title.isEmpty ? "" : " " + title
+            button.setAccessibilityLabel(MenuBarContent.accessibilityLabel(model))
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.observe() }
+        }
+    }
+
+    @objc private func toggle() {
+        guard let button = item.button else { return }
+        if popover.isShown {
+            popover.performClose(nil)
+        } else {
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            popover.contentViewController?.view.window?.makeKey()
+        }
+    }
+}
+
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    let model = AppModel.make()
+    private var statusItem: StatusItemController?
+    private var dashboard: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // A menu bar app: no Dock icon until the dashboard window is open.
         NSApp.setActivationPolicy(.accessory)
+        NSApp.mainMenu = makeMenu()
         if let directory = Snapshotter.directory {
             Task {
-                await Snapshotter.run(model: Self.model, directory: directory)
+                await Snapshotter.run(model: model, directory: directory)
                 NSApp.terminate(nil)
             }
             return
         }
-        Self.model.start()
+        statusItem = StatusItemController(model: model) { [weak self] section in self?.showDashboard(section) }
+        model.start()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    private func showDashboard(_ section: DashboardSection) {
+        model.open(section)
+        if dashboard == nil {
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 1180, height: 780),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView], backing: .buffered, defer: false)
+            window.title = "PEPEL"
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.isReleasedWhenClosed = false
+            window.contentMinSize = NSSize(width: 980, height: 620)
+            window.contentViewController = NSHostingController(rootView: DashboardView().environment(model))
+            window.setContentSize(NSSize(width: 1180, height: 780))
+            window.setFrameAutosaveName("PEPELDashboard")
+            if !window.setFrameUsingName("PEPELDashboard") { window.center() }
+            window.delegate = self
+            dashboard = window
+        }
+        NSApp.setActivationPolicy(.regular)
+        dashboard?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
+    }
+
+    /// Without a main menu the dashboard would have no ⌘Q, ⌘W or copy and paste.
+    private func makeMenu() -> NSMenu {
+        let main = NSMenu()
+        let app = NSMenu()
+        app.addItem(withTitle: "Hide PEPEL", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        app.addItem(.separator())
+        app.addItem(withTitle: "Quit PEPEL", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let edit = NSMenu(title: "Edit")
+        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        let window = NSMenu(title: "Window")
+        window.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        window.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        for (title, menu) in [("PEPEL", app), ("Edit", edit), ("Window", window)] {
+            let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+            item.submenu = menu
+            main.addItem(item)
+        }
+        return main
+    }
 }
 
 @main
-struct PepelApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some Scene {
-        MenuBarExtra {
-            PopoverView { section in
-                AppDelegate.model.open(section)
-                NSApp.setActivationPolicy(.regular)
-                openWindow(id: "dashboard")
-                NSApp.activate(ignoringOtherApps: true)
-            }
-            .environment(AppDelegate.model)
-        } label: {
-            MenuBarLabel().environment(AppDelegate.model)
-        }
-        .menuBarExtraStyle(.window)
-
-        Window("PEPEL", id: "dashboard") {
-            DashboardView()
-                .environment(AppDelegate.model)
-                .onDisappear { NSApp.setActivationPolicy(.accessory) }
-        }
-        .defaultSize(width: 1180, height: 780)
-        .windowStyle(.hiddenTitleBar)
-        .windowResizability(.contentMinSize)
+enum PepelMain {
+    @MainActor
+    static func main() {
+        let application = NSApplication.shared
+        let delegate = AppDelegate()
+        application.delegate = delegate
+        application.run()
     }
 }

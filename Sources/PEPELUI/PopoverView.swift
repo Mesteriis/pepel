@@ -180,3 +180,27 @@ public struct PopoverView: View {
         }
     }
 }
+
+/// What the menu bar item shows, for the AppKit status item that hosts it.
+@MainActor
+public enum MenuBarContent {
+    public static func image(_ model: AppModel) -> NSImage {
+        let status: NSColor
+        if model.settings.paused {
+            status = .systemGray
+        } else {
+            switch model.health {
+            case .healthy: status = NSColor(Theme.forest)
+            case .attention: status = NSColor(Theme.amber)
+            case .critical: status = NSColor(Theme.danger)
+            }
+        }
+        return AppImages.menuBar(status: status)
+    }
+
+    public static func title(_ model: AppModel) -> String { model.menuBarText ?? "" }
+
+    public static func accessibilityLabel(_ model: AppModel) -> String {
+        "PEPEL. \(model.healthSentence)" + (model.menuBarText.map { " \($0)" } ?? "")
+    }
+}
