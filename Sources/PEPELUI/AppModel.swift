@@ -59,6 +59,9 @@ public final class AppModel {
     public var pendingTermination: TerminationDecision?
     public var terminationReport: TerminationReport?
     public var message: String?
+    /// Set while macOS is not showing PEPEL's menu bar item; explains why and what to do.
+    public var menuBarNotice: String?
+    private var menuBarNoticePosted = false
     public var apiStatus = "Not started"
     public var loginItemStatus = LoginItem.statusText
 
@@ -161,6 +164,34 @@ public final class AppModel {
             protections = store.protections()
             leases = store.leases()
         }
+    }
+
+    // MARK: Menu bar item visibility
+
+    /// Called by the app shell with whether macOS currently gives the menu bar item a place.
+    ///
+    /// On macOS 27 menu bar managers hide other apps' items through a system allow-list that is
+    /// built when the manager collapses. An app started while the manager is collapsed is not on
+    /// that list, so its item stays hidden until the manager is expanded and collapsed once more.
+    /// PEPEL cannot change that list; it can only notice and say what to do.
+    public func menuBarItem(placed: Bool) {
+        guard !placed else {
+            menuBarNotice = nil
+            menuBarNoticePosted = false
+            return
+        }
+        let managers = ["com.dwarvesv.minimalbar": "Hidden Bar", "com.jordanbaird.Ice": "Ice", "com.surteesstudios.Bartender": "Bartender", "com.stonerl.Thaw": "Thaw"]
+        let running = NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier.flatMap { managers[$0] } }.first
+        if let running {
+            menuBarNotice = "macOS is not showing PEPEL's menu bar icon. \(running) hides every app that was not running when it last collapsed: expand \(running) and collapse it again, and the icon appears to the right of its arrow. Until then, opening PEPEL.app again shows this window."
+        } else {
+            menuBarNotice = "macOS is not showing PEPEL's menu bar icon. Check System Settings › Menu Bar › Allow in the Menu Bar, and whether the menu bar has room for it. Opening PEPEL.app again shows this window."
+        }
+        guard !menuBarNoticePosted else { return }
+        menuBarNoticePosted = true
+        Notifier.post(
+            id: "menubar-hidden", title: "PEPEL's menu bar icon is hidden",
+            body: running.map { "Expand \($0) and collapse it again to bring the icon back." } ?? "Check System Settings › Menu Bar.")
     }
 
     // MARK: Derived

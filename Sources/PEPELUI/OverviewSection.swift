@@ -10,6 +10,12 @@ struct OverviewSection: View {
                 title: "Overview",
                 subtitle: model.healthSentence.trimmingCharacters(in: CharacterSet(charactersIn: ".")) + "." + (model.cadence.isEmpty ? "" : " Monitoring cadence: \(model.cadence)."))
 
+            if let notice = model.menuBarNotice {
+                Label(notice, systemImage: "menubar.rectangle").font(.system(size: 12)).foregroundStyle(Theme.text)
+                    .fixedSize(horizontal: false, vertical: true).panel()
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Theme.amber.opacity(0.6), lineWidth: 1))
+            }
+
             tiles
 
             if !model.alerts.isEmpty {

@@ -14,7 +14,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     /// a position the user (or an earlier build) stored under the old name no longer applies.
     private static let autosaveName = "PEPELStatus"
     private let model: AppModel
-    private let item: NSStatusItem
+    private var item: NSStatusItem
     private let popover = NSPopover()
     private let openDashboard: (DashboardSection) -> Void
 
@@ -36,12 +36,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         item.isVisible = true
         super.init()
 
-        if let button = item.button {
-            button.imagePosition = .imageLeading
-            button.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-            button.target = self
-            button.action = #selector(toggle)
-        }
+        configureButton()
         popover.behavior = .transient
         popover.animates = true
         popover.delegate = self
@@ -63,10 +58,28 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     private var placementTimer: Timer?
     private var lastPlacement = ""
+    private func configureButton() {
+        guard let button = item.button else { return }
+        button.imagePosition = .imageLeading
+        button.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        button.target = self
+        button.action = #selector(toggle)
+    }
 
     /// Records where the item actually is in `menubar-placement.log` in PEPEL's support
     /// directory whenever that changes, so a "the icon is missing" report can be diagnosed from facts.
+    private var unplacedSeconds = 0
+
     private func recordPlacementIfChanged() {
+        // A zero-height frame means macOS has not given the item a place in the menu bar.
+        let placed = (item.button?.window?.frame.height ?? 0) > 0
+        unplacedSeconds = placed ? 0 : unplacedSeconds + 1
+        if placed {
+            model.menuBarItem(placed: true)
+        } else if unplacedSeconds == 12 {
+            model.menuBarItem(placed: false)
+            lastPlacement = ""  // so the log line below records the notice
+        }
         var state: String
         if let window = item.button?.window {
             let screen = window.screen
@@ -78,6 +91,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         } else {
             state = "no window; isVisible=\(item.isVisible)"
         }
+        if let notice = model.menuBarNotice { state += " notice=\"\(notice.prefix(60))…\"" }
         guard state != lastPlacement else { return }
         lastPlacement = state
         let path = model.engine.paths.supportDirectory + "/menubar-placement.log"
@@ -132,6 +146,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    /// Opening the app again while it runs shows the dashboard. This is the way in when the
+    /// menu bar icon is hidden by a menu bar manager.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showDashboard(.overview)
+        return false
+    }
 
     private func showDashboard(_ section: DashboardSection) {
         model.open(section)
