@@ -53,33 +53,36 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         host.sizingOptions = .preferredContentSize
         popover.contentViewController = host
         observe()
-        reportPlacement(after: 4)
-        // Every later move (a drag, a menu bar manager collapsing or expanding) is recorded too.
-        NotificationCenter.default.addObserver(forName: NSWindow.didMoveNotification, object: item.button?.window, queue: .main) { [weak self] _ in
-            Task { @MainActor in self?.reportPlacement(after: 0.3) }
+        // Polled rather than notification-driven: when a menu bar manager shoves the item
+        // off-screen, the status window does not reliably post a move notification.
+        placementTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.recordPlacementIfChanged() }
         }
     }
 
-    /// Records where the item actually ended up in `menubar-placement.log` in PEPEL's support
-    /// directory, so a "the icon is missing" report can be diagnosed from facts.
-    private func reportPlacement(after seconds: Double) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
-            guard let self else { return }
-            var line = "\(Date().formatted(date: .numeric, time: .standard)) "
-            if let window = self.item.button?.window {
-                let screen = window.screen
-                let saved = UserDefaults.standard.object(forKey: "NSStatusItem Preferred Position \(Self.autosaveName)").map { "\($0)" } ?? "none"
-                line += "frame=\(NSStringFromRect(window.frame)) screen=\(screen?.localizedName ?? "nil") screenFrame=\(NSStringFromRect(screen?.frame ?? .zero))"
-                line += " fromRight=\(Int((screen?.frame.maxX ?? 0) - window.frame.maxX)) onItsScreen=\(screen.map { $0.frame.intersects(window.frame) } ?? false)"
-                line += " occlusionVisible=\(window.occlusionState.contains(.visible)) isVisible=\(self.item.isVisible) saved=\(saved)"
-                line += " screens=\(NSScreen.screens.map { "\($0.localizedName):\(NSStringFromRect($0.frame))" }.joined(separator: " | "))"
-            } else {
-                line += "no window; isVisible=\(self.item.isVisible)"
-            }
-            let path = self.model.engine.paths.supportDirectory + "/menubar-placement.log"
-            let existing = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
-            try? (existing.split(separator: "\n").suffix(40).joined(separator: "\n") + "\n" + line + "\n").write(toFile: path, atomically: true, encoding: .utf8)
+    private var placementTimer: Timer?
+    private var lastPlacement = ""
+
+    /// Records where the item actually is in `menubar-placement.log` in PEPEL's support
+    /// directory whenever that changes, so a "the icon is missing" report can be diagnosed from facts.
+    private func recordPlacementIfChanged() {
+        var state: String
+        if let window = item.button?.window {
+            let screen = window.screen
+            let onAnyScreen = NSScreen.screens.contains { $0.frame.intersects(window.frame) }
+            state = "frame=\(NSStringFromRect(window.frame)) screen=\(screen?.localizedName ?? "nil")"
+            state += " fromRight=\(Int((screen?.frame.maxX ?? 0) - window.frame.maxX)) onAnyScreen=\(onAnyScreen)"
+            state += " occlusionVisible=\(window.occlusionState.contains(.visible)) windowVisible=\(window.isVisible) isVisible=\(item.isVisible)"
+            state += " saved=\(UserDefaults.standard.object(forKey: "NSStatusItem Preferred Position \(Self.autosaveName)").map { "\($0)" } ?? "none")"
+        } else {
+            state = "no window; isVisible=\(item.isVisible)"
         }
+        guard state != lastPlacement else { return }
+        lastPlacement = state
+        let path = model.engine.paths.supportDirectory + "/menubar-placement.log"
+        let existing = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
+        let line = "\(Date().formatted(date: .omitted, time: .standard)) \(state)"
+        try? (existing.split(separator: "\n").suffix(80).joined(separator: "\n") + "\n" + line + "\n").write(toFile: path, atomically: true, encoding: .utf8)
     }
 
     /// Redraws the item whenever the state it shows changes.
