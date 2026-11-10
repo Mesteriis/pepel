@@ -22,8 +22,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         // First launch only: start among the always-visible icons on the right (the value is the
         // distance from the right edge of the menu bar). After that the user's own placement wins.
         let positionKey = "NSStatusItem Preferred Position \(Self.autosaveName)"
-        if UserDefaults.standard.object(forKey: positionKey) == nil {
-            UserDefaults.standard.set(300.0, forKey: positionKey)
+        // Seeded once per seed version. 240 lies between the system's Wi-Fi and Battery items,
+        // which sit to the right of any menu bar manager's separator.
+        let seedVersion = 2
+        if UserDefaults.standard.integer(forKey: "MenuBarSeedVersion") < seedVersion {
+            UserDefaults.standard.set(240.0, forKey: positionKey)
+            UserDefaults.standard.set(seedVersion, forKey: "MenuBarSeedVersion")
         }
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.autosaveName = Self.autosaveName
@@ -49,6 +53,33 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         host.sizingOptions = .preferredContentSize
         popover.contentViewController = host
         observe()
+        reportPlacement(after: 4)
+        // Every later move (a drag, a menu bar manager collapsing or expanding) is recorded too.
+        NotificationCenter.default.addObserver(forName: NSWindow.didMoveNotification, object: item.button?.window, queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.reportPlacement(after: 0.3) }
+        }
+    }
+
+    /// Records where the item actually ended up in `menubar-placement.log` in PEPEL's support
+    /// directory, so a "the icon is missing" report can be diagnosed from facts.
+    private func reportPlacement(after seconds: Double) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
+            guard let self else { return }
+            var line = "\(Date().formatted(date: .numeric, time: .standard)) "
+            if let window = self.item.button?.window {
+                let screen = window.screen
+                let saved = UserDefaults.standard.object(forKey: "NSStatusItem Preferred Position \(Self.autosaveName)").map { "\($0)" } ?? "none"
+                line += "frame=\(NSStringFromRect(window.frame)) screen=\(screen?.localizedName ?? "nil") screenFrame=\(NSStringFromRect(screen?.frame ?? .zero))"
+                line += " fromRight=\(Int((screen?.frame.maxX ?? 0) - window.frame.maxX)) onItsScreen=\(screen.map { $0.frame.intersects(window.frame) } ?? false)"
+                line += " occlusionVisible=\(window.occlusionState.contains(.visible)) isVisible=\(self.item.isVisible) saved=\(saved)"
+                line += " screens=\(NSScreen.screens.map { "\($0.localizedName):\(NSStringFromRect($0.frame))" }.joined(separator: " | "))"
+            } else {
+                line += "no window; isVisible=\(self.item.isVisible)"
+            }
+            let path = self.model.engine.paths.supportDirectory + "/menubar-placement.log"
+            let existing = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
+            try? (existing.split(separator: "\n").suffix(40).joined(separator: "\n") + "\n" + line + "\n").write(toFile: path, atomically: true, encoding: .utf8)
+        }
     }
 
     /// Redraws the item whenever the state it shows changes.
