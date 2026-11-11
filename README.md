@@ -80,6 +80,12 @@ pepel builds                     Build generations, retention verdicts and budge
 pepel free [--all] [--no-cache] [--yes]
                                  Free memory: show what would be stopped and flushed, then do it and measure
 pepel free permission [--revoke] Whether PEPEL may flush the file cache without asking; remove that permission
+pepel freeze <pid> | thaw [...]  Suspend an agent session without ending it; wake it
+pepel memory growth | swapped    What keeps growing; what lives in swap and does nothing
+pepel apps [unused|restart|quit] Applications by memory; unused ones; ask one to quit or restart
+pepel simulators [shutdown …]    Booted simulators and what they hold
+pepel budget [set <owner> <GB>]  Memory budgets per owner; alerts when exceeded
+pepel containers limit [<GiB>]   Show or lower the Docker VM's memory limit
 pepel memory                     Memory pressure, swap and the largest consumers
 pepel processes [--all]          Developer processes and whether they look abandoned
 pepel cleanup [--dry-run]        Preview what cleanup would do (default)

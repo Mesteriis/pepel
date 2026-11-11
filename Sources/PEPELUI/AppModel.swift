@@ -187,7 +187,7 @@ public final class AppModel {
         else { return }
         for alert in alerts where alert.severity != .info && notified.insert(alert.id).inserted {
             // A memory pressure notification carries a button that frees memory right away.
-            Notifier.post(id: alert.id, title: alert.title, body: alert.message, category: alert.id.hasPrefix("memory-") ? Notifier.memoryCategory : nil)
+            Notifier.post(id: alert.id, title: alert.title, body: alert.message, category: alert.id.hasPrefix("memory-") && !alert.id.hasPrefix("memory-budget-") ? Notifier.memoryCategory : nil)
         }
     }
 

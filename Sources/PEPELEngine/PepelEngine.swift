@@ -296,6 +296,7 @@ public actor PepelEngine {
         state.memoryOwners = owners
         recordMemory(owners: owners, now: now)
         state.growth = growthCache
+        state.overBudget = OverBudget.find(owners: owners, budgets: settings.memoryBudgets)
         state.unusedApplications = unusedApplications(owners: owners, now: now)
         // Agent sessions, the virtual machine and PEPEL's own surroundings have rules of their own.
         var excluded = Set<ProcessIdentity>()

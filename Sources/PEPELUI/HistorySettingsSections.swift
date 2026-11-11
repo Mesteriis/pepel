@@ -212,6 +212,13 @@ struct SettingsSection: View {
                     }
                 }
                 .onAppear { model.refreshFileCachePermission() }
+                ForEach(s.memoryBudgets) { budget in
+                    HStack {
+                        Text("Memory budget for \(budget.match): \(Bytes.format(budget.bytes))").font(.system(size: 12)).foregroundStyle(Theme.text)
+                        Spacer()
+                        Button("Remove") { model.updateSettings { $0.memoryBudgets.removeAll { $0.id == budget.id } } }.buttonStyle(QuietButtonStyle())
+                    }
+                }
                 toggle("Open Free memory with Control-Option-Command-M from anywhere", s.freeMemoryHotkey) { v in model.updateSettings { $0.freeMemoryHotkey = v } }
                 toggle("Free memory whenever the screen is locked", s.freeMemoryOnLock) { v in model.updateSettings { $0.freeMemoryOnLock = v } }
                 Text("On lock, and from the button on a memory pressure notification, PEPEL runs only the steps that are preselected in the Free memory plan, and never one that would ask for a password.")

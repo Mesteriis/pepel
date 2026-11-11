@@ -481,3 +481,46 @@ public struct BootedSimulator: Codable, Sendable, Identifiable, Hashable {
         self.inUse = inUse
     }
 }
+
+// MARK: - Memory budgets
+
+/// A limit the user sets for what one owner may hold. PEPEL only reports when it is exceeded.
+public struct MemoryBudget: Codable, Sendable, Hashable, Identifiable {
+    /// An owner's name ("Dia", "orders-api"), compared without regard to case, or
+    /// `kind:<kind>` (`kind:agentSession`, `kind:application`, …) for every owner of that kind.
+    public var match: String
+    public var bytes: Int64
+
+    public var id: String { match.lowercased() }
+
+    public init(match: String, bytes: Int64) {
+        self.match = match
+        self.bytes = bytes
+    }
+
+    public func applies(to owner: MemoryOwner) -> Bool {
+        if match.lowercased().hasPrefix("kind:") { return owner.kind.rawValue.lowercased() == match.dropFirst(5).lowercased() }
+        return owner.name.lowercased() == match.lowercased()
+    }
+}
+
+public struct OverBudget: Codable, Sendable, Hashable, Identifiable {
+    public var ownerID: String
+    public var name: String
+    public var kind: MemoryOwnerKind
+    public var footprintBytes: Int64
+    public var budgetBytes: Int64
+
+    public var id: String { ownerID }
+    public var excessBytes: Int64 { footprintBytes - budgetBytes }
+
+    /// A budget by name wins over a budget for the whole kind.
+    public static func find(owners: [MemoryOwner], budgets: [MemoryBudget]) -> [OverBudget] {
+        owners.compactMap { owner -> OverBudget? in
+            let named = budgets.first { !$0.match.lowercased().hasPrefix("kind:") && $0.applies(to: owner) }
+            guard let budget = named ?? budgets.first(where: { $0.applies(to: owner) }), budget.bytes > 0, owner.footprintBytes > budget.bytes else { return nil }
+            return OverBudget(ownerID: owner.id, name: owner.name, kind: owner.kind, footprintBytes: owner.footprintBytes, budgetBytes: budget.bytes)
+        }
+        .sorted { $0.excessBytes > $1.excessBytes }
+    }
+}

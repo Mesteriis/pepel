@@ -203,6 +203,9 @@ struct MemorySection: View {
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 6) {
                             Text(owner.name).font(.system(size: 12)).lineLimit(1)
+                            if let over = live.overBudget.first(where: { $0.ownerID == owner.id }) {
+                                Badge(text: "over \(Bytes.format(over.budgetBytes)) budget", tint: Theme.amber)
+                            }
                             Badge(text: ownerLabel(owner.kind), tint: owner.kind == .agentSession ? Theme.forest : Theme.secondary)
                             if owner.confidence != .verified { ConfidenceBadge(confidence: owner.confidence) }
                             Text("\(owner.processCount) process\(owner.processCount == 1 ? "" : "es")").font(.system(size: 10)).foregroundStyle(Theme.tertiary)

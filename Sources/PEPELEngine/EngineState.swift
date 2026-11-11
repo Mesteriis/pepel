@@ -38,6 +38,8 @@ public struct LiveState: Codable, Sendable {
     /// Language servers and indexers whose editor or agent has exited.
     public var orphanedTools: [ProcessAssessment] = []
     public var simulators: [BootedSimulator] = []
+    /// Owners holding more than the budget the user set for them.
+    public var overBudget: [OverBudget] = []
     /// Process trees PEPEL has suspended.
     public var frozen: [FrozenTree] = []
 
@@ -128,6 +130,12 @@ public enum AlertEvaluator {
                 PepelAlert(
                     id: "memory-\(live.telemetry.pressure.rawValue)", severity: live.telemetry.pressure == .critical ? .critical : .warning,
                     title: live.memory.headline, message: live.memory.detail))
+        }
+        for item in live?.overBudget ?? [] {
+            alerts.append(
+                PepelAlert(
+                    id: "memory-budget-\(item.ownerID)", severity: .warning, title: "\(item.name) is over its memory budget",
+                    message: "It holds \(Bytes.format(item.footprintBytes)); the budget is \(Bytes.format(item.budgetBytes)). PEPEL only reports this: restart, suspend or end it yourself."))
         }
         if let storage {
             for summary in storage.builds where summary.attributed && summary.nearBudget {

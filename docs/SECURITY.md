@@ -156,6 +156,18 @@ refused by policy.
 The result is the measured before/after of memory used, free memory, cached files, compressed
 memory, swap and pressure.
 
+### Standing instructions and budgets
+
+Free memory can also run without the plan being shown first: from the button on a memory
+pressure notification, and, with `freeMemoryOnLock` (off by default), whenever the screen is
+locked. In both cases only the steps the plan preselects are run, and never one that would raise
+a prompt (the cache flush is skipped until its permission exists). The global shortcut
+(`freeMemoryHotkey`, Control-Option-Command-M, off by default) only opens the plan; it is
+registered through the system hot key service, which needs no Accessibility permission.
+
+A **memory budget** (`pepel budget set <owner> <GB>`, by owner name or `kind:<kind>`) raises an
+alert when an owner holds more. It never ends, suspends or restarts anything.
+
 ### Under memory pressure
 
 With `adaptToMemoryPressure` on (off by default), waiting periods of rules that are already

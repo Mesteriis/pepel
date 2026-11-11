@@ -668,6 +668,37 @@ case "roots":
     let settings = await engine.currentSettings()
     if arguments.json { Out.json(settings.projectRoots) } else { settings.projectRoots.forEach { print($0) } }
 
+case "budget":
+    var settings = await engine.currentSettings()
+    let verb = arguments.positional.first
+    if verb == "set", arguments.positional.count >= 3, let gb = Double(arguments.positional.last ?? ""), gb > 0 {
+        let match = arguments.positional.dropFirst().dropLast().joined(separator: " ")
+        settings = try await engine.update { s in
+            s.memoryBudgets.removeAll { $0.id == match.lowercased() }
+            s.memoryBudgets.append(MemoryBudget(match: match, bytes: Int64(gb * Double(Bytes.gb))))
+        }
+        print("Budget for \(match): \(Bytes.format(Int64(gb * Double(Bytes.gb)))).")
+    } else if verb == "remove", arguments.positional.count >= 2 {
+        let match = arguments.positional.dropFirst().joined(separator: " ")
+        settings = try await engine.update { $0.memoryBudgets.removeAll { $0.id == match.lowercased() } }
+        print("Removed the budget for \(match).")
+    } else if verb != nil {
+        Out.error("usage: pepel budget [set <owner name or kind:agentSession> <GB> | remove <name>]"); exit(2)
+    }
+    let live = await engine.refreshLive()
+    if arguments.json { Out.json(live.overBudget); break }
+    if settings.memoryBudgets.isEmpty {
+        print("No memory budgets. `pepel budget set <owner> <GB>` sets one for an owner from `pepel memory` (by name), or for every owner of a kind with kind:agentSession, kind:application, kind:project.")
+        break
+    }
+    Out.table(["BUDGET", "FOR"], settings.memoryBudgets.map { [Bytes.format($0.bytes), $0.match] })
+    if live.overBudget.isEmpty {
+        print("\nNothing is over its budget.")
+    } else {
+        print("\nOver budget:")
+        Out.table(["HOLDS", "BUDGET", "OVER BY", "KIND", "OWNER"], live.overBudget.map { [Bytes.format($0.footprintBytes), Bytes.format($0.budgetBytes), Bytes.format($0.excessBytes), $0.kind.rawValue, $0.name] })
+    }
+
 case "config":
     if arguments.positional.first == "set", arguments.positional.count == 3 {
         let key = arguments.positional[1], raw = arguments.positional[2]

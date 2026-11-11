@@ -102,6 +102,8 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     public var freeMemoryHotkey = false
     /// Run the preselected Free memory steps whenever the screen is locked.
     public var freeMemoryOnLock = false
+    /// Limits for what an owner may hold; exceeding one raises an alert, nothing more.
+    public var memoryBudgets: [MemoryBudget] = []
     public var freezeIdleAgents = false
     public var freezeAfterMinutes = 20
     /// How often a frozen session is woken for a moment to see whether work is waiting.

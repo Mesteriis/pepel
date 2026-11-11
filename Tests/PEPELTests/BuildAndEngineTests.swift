@@ -917,6 +917,29 @@ struct EngineTests {
         #expect(source.snapshot().map(\.pid) == [50])
     }
 
+    @Test("A memory budget only raises an alert; a budget by name wins over one for the kind")
+    func memoryBudgets() async throws {
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        func app(_ pid: Int32, _ name: String, gib: Int64) -> ProcessSnapshot {
+            process(pid, name: name, path: "/Applications/\(name).app/Contents/MacOS/\(name)", footprint: gib << 30)
+        }
+        let source = FakeProcessSource(processes: [app(1, "Browser", gib: 6), app(2, "Editor", gib: 3), app(3, "Notes", gib: 1)])
+        var settings = PepelSettings()
+        settings.memoryBudgets = [MemoryBudget(match: "kind:application", bytes: 2 << 30), MemoryBudget(match: "browser", bytes: 8 << 30)]
+        try store.saveSettings(settings)
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: source, telemetry: { SystemTelemetry() })
+        let live = await engine.refreshLive()
+        #expect(live.overBudget.map(\.name) == ["Editor"], "Browser has its own, larger budget; Notes is within the kind's")
+        #expect(live.overBudget.first?.excessBytes == 1 << 30)
+        let alerts = await engine.alerts()
+        #expect(alerts.contains { $0.id == "memory-budget-app:/Applications/Editor.app" && $0.severity == .warning })
+        _ = await engine.automaticPass()
+        #expect(source.signals.isEmpty && source.snapshot().count == 3, "a budget never ends anything")
+    }
+
     final class FlushCounter: @unchecked Sendable {
         private let lock = NSLock()
         private var value = 0
