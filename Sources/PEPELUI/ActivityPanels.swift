@@ -14,7 +14,7 @@ struct PlanPanel: View {
             header(activity)
             if let plan = activity.plan {
                 if plan.actions.isEmpty {
-                    Text(plan.notes.first ?? (anyRuleOn ? "No daily rule has anything to do right now." : "No daily rule is switched on. Settings › Rule set picks a ready-made set."))
+                    Text(plan.notes.first ?? (anyRuleOn ? L("No daily rule has anything to do right now.") : L("No daily rule is switched on. Settings › Rule set picks a ready-made set.")))
                         .font(.system(size: 12)).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
                 } else {
                     ForEach(groups(plan), id: \.rule) { group in
@@ -46,7 +46,7 @@ struct PlanPanel: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Caption("Next 24 hours")
             if let plan = activity.plan, !plan.actions.isEmpty {
-                Text("\(plan.actions.count) item\(plan.actions.count == 1 ? "" : "s") · up to \(Bytes.format(plan.bytes))")
+                Text("\(plan.actions.count) items · up to \(Bytes.format(plan.bytes))")
                     .font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
             }
             Spacer()
@@ -72,7 +72,7 @@ struct PlanPanel: View {
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(rule.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text)
-                Text(when(actions.first?.due) + " · " + (actions.first?.verb ?? "remove"))
+                Text(when(actions.first?.due) + " · " + (actions.first?.verb ?? L("remove")))
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary)
                 Spacer()
                 Text(Bytes.format(actions.reduce(0) { $0 + $1.bytes })).font(.system(size: 12, weight: .medium)).monospacedDigit().foregroundStyle(Theme.copper)
@@ -95,7 +95,7 @@ struct PlanPanel: View {
     private func when(_ date: Date?) -> String {
         guard let date else { return "" }
         let wait = date.timeIntervalSinceNow
-        return wait < 120 ? "at the next pass" : "in " + TimeFormat.age(wait)
+        return wait < 120 ? L("at the next pass") : L("in \(TimeFormat.age(wait))")
     }
 }
 
@@ -189,7 +189,7 @@ struct RestorePanel: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).rotationEffect(.degrees(showRemoved ? 90 : 0))
-                        Text("Removed for good: \(center.removed.count) action\(center.removed.count == 1 ? "" : "s"), \(Bytes.format(center.removed.reduce(0) { $0 + $1.bytes })). Rebuilt or downloaded again when needed.")
+                        Text("Removed for good: \(center.removed.count) actions, \(Bytes.format(center.removed.reduce(0) { $0 + $1.bytes })). Rebuilt or downloaded again when needed.")
                     }
                     .font(.system(size: 11)).foregroundStyle(Theme.secondary)
                 }
@@ -221,7 +221,8 @@ struct SelfUsageLine: View {
                 HStack(spacing: 4) {
                     Image(systemName: activity.selfWarning == nil ? "gauge.with.dots.needle.0percent" : "exclamationmark.triangle.fill")
                         .font(.system(size: 9))
-                    Text("PEPEL itself · \(Bytes.format(usage.footprintBytes))" + (usage.cpuPercent.map { " · \(Int($0.rounded()))% CPU" } ?? ""))
+                    let footprint = Bytes.format(usage.footprintBytes)
+                    Text(usage.cpuPercent.map { L("PEPEL itself · \(footprint) · \(Int($0.rounded()))% CPU") } ?? L("PEPEL itself · \(footprint)"))
                         .monospacedDigit()
                 }
                 .font(.system(size: 10)).foregroundStyle(activity.selfWarning == nil ? Theme.tertiary : Theme.amber)
@@ -232,7 +233,7 @@ struct SelfUsageLine: View {
                     }
                 }
             }
-            .help(usage.heavyTasks.isEmpty ? "No heavy job is running." : "Running: " + usage.heavyTasks.joined(separator: ", "))
+            .help(usage.heavyTasks.isEmpty ? L("No heavy job is running.") : L("Running: \(usage.heavyTasks.map(AppModel.heavyTaskTitle).joined(separator: ", "))"))
         }
     }
 }

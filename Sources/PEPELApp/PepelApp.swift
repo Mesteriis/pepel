@@ -1,5 +1,6 @@
 import AppKit
 import Observation
+import PEPELEngine
 import PEPELUI
 import SwiftUI
 
@@ -219,18 +220,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func makeMenu() -> NSMenu {
         let main = NSMenu()
         let app = NSMenu()
-        app.addItem(withTitle: "Hide PEPEL", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        app.addItem(withTitle: L("Hide PEPEL"), action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         app.addItem(.separator())
-        app.addItem(withTitle: "Quit PEPEL", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        let edit = NSMenu(title: "Edit")
-        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
-        let window = NSMenu(title: "Window")
-        window.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        window.addItem(withTitle: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        for (title, menu) in [("PEPEL", app), ("Edit", edit), ("Window", window)] {
+        app.addItem(withTitle: L("Quit PEPEL"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let edit = NSMenu(title: L("Edit"))
+        edit.addItem(withTitle: L("Cut"), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: L("Copy"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: L("Paste"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: L("Select All"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        let window = NSMenu(title: L("Window"))
+        window.addItem(withTitle: L("Close"), action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        window.addItem(withTitle: L("Minimize"), action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        // "PEPEL" is the product name and stays as it is.
+        for (title, menu) in [("PEPEL", app), (L("Edit"), edit), (L("Window"), window)] {
             let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
             item.submenu = menu
             main.addItem(item)

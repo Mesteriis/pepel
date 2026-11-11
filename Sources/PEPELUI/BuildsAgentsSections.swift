@@ -30,7 +30,10 @@ struct BuildsSection: View {
             }
             Meter(fraction: fraction, tint: fraction > 1 ? Theme.ember : fraction > 0.8 ? Theme.amber : Theme.forest, height: 6)
             let running = model.live?.activeBuildCount ?? 0
-            Text("\(running == 0 ? "No builds are" : running == 1 ? "One build is" : "\(running) builds are") running now. PEPEL warns before budgets are exceeded and proposes old generations; it cannot stop other tools from writing more.")
+            Text(
+                running == 0
+                    ? L("No builds are running now. PEPEL warns before budgets are exceeded and proposes old generations; it cannot stop other tools from writing more.")
+                    : L("\(running) builds are running now. PEPEL warns before budgets are exceeded and proposes old generations; it cannot stop other tools from writing more."))
                 .font(.system(size: 11)).foregroundStyle(Theme.tertiary)
         }
         .panel()
@@ -51,7 +54,10 @@ struct BuildsSection: View {
             if let fraction = summary.budgetFraction {
                 Meter(fraction: fraction, tint: summary.overBudget ? Theme.ember : summary.nearBudget ? Theme.amber : Theme.forest)
             }
-            Text("Policy: keep last \(summary.policy.keepSuccessful) builds, \(summary.policy.keepFailed) failed, review after \(summary.policy.reviewAfterHours) h\(summary.policy.maxAgeDays.map { ", max age \($0) d" } ?? "").")
+            let policy = summary.policy
+            Text(
+                policy.maxAgeDays.map { L("Policy: keep last \(policy.keepSuccessful) builds, \(policy.keepFailed) failed, review after \(policy.reviewAfterHours) h, max age \($0) d.") }
+                    ?? L("Policy: keep last \(policy.keepSuccessful) builds, \(policy.keepFailed) failed, review after \(policy.reviewAfterHours) h."))
                 .font(.system(size: 10)).foregroundStyle(Theme.tertiary)
             VStack(spacing: 0) {
                 ForEach(summary.generations) { generation in
@@ -71,7 +77,7 @@ struct BuildsSection: View {
                 HStack(spacing: 6) {
                     Text(g.title).font(.system(size: 12)).lineLimit(1)
                     if let branch = g.branch { Label(branch, systemImage: "arrow.triangle.branch").font(.system(size: 10)).foregroundStyle(Theme.secondary).lineLimit(1) }
-                    if g.status != .unknown { Badge(text: g.status.rawValue, tint: g.status == .failed ? Theme.ember : Theme.forest) }
+                    if g.status != .unknown { Badge(text: Theme.title(for: g.status), tint: g.status == .failed ? Theme.ember : Theme.forest) }
                 }
                 Text(g.activeReason ?? g.verdict.reason).font(.system(size: 10)).foregroundStyle(Theme.tertiary).lineLimit(1)
             }
@@ -127,13 +133,13 @@ struct AgentsSection: View {
                         )
                         .frame(width: 62, alignment: .leading)
                         .help(session.evidence.joined(separator: "\n"))
-                        Text(session.kind.displayName + (session.isService ? " server" : "")).font(.system(size: 12, weight: .semibold)).frame(width: 110, alignment: .leading).lineLimit(1)
+                        Text(session.isService ? L("\(session.kind.displayName) server") : session.kind.displayName).font(.system(size: 12, weight: .semibold)).frame(width: 110, alignment: .leading).lineLimit(1)
                         VStack(alignment: .leading, spacing: 1) {
                             HStack(spacing: 6) {
-                                Text(model.projectName(session.projectID) ?? "No known project").font(.system(size: 12))
+                                Text(model.projectName(session.projectID) ?? L("No known project")).font(.system(size: 12))
                                     .foregroundStyle(session.projectID == nil ? Theme.tertiary : Theme.text)
                                 if session.projectID != nil { ConfidenceBadge(confidence: session.projectConfidence) }
-                                if session.activeBuildCount > 0 { Badge(text: "\(session.activeBuildCount) build process\(session.activeBuildCount == 1 ? "" : "es")", tint: Theme.forest) }
+                                if session.activeBuildCount > 0 { Badge(text: "\(session.activeBuildCount) build processes", tint: Theme.forest) }
                             }
                             if let cwd = session.workingDirectory { PathText(path: cwd) }
                         }
@@ -158,10 +164,9 @@ struct AgentsSection: View {
                 Text("While a session runs in a project, that project's build output is not cleaned automatically, and cleaning it by hand asks for confirmation.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary)
                 Text(
-                    "A session is asleep after \(model.settings.agentSleepMinutes) minutes without disk writes, CPU bursts, new processes or a build. "
-                        + (model.settings.terminateSleepingAgents
-                            ? "Sleeping sessions are terminated automatically, together with the tool servers they started."
-                            : "Sleeping sessions are only reported; automatic termination is off (Settings › Process guardian).")
+                    model.settings.terminateSleepingAgents
+                        ? "A session is asleep after \(model.settings.agentSleepMinutes) minutes without disk writes, CPU bursts, new processes or a build. Sleeping sessions are terminated automatically, together with the tool servers they started."
+                        : "A session is asleep after \(model.settings.agentSleepMinutes) minutes without disk writes, CPU bursts, new processes or a build. Sleeping sessions are only reported; automatic termination is off (Settings › Process guardian)."
                 )
                 .font(.system(size: 11)).foregroundStyle(model.settings.terminateSleepingAgents ? Theme.amber : Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             } else {
@@ -181,7 +186,7 @@ struct AgentsSection: View {
                     Spacer()
                     if !stale.isEmpty {
                         Text("\(Bytes.format(stale.reduce(0) { $0 + $1.footprintBytes })) in old copies").font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(Theme.amber)
-                        Button("End \(stale.count) old cop\(stale.count == 1 ? "y" : "ies")…") { confirmBranches = true }.buttonStyle(QuietButtonStyle())
+                        Button("End \(stale.count) old copies…") { confirmBranches = true }.buttonStyle(QuietButtonStyle())
                     }
                 }
                 ForEach(branches.prefix(14)) { branch in
@@ -189,7 +194,7 @@ struct AgentsSection: View {
                         Badge(text: branch.isStale ? "old copy" : branch.copies > 1 ? "newest of \(branch.copies)" : "only copy", tint: branch.isStale ? Theme.amber : Theme.tertiary)
                         Text(branch.signature).font(Theme.mono).lineLimit(1).truncationMode(.middle)
                         Spacer(minLength: 4)
-                        Text(branch.idleFor.map { "idle \(TimeFormat.age($0))" } ?? "active or newly seen").font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                        Text(branch.idleFor.map { L("idle \(TimeFormat.age($0))") } ?? L("active or newly seen")).font(.system(size: 11)).foregroundStyle(Theme.secondary)
                         Text(Bytes.format(branch.footprintBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 66, alignment: .trailing)
                     }
                     .foregroundStyle(Theme.text)
@@ -223,7 +228,7 @@ struct AgentsSection: View {
                         Text("×\(group.copies)").font(.system(size: 12, weight: .semibold)).monospacedDigit().frame(width: 34, alignment: .trailing)
                         Text(group.id).font(Theme.mono).lineLimit(1).truncationMode(.middle)
                         Spacer(minLength: 4)
-                        Text("\(group.sessions) sessions" + (group.quietCopies > 0 ? " · \(Bytes.format(group.quietBytes)) in quiet ones" : "")).font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                        Text(group.quietCopies > 0 ? L("\(group.sessions) sessions · \(Bytes.format(group.quietBytes)) in quiet ones") : L("\(group.sessions) sessions")).font(.system(size: 11)).foregroundStyle(Theme.secondary)
                         Text(Bytes.format(group.footprintBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 66, alignment: .trailing)
                     }
                     .foregroundStyle(Theme.text)
@@ -262,7 +267,7 @@ struct AgentsSection: View {
             HStack {
                 Caption("Local agent interface")
                 Spacer()
-                Badge(text: model.apiStatus, tint: model.apiStatus == "Listening" ? Theme.forest : Theme.amber)
+                Badge(text: model.apiStatus, tint: model.apiStatus == L("Listening") ? Theme.forest : Theme.amber)
             }
             Text("Agents can register builds and workspaces, lease or protect paths, mark their own temporary files, request a scan and preview cleanup. They cannot delete files or terminate processes.")
                 .font(.system(size: 12)).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)

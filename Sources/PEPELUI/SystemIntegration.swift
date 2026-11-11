@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import PEPELEngine
 import ServiceManagement
 import UserNotifications
 
@@ -28,7 +29,7 @@ enum Notifier {
         responder.onFreeMemory = onFreeMemory
         let center = UNUserNotificationCenter.current()
         center.delegate = responder
-        let action = UNNotificationAction(identifier: freeAction, title: "Free memory", options: [])
+        let action = UNNotificationAction(identifier: freeAction, title: L("Free memory"), options: [])
         center.setNotificationCategories([UNNotificationCategory(identifier: memoryCategory, actions: [action], intentIdentifiers: [])])
     }
 
@@ -66,23 +67,23 @@ enum LoginItem {
     static var isEnabled: Bool { supported && SMAppService.mainApp.status == .enabled }
 
     static var statusText: String {
-        guard supported else { return "Available when PEPEL runs from its app bundle." }
+        guard supported else { return L("Available when PEPEL runs from its app bundle.") }
         switch SMAppService.mainApp.status {
-        case .enabled: return "PEPEL starts when you log in."
-        case .requiresApproval: return "Waiting for approval in System Settings › General › Login Items."
-        case .notFound: return "Move PEPEL.app to Applications to enable this."
-        default: return "PEPEL does not start at login."
+        case .enabled: return L("PEPEL starts when you log in.")
+        case .requiresApproval: return L("Waiting for approval in System Settings › General › Login Items.")
+        case .notFound: return L("Move PEPEL.app to Applications to enable this.")
+        default: return L("PEPEL does not start at login.")
         }
     }
 
     /// Returns a message when the change could not be made.
     static func set(_ enabled: Bool) -> String? {
-        guard supported else { return "Launch at login needs PEPEL to run from its app bundle." }
+        guard supported else { return L("Launch at login needs PEPEL to run from its app bundle.") }
         do {
             if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
             return nil
         } catch {
-            return "Launch at login could not be changed: \(error.localizedDescription)"
+            return L("Launch at login could not be changed: \(error.localizedDescription)")
         }
     }
 }
