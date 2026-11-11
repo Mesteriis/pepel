@@ -23,6 +23,8 @@ cp Resources/Info.plist "$staging/Contents/Info.plist"
 cp Resources/AppIcon.icns "$staging/Contents/Resources/AppIcon.icns"
 cp Resources/MenuBarIcon.png Resources/MenuBarIcon@2x.png Resources/MenuBarIcon@3x.png \
    Resources/Glyph.png Resources/Glyph@2x.png Resources/NotificationIcon.png "$staging/Contents/Resources/"
+# English and Russian texts; macOS picks the language the user set for the system or for PEPEL.
+xcrun xcstringstool compile Resources/Localizable.xcstrings --output-directory "$staging/Contents/Resources" >/dev/null
 
 # Signing identity. A real certificate matters on macOS 27: the system only gives a status item
 # an application identity when the app is signed with one, and menu bar managers (Hidden Bar

@@ -22,7 +22,7 @@ struct HistorySection: View {
         }
     }
 
-    private func figure(_ label: String, _ value: GrowthFigure?) -> some View {
+    private func figure(_ label: LocalizedStringKey, _ value: GrowthFigure?) -> some View {
         MetricTile(
             label: label, value: value.map { Bytes.formatDelta($0.deltaBytes) } ?? "—",
             detail: value.map { $0.coversWindow ? "disk usage change" : "only \(TimeFormat.age($0.actualSpan)) of history" } ?? "no history yet",
@@ -231,7 +231,7 @@ struct SettingsSection: View {
                     Button("Register single project…") { chooseFolder { path in model.updateSettings { if !$0.registeredProjects.contains(path) { $0.registeredProjects.append(path) } } } }.buttonStyle(QuietButtonStyle())
                     Button("Exclude folder…") { chooseFolder { path in model.updateSettings { if !$0.excludedPaths.contains(path) { $0.excludedPaths.append(path) } } } }.buttonStyle(QuietButtonStyle())
                 }
-                stepper("Look for repositories up to", s.discoveryDepth, 1...12, suffix: " folders deep") { v in model.updateSettings { $0.discoveryDepth = v } }
+                stepper(s.discoveryDepth, 1...12, label: { "Look for repositories up to \($0) folders deep" }) { v in model.updateSettings { $0.discoveryDepth = v } }
                 ForEach(s.registeredProjects, id: \.self) { path in line("Registered", path) { model.updateSettings { $0.registeredProjects.removeAll { $0 == path } } } }
                 ForEach(s.excludedPaths, id: \.self) { path in line("Excluded", path) { model.updateSettings { $0.excludedPaths.removeAll { $0 == path } } } }
             }
@@ -244,7 +244,7 @@ struct SettingsSection: View {
                 toggle("Notifications", s.notificationsEnabled) { v in model.updateSettings { $0.notificationsEnabled = v } }
                 HStack(spacing: 8) {
                     toggle("Keep a memory journal (a reading every five minutes)", s.journalEnabled) { v in model.updateSettings { $0.journalEnabled = v } }
-                    stepper("for", s.journalRetentionDays, 1...365, suffix: " days") { v in model.updateSettings { $0.journalRetentionDays = v } }
+                    stepper(s.journalRetentionDays, 1...365, label: { "for \($0) days" }) { v in model.updateSettings { $0.journalRetentionDays = v } }
                 }
                 HStack(spacing: 8) {
                     picker("Summary", selection: s.summaryFrequency, options: [(.weekly, "Once a week"), (.daily, "Every day"), (.off, "Off")]) { value in model.updateSettings { $0.summaryFrequency = value } }
@@ -253,15 +253,15 @@ struct SettingsSection: View {
                         picker("on", selection: s.summaryWeekday, options: Self.weekdays) { value in model.updateSettings { $0.summaryWeekday = value } }.frame(maxWidth: 150)
                     }
                     if s.summaryFrequency != .off {
-                        stepper("at", s.dailySummaryHour, 0...23, suffix: ":00") { v in model.updateSettings { $0.dailySummaryHour = v } }
+                        stepper(s.dailySummaryHour, 0...23, label: { "at \($0):00" }) { v in model.updateSettings { $0.dailySummaryHour = v } }
                     }
                 }
                 Text("What PEPEL gave back in memory and disk, what it removed, and what waits for your decision.").font(.system(size: 11)).foregroundStyle(Theme.tertiary)
-                stepper("Warn when PEPEL itself holds more than", s.selfMemoryWarnMB, 0...16_384, step: 256, suffix: s.selfMemoryWarnMB == 0 ? " MB (off)" : " MB") { v in model.updateSettings { $0.selfMemoryWarnMB = v } }
+                stepper(s.selfMemoryWarnMB, 0...16_384, step: 256, label: { $0 == 0 ? "Warn when PEPEL itself holds more than 0 MB (off)" : "Warn when PEPEL itself holds more than \($0) MB" }) { v in model.updateSettings { $0.selfMemoryWarnMB = v } }
                 HStack(spacing: 8) {
                     toggle("Quiet hours", s.quietHours.enabled) { v in model.updateSettings { $0.quietHours.enabled = v } }
-                    stepper("from", s.quietHours.startHour, 0...23, suffix: ":00") { v in model.updateSettings { $0.quietHours.startHour = v } }
-                    stepper("to", s.quietHours.endHour, 0...23, suffix: ":00") { v in model.updateSettings { $0.quietHours.endHour = v } }
+                    stepper(s.quietHours.startHour, 0...23, label: { "from \($0):00" }) { v in model.updateSettings { $0.quietHours.startHour = v } }
+                    stepper(s.quietHours.endHour, 0...23, label: { "to \($0):00" }) { v in model.updateSettings { $0.quietHours.endHour = v } }
                 }
                 picker("Menu bar shows", selection: s.menuBarMode, options: [(.reclaimable, "Reclaimable storage"), (.iconOnly, "Icon only"), (.memoryPressure, "Memory pressure"), (.activeBuilds, "Active builds")]) { value in model.updateSettings { $0.menuBarMode = value } }
                 Toggle("Launch PEPEL at login", isOn: Binding(get: { LoginItem.isEnabled }, set: { model.setLaunchAtLogin($0) })).font(.system(size: 12)).toggleStyle(.checkbox)
@@ -271,37 +271,37 @@ struct SettingsSection: View {
             group("Cleanup", "How approved items are removed.") {
                 picker("Removal", selection: s.deletionMode, options: [(.automatic, "Safe: remove · Review: Trash"), (.trash, "Always Trash"), (.permanent, "Always remove permanently")]) { value in model.updateSettings { $0.deletionMode = value } }
                 Text("Trashed items can be restored but free no space until the Trash is emptied. Permanent removal and tool cleanups cannot be undone.").font(.system(size: 11)).foregroundStyle(Theme.tertiary)
-                stepper("Treat artifacts written in the last", s.recentWriteProtectionMinutes, 1...240, suffix: " min as in use") { v in model.updateSettings { $0.recentWriteProtectionMinutes = v } }
-                stepper("Warn when disk space falls below", Int(s.lowDiskThresholdBytes / Bytes.gb), 5...500, step: 5, suffix: " GB") { v in model.updateSettings { $0.lowDiskThresholdBytes = Int64(v) * Bytes.gb } }
+                stepper(s.recentWriteProtectionMinutes, 1...240, label: { "Treat artifacts written in the last \($0) min as in use" }) { v in model.updateSettings { $0.recentWriteProtectionMinutes = v } }
+                stepper(Int(s.lowDiskThresholdBytes / Bytes.gb), 5...500, step: 5, label: { "Warn when disk space falls below \($0) GB" }) { v in model.updateSettings { $0.lowDiskThresholdBytes = Int64(v) * Bytes.gb } }
             }
 
             Caption("Daily disk rules").padding(.top, 6)
             group("Disk: Docker", "Images, stopped containers and build cache can be rebuilt or pulled again. Named volumes are never removed; anonymous ones only when you ask.") {
                 toggle("Once a day, remove containers, images and build cache Docker has not used", s.dockerAutoClean) { v in model.updateSettings { $0.dockerAutoClean = v } }
-                stepper("Unused means untouched for", s.dockerUnusedDays, 1...365, suffix: " days") { v in model.updateSettings { $0.dockerUnusedDays = v } }
+                stepper(s.dockerUnusedDays, 1...365, label: { "Unused means untouched for \($0) days" }) { v in model.updateSettings { $0.dockerUnusedDays = v } }
                 Text("A stopped container counts from when it stopped, an image from when it was last pulled or built, build cache from its last use. Containers of a compose project that is running, or that an agent is working in, and anything on the keep list are left alone. After removal PEPEL trims Docker's disk image so the Mac gets the space back.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
 
             group("Disk: projects left untouched", "Environments, installed dependencies and build output of projects nobody works on. Source, git data and configuration are never removed.") {
                 toggle("Once a day, remove those artifacts from projects left untouched", s.cleanStaleProjects) { v in model.updateSettings { $0.cleanStaleProjects = v } }
-                stepper("Untouched means no change for", s.staleProjectDays, 1...365, suffix: " days") { v in model.updateSettings { $0.staleProjectDays = v } }
+                stepper(s.staleProjectDays, 1...365, label: { "Untouched means no change for \($0) days" }) { v in model.updateSettings { $0.staleProjectDays = v } }
                 Text("A project counts as touched when git's bookkeeping or one of its own files changed, or an agent session is in it. Exclude a project with a protection rule of kind Project below.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
 
             group("Disk: tool caches", "Go, sccache, uv, pip, npm, Yarn, Bun, Cargo, Homebrew and browser downloads of Playwright and Puppeteer. Everything in them is fetched or rebuilt when needed.") {
                 toggle("Once a day, remove cache entries that have not been used", s.trimCaches) { v in model.updateSettings { $0.trimCaches = v } }
-                stepper("Unused means not read or written for", s.cacheUnusedDays, 1...365, suffix: " days") { v in model.updateSettings { $0.cacheUnusedDays = v } }
-                stepper("Keep each cache under", s.cacheSizeLimitGB, 0...500, suffix: " GB (0 = no limit)") { v in model.updateSettings { $0.cacheSizeLimitGB = v } }
+                stepper(s.cacheUnusedDays, 1...365, label: { "Unused means not read or written for \($0) days" }) { v in model.updateSettings { $0.cacheUnusedDays = v } }
+                stepper(s.cacheSizeLimitGB, 0...500, label: { "Keep each cache under \($0) GB (0 = no limit)" }) { v in model.updateSettings { $0.cacheSizeLimitGB = v } }
                 Text("With a size limit, the least recently used entries of a cache that is too large go first; anything used within the last day always stays. Gradle cleans its own caches and is left to it.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
 
             group("Disk: application caches", "Folders in ~/Library/Caches. An application rebuilds its cache when it needs it.") {
                 toggle("Once a day, remove caches of applications that are not running and have not used them", s.cleanAppCaches) { v in model.updateSettings { $0.cleanAppCaches = v } }
-                stepper("Unused means untouched for", s.appCacheUnusedDays, 1...365, suffix: " days") { v in model.updateSettings { $0.appCacheUnusedDays = v } }
-                stepper("List what a removed application left behind after", s.leftoverDays, 7...730, step: 7, suffix: " days untouched") { v in model.updateSettings { $0.leftoverDays = v } }
+                stepper(s.appCacheUnusedDays, 1...365, label: { "Unused means untouched for \($0) days" }) { v in model.updateSettings { $0.appCacheUnusedDays = v } }
+                stepper(s.leftoverDays, 7...730, step: 7, label: { "List what a removed application left behind after \($0) days untouched" }) { v in model.updateSettings { $0.leftoverDays = v } }
                 Text("Never remove these cache folders (some applications keep more than a cache there):").font(.system(size: 11)).foregroundStyle(Theme.secondary)
                 ForEach(s.keepAppCaches, id: \.self) { name in
                     HStack {
@@ -326,7 +326,7 @@ struct SettingsSection: View {
 
             group("Disk: Android emulators", "Virtual devices in ~/.android/avd. Deleting one removes the apps and data inside it; the system images stay, so it can be created again.") {
                 toggle("Once a day, delete emulators that have not been started", s.cleanAndroidEmulators) { v in model.updateSettings { $0.cleanAndroidEmulators = v } }
-                stepper("Not started means no start for", s.emulatorUnusedDays, 7...365, suffix: " days") { v in model.updateSettings { $0.emulatorUnusedDays = v } }
+                stepper(s.emulatorUnusedDays, 7...365, label: { "Not started means no start for \($0) days" }) { v in model.updateSettings { $0.emulatorUnusedDays = v } }
                 toggle("Once a day, delete system images that no emulator starts from", s.cleanUnusedSystemImages) { v in model.updateSettings { $0.cleanUnusedSystemImages = v } }
                 Text("Never delete these emulators:").font(.system(size: 11)).foregroundStyle(Theme.secondary)
                 ForEach(s.keepEmulators, id: \.self) { name in
@@ -352,9 +352,9 @@ struct SettingsSection: View {
 
             group("Disk: Downloads and screenshots", "Screenshots and screen recordings macOS made, wherever they are saved, and anything in Downloads you have not used for a while.") {
                 toggle("Once a day, take screenshots and screen recordings", s.tidyScreenshots) { v in model.updateSettings { $0.tidyScreenshots = v } }
-                stepper("Older than", s.screenshotDays, 1...90, suffix: " day\(s.screenshotDays == 1 ? "" : "s")") { v in model.updateSettings { $0.screenshotDays = v } }
+                stepper(s.screenshotDays, 1...90, label: { "Older than \($0) days" }) { v in model.updateSettings { $0.screenshotDays = v } }
                 toggle("Once a day, take downloads", s.tidyDownloads) { v in model.updateSettings { $0.tidyDownloads = v } }
-                stepper("Not used for", s.downloadDays, 1...365, suffix: " days") { v in model.updateSettings { $0.downloadDays = v } }
+                stepper(s.downloadDays, 1...365, label: { "Not used for \($0) days" }) { v in model.updateSettings { $0.downloadDays = v } }
                 picker("What happens to them", selection: s.tidyAction, options: [(.trash, "Move to the Trash"), (.delete, "Remove for good")]) { value in model.updateSettings { $0.tidyAction = value } }
                 Text("Never taken from Downloads (file extensions):").font(.system(size: 11)).foregroundStyle(Theme.secondary)
                 HStack(spacing: 6) {
@@ -385,38 +385,38 @@ struct SettingsSection: View {
 
             group("Disk: Clausona backups", "Copies Clausona makes before it switches profiles or migrates history. The live Codex and Claude history is never part of this.") {
                 toggle("Once a day, remove old backups", s.cleanToolBackups) { v in model.updateSettings { $0.cleanToolBackups = v } }
-                stepper("Always keep the newest", s.toolBackupsKeep, 0...20, suffix: " of each set") { v in model.updateSettings { $0.toolBackupsKeep = v } }
-                stepper("Remove the rest once they are", s.toolBackupsDays, 0...365, suffix: " days old") { v in model.updateSettings { $0.toolBackupsDays = v } }
+                stepper(s.toolBackupsKeep, 0...20, label: { "Always keep the newest \($0) of each set" }) { v in model.updateSettings { $0.toolBackupsKeep = v } }
+                stepper(s.toolBackupsDays, 0...365, label: { "Remove the rest once they are \($0) days old" }) { v in model.updateSettings { $0.toolBackupsDays = v } }
                 Text("Nothing is removed while Clausona is switching profiles (its lock is held), or from a folder marked as not to be cleaned.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
 
             group("Disk: temporary files", "Your temporary folder. macOS empties it only on restart.") {
                 toggle("Once a day, remove temporary files that nothing has used", s.cleanTempFiles) { v in model.updateSettings { $0.cleanTempFiles = v } }
-                stepper("Unused means not read or written for", s.tempDays, 1...365, suffix: " days") { v in model.updateSettings { $0.tempDays = v } }
+                stepper(s.tempDays, 1...365, label: { "Unused means not read or written for \($0) days" }) { v in model.updateSettings { $0.tempDays = v } }
                 Text("Sockets and pipes, folders that hold one, anything macOS manages and anything a running program names or works in are left alone, whatever their age.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
 
             group("Disk: logs", "Files in ~/Library/Logs. Agents' own logs are never touched.") {
                 toggle("Once a day, remove old log files larger than 1 MB", s.cleanOldLogs) { v in model.updateSettings { $0.cleanOldLogs = v } }
-                stepper("Old means older than", s.logDays, 1...365, suffix: " days") { v in model.updateSettings { $0.logDays = v } }
+                stepper(s.logDays, 1...365, label: { "Old means older than \($0) days" }) { v in model.updateSettings { $0.logDays = v } }
                 Text("All daily disk rules run once in twenty hours, and once an hour while free space is below the low-disk threshold above.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
 
             Caption("Builds, memory and processes").padding(.top, 6)
             group("Build retention", "Defaults for every project. Active and pinned builds are always kept.") {
-                stepper("Keep the last", s.defaultRetention.keepSuccessful, 1...20, suffix: " builds") { v in model.updateSettings { $0.defaultRetention.keepSuccessful = v } }
-                stepper("Keep the last", s.defaultRetention.keepFailed, 0...20, suffix: " failed builds") { v in model.updateSettings { $0.defaultRetention.keepFailed = v } }
-                stepper("Review artifacts older than", s.defaultRetention.reviewAfterHours, 1...720, step: 12, suffix: " hours") { v in model.updateSettings { $0.defaultRetention.reviewAfterHours = v } }
-                stepper("Per-project build budget", Int((s.defaultRetention.budgetBytes ?? 0) / Bytes.gb), 1...1000, step: 5, suffix: " GB") { v in model.updateSettings { $0.defaultRetention.budgetBytes = Int64(v) * Bytes.gb } }
-                stepper("Global build budget", Int(s.globalBuildBudgetBytes / Bytes.gb), 10...2000, step: 10, suffix: " GB") { v in model.updateSettings { $0.globalBuildBudgetBytes = Int64(v) * Bytes.gb } }
+                stepper(s.defaultRetention.keepSuccessful, 1...20, label: { "Keep the last \($0) builds" }) { v in model.updateSettings { $0.defaultRetention.keepSuccessful = v } }
+                stepper(s.defaultRetention.keepFailed, 0...20, label: { "Keep the last \($0) failed builds" }) { v in model.updateSettings { $0.defaultRetention.keepFailed = v } }
+                stepper(s.defaultRetention.reviewAfterHours, 1...720, step: 12, label: { "Review artifacts older than \($0) hours" }) { v in model.updateSettings { $0.defaultRetention.reviewAfterHours = v } }
+                stepper(Int((s.defaultRetention.budgetBytes ?? 0) / Bytes.gb), 1...1000, step: 5, label: { "Per-project build budget \($0) GB" }) { v in model.updateSettings { $0.defaultRetention.budgetBytes = Int64(v) * Bytes.gb } }
+                stepper(Int(s.globalBuildBudgetBytes / Bytes.gb), 10...2000, step: 10, label: { "Global build budget \($0) GB" }) { v in model.updateSettings { $0.globalBuildBudgetBytes = Int64(v) * Bytes.gb } }
                 toggle("Treat builds retention marks obsolete as safe (allows automatic cleanup of old generations)", s.retentionCandidatesAreSafe) { v in model.updateSettings { $0.retentionCandidatesAreSafe = v } }
                 toggle("Always keep the last build that succeeded", s.defaultRetention.protectLastKnownGood) { v in model.updateSettings { $0.defaultRetention.protectLastKnownGood = v } }
                 toggle("Mark builds obsolete by age alone", s.defaultRetention.maxAgeDays != nil) { v in model.updateSettings { $0.defaultRetention.maxAgeDays = v ? 30 : nil } }
                 if let days = s.defaultRetention.maxAgeDays {
-                    stepper("Obsolete after", days, 1...365, suffix: " days") { v in model.updateSettings { $0.defaultRetention.maxAgeDays = v } }
+                    stepper(days, 1...365, label: { "Obsolete after \($0) days" }) { v in model.updateSettings { $0.defaultRetention.maxAgeDays = v } }
                 }
                 Divider().overlay(Theme.stroke)
                 Text("Different rules for one project:").font(.system(size: 11)).foregroundStyle(Theme.secondary)
@@ -429,9 +429,9 @@ struct SettingsSection: View {
                                 Button("Remove") { model.updateSettings { $0.projectRetention[key] = nil } }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Theme.secondary)
                             }
                             HStack(spacing: 14) {
-                                stepper("Keep", policy.keepSuccessful, 1...20, suffix: " builds") { v in model.updateSettings { $0.projectRetention[key]?.keepSuccessful = v } }
-                                stepper("and", policy.keepFailed, 0...20, suffix: " failed") { v in model.updateSettings { $0.projectRetention[key]?.keepFailed = v } }
-                                stepper("Budget", Int((policy.budgetBytes ?? 0) / Bytes.gb), 1...1000, step: 5, suffix: " GB") { v in model.updateSettings { $0.projectRetention[key]?.budgetBytes = Int64(v) * Bytes.gb } }
+                                stepper(policy.keepSuccessful, 1...20, label: { "Keep \($0) builds" }) { v in model.updateSettings { $0.projectRetention[key]?.keepSuccessful = v } }
+                                stepper(policy.keepFailed, 0...20, label: { "and \($0) failed" }) { v in model.updateSettings { $0.projectRetention[key]?.keepFailed = v } }
+                                stepper(Int((policy.budgetBytes ?? 0) / Bytes.gb), 1...1000, step: 5, label: { "Budget \($0) GB" }) { v in model.updateSettings { $0.projectRetention[key]?.budgetBytes = Int64(v) * Bytes.gb } }
                             }
                         }
                     }
@@ -459,7 +459,7 @@ struct SettingsSection: View {
                 toggle("Free memory whenever the screen is locked", s.freeMemoryOnLock) { v in model.updateSettings { $0.freeMemoryOnLock = v } }
                 Text("On lock, and from the button on a memory pressure notification, PEPEL runs only the steps that are preselected in the Free memory plan, and never one that would ask for a password.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
-                stepper("Warn when memory is forecast to run short within", s.forecastWarnMinutes, 0...180, step: 5, suffix: " min (0 = never)") { v in model.updateSettings { $0.forecastWarnMinutes = v } }
+                stepper(s.forecastWarnMinutes, 0...180, step: 5, label: { "Warn when memory is forecast to run short within \($0) min (0 = never)" }) { v in model.updateSettings { $0.forecastWarnMinutes = v } }
                 toggle("Under memory pressure, act sooner", s.adaptToMemoryPressure) { v in model.updateSettings { $0.adaptToMemoryPressure = v } }
                 Text("Halves the waiting periods of the rules below under elevated pressure and quarters them under critical pressure (never under 30 minutes for an agent session), and lets the Docker VM restart outside its night window, at most every six hours. Only affects rules that are switched on.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
@@ -484,15 +484,15 @@ struct SettingsSection: View {
 
             group("Agent sessions", "What happens to a session that has gone quiet. A working session is never touched.") {
                 toggle("Suspend agent sessions that have gone quiet, instead of waiting to end them", s.freezeIdleAgents) { v in model.updateSettings { $0.freezeIdleAgents = v } }
-                stepper("Suspend after", s.freezeAfterMinutes, 5...240, step: 5, suffix: " min of quiet") { v in model.updateSettings { $0.freezeAfterMinutes = v } }
-                stepper("Look for waiting work every", s.freezePeekMinutes, 2...120, suffix: " min") { v in model.updateSettings { $0.freezePeekMinutes = v } }
+                stepper(s.freezeAfterMinutes, 5...240, step: 5, label: { "Suspend after \($0) min of quiet" }) { v in model.updateSettings { $0.freezeAfterMinutes = v } }
+                stepper(s.freezePeekMinutes, 2...120, label: { "Look for waiting work every \($0) min" }) { v in model.updateSettings { $0.freezePeekMinutes = v } }
                 Text("A suspended session keeps everything and continues the moment its application comes to the front. In between PEPEL wakes it briefly to see whether work arrived (a message from another device, a finished task); if so it stays awake. Sessions PEPEL cannot tie to an application, such as ones inside tmux, are never suspended automatically. Quitting or pausing PEPEL wakes everything.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
                 toggle("Terminate agent sessions that are asleep (no disk writes, CPU bursts, new processes or builds)", s.terminateSleepingAgents) { v in model.updateSettings { $0.terminateSleepingAgents = v } }
-                stepper("Call an agent session asleep after", s.agentSleepMinutes, 30...1440, step: 30, suffix: " min of quiet") { v in model.updateSettings { $0.agentSleepMinutes = v } }
+                stepper(s.agentSleepMinutes, 30...1440, step: 30, label: { "Call an agent session asleep after \($0) min of quiet" }) { v in model.updateSettings { $0.agentSleepMinutes = v } }
                 Text("A session waiting for your reply writes nothing either, so it is treated as asleep. Sessions of Claude Code and Codex can be resumed afterwards; text typed but not sent is lost.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
-                stepper("Inside an agent's server, call an older copy left behind after", s.serviceBranchIdleMinutes, 15...1440, step: 15, suffix: " min idle") { v in model.updateSettings { $0.serviceBranchIdleMinutes = v } }
+                stepper(s.serviceBranchIdleMinutes, 15...1440, step: 15, label: { "Inside an agent's server, call an older copy left behind after \($0) min idle" }) { v in model.updateSettings { $0.serviceBranchIdleMinutes = v } }
                 Divider().overlay(Theme.stroke)
                 Text("PEPEL's note in agents' global instructions (explains that containers may stop and how to take a lease):").font(.system(size: 11)).foregroundStyle(Theme.secondary)
                 ForEach(model.instructionFiles) { file in
@@ -511,7 +511,7 @@ struct SettingsSection: View {
             }
 
             group("Apps that stay open without windows", "Preview, TextEdit and most document apps keep running after their last window is closed. Tick the ones PEPEL should quit when no window is open.") {
-                stepper("Quit after", s.windowlessQuitMinutes, 0...120, suffix: " min with no window, when not in front") { v in model.updateSettings { $0.windowlessQuitMinutes = v } }
+                stepper(s.windowlessQuitMinutes, 0...120, label: { "Quit after \($0) min with no window, when not in front" }) { v in model.updateSettings { $0.windowlessQuitMinutes = v } }
                 if model.windowlessApps.isEmpty {
                     Text("None seen yet. PEPEL notices an application running with no window and lists it here.").font(.system(size: 12)).foregroundStyle(Theme.secondary)
                 }
@@ -538,11 +538,11 @@ struct SettingsSection: View {
 
             group("Applications", "Leftovers of applications that quit, and applications that stay open unused. Quitting an application is always the ordinary request and always asks you first.") {
                 toggle("Terminate what an application leaves running after it quits", s.terminateAppLeftovers) { v in model.updateSettings { $0.terminateAppLeftovers = v } }
-                stepper("Wait", s.appLeftoverGraceMinutes, 1...240, suffix: " min after the application quit") { v in model.updateSettings { $0.appLeftoverGraceMinutes = v } }
+                stepper(s.appLeftoverGraceMinutes, 1...240, label: { "Wait \($0) min after the application quit" }) { v in model.updateSettings { $0.appLeftoverGraceMinutes = v } }
                 Text("Covers helpers and child processes PEPEL saw the application start, or that run from inside its bundle. System-managed components, agent sessions and container runtimes are never included.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
-                stepper("List an open application as unused after", s.unusedApplicationHours, 1...168, suffix: " h without being in front") { v in model.updateSettings { $0.unusedApplicationHours = v } }
-                stepper("Call a browser tab idle after", s.tabIdleMinutes, 5...720, step: 5, suffix: " min without CPU use") { v in model.updateSettings { $0.tabIdleMinutes = v } }
+                stepper(s.unusedApplicationHours, 1...168, label: { "List an open application as unused after \($0) h without being in front" }) { v in model.updateSettings { $0.unusedApplicationHours = v } }
+                stepper(s.tabIdleMinutes, 5...720, step: 5, label: { "Call a browser tab idle after \($0) min without CPU use" }) { v in model.updateSettings { $0.tabIdleMinutes = v } }
                 Text("Never list as unused:").font(.system(size: 11)).foregroundStyle(Theme.secondary)
                 ForEach(s.keepApplications, id: \.self) { name in
                     HStack {
@@ -606,10 +606,10 @@ struct SettingsSection: View {
                 picker("When a project is idle", selection: s.idleContainerAction, options: [(.stop, "Stop its containers"), (.pause, "Pause them (continue when an agent returns)")]) { value in model.updateSettings { $0.idleContainerAction = value } }
                 Text("Stopping releases their memory inside the VM. Pausing keeps everything and resumes by itself the moment an agent session starts in the project, but the memory stays.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
-                stepper("A project is idle after", s.projectIdleGraceMinutes, 5...720, step: 5, suffix: " min without an agent session") { v in model.updateSettings { $0.projectIdleGraceMinutes = v } }
+                stepper(s.projectIdleGraceMinutes, 5...720, step: 5, label: { "A project is idle after \($0) min without an agent session" }) { v in model.updateSettings { $0.projectIdleGraceMinutes = v } }
                 toggle("Restart the Docker VM once a day to return its memory", s.refreshContainerVMNightly) { v in model.updateSettings { $0.refreshContainerVMNightly = v } }
-                stepper("Start looking for a quiet moment at", s.vmRefreshHour, 0...23, suffix: ":00") { v in model.updateSettings { $0.vmRefreshHour = v } }
-                stepper("Only when at least", Int(s.vmRefreshMinimumExcessBytes / Bytes.gb), 1...64, suffix: " GB would come back") { v in model.updateSettings { $0.vmRefreshMinimumExcessBytes = Int64(v) * Bytes.gb } }
+                stepper(s.vmRefreshHour, 0...23, label: { "Start looking for a quiet moment at \($0):00" }) { v in model.updateSettings { $0.vmRefreshHour = v } }
+                stepper(Int(s.vmRefreshMinimumExcessBytes / Bytes.gb), 1...64, label: { "Only when at least \($0) GB would come back" }) { v in model.updateSettings { $0.vmRefreshMinimumExcessBytes = Int64(v) * Bytes.gb } }
                 Text("All containers go down for about a minute and are started again. Skipped while an agent session is working or a kept container is running. If the Mac slept through the hour, it catches up at the next quiet moment.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
                 if let report = model.live?.containers, report.product.lowercased().contains("docker desktop") {
@@ -660,8 +660,8 @@ struct SettingsSection: View {
 
             group("Processes", "Automatic termination is off unless you enable it, and even then covers only verified, idle, orphaned build and test processes while memory pressure is elevated, and language servers whose editor has exited.") {
                 toggle("Terminate verified abandoned build/test processes and orphaned language servers automatically", s.autoTerminateAbandoned) { v in model.updateSettings { $0.autoTerminateAbandoned = v } }
-                stepper("Call a process idle after", s.idleMinutesBeforeAbandoned, 5...720, step: 5, suffix: " min without CPU activity") { v in model.updateSettings { $0.idleMinutesBeforeAbandoned = v } }
-                stepper("Wait", s.gracefulTerminationSeconds, 2...120, suffix: " s for a graceful exit") { v in model.updateSettings { $0.gracefulTerminationSeconds = v } }
+                stepper(s.idleMinutesBeforeAbandoned, 5...720, step: 5, label: { "Call a process idle after \($0) min without CPU activity" }) { v in model.updateSettings { $0.idleMinutesBeforeAbandoned = v } }
+                stepper(s.gracefulTerminationSeconds, 2...120, label: { "Wait \($0) s for a graceful exit" }) { v in model.updateSettings { $0.gracefulTerminationSeconds = v } }
             }
 
             Caption("Safety").padding(.top, 6)
@@ -710,7 +710,9 @@ struct SettingsSection: View {
         }
     }
 
-    private func group<Content: View>(_ title: String, _ subtitle: String, @ViewBuilder content: () -> Content) -> some View {
+    /// `title` is a translation key and also the group's identity (its English text).
+    private func group<Content: View>(_ resource: LocalizedStringResource, _ subtitle: LocalizedStringKey, @ViewBuilder content: () -> Content) -> some View {
+        let title = resource.key
         let open = expanded.contains(title)
         let state = status(title, model.settings)
         return VStack(alignment: .leading, spacing: 8) {
@@ -720,7 +722,7 @@ struct SettingsSection: View {
                 HStack(spacing: 8) {
                     Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.tertiary)
                         .rotationEffect(.degrees(open ? 90 : 0))
-                    Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                    Text(resource).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                     Spacer(minLength: 8)
                     if let state { Badge(text: state.text, tint: state.on ? Theme.forest : Theme.tertiary) }
                 }
@@ -736,7 +738,7 @@ struct SettingsSection: View {
         .panel(padding: open ? 12 : 10)
     }
 
-    static let weekdays: [(Int, String)] = [(2, "Monday"), (3, "Tuesday"), (4, "Wednesday"), (5, "Thursday"), (6, "Friday"), (7, "Saturday"), (1, "Sunday")]
+    static let weekdays: [(Int, LocalizedStringKey)] = [(2, "Monday"), (3, "Tuesday"), (4, "Wednesday"), (5, "Thursday"), (6, "Friday"), (7, "Saturday"), (1, "Sunday")]
 
     static let groupTitles = [
         "Leave alone", "Project roots", "Monitoring", "Cleanup", "Disk: Docker", "Disk: projects left untouched", "Disk: tool caches", "Disk: application caches", "Disk: Android emulators",
@@ -858,20 +860,23 @@ struct SettingsSection: View {
         }
     }
 
-    private func toggle(_ title: String, _ value: Bool, set: @escaping @MainActor @Sendable (Bool) -> Void) -> some View {
+    private func toggle(_ title: LocalizedStringKey, _ value: Bool, set: @escaping @MainActor @Sendable (Bool) -> Void) -> some View {
         Toggle(title, isOn: Binding(get: { value }, set: set)).font(.system(size: 12)).toggleStyle(.checkbox)
     }
 
-    private func stepper(_ prefix: String, _ value: Int, _ range: ClosedRange<Int>, step: Int = 1, suffix: String, set: @escaping @MainActor @Sendable (Int) -> Void) -> some View {
+    /// The label is one whole sentence with the number in it, so a translation can decline it.
+    private func stepper(
+        _ value: Int, _ range: ClosedRange<Int>, step: Int = 1, label: (Int) -> LocalizedStringResource, set: @escaping @MainActor @Sendable (Int) -> Void
+    ) -> some View {
         Stepper(value: Binding(get: { value }, set: { set(min(range.upperBound, max(range.lowerBound, $0))) }), in: range, step: step) {
-            Text("\(prefix) \(value)\(suffix)").font(.system(size: 12)).monospacedDigit().foregroundStyle(Theme.text)
+            Text(label(value)).font(.system(size: 12)).monospacedDigit().foregroundStyle(Theme.text)
         }
         .accessibilityValue("\(value)")
     }
 
-    private func picker<T: Hashable & Sendable>(_ title: String, selection: T, options: [(T, String)], set: @escaping @MainActor @Sendable (T) -> Void) -> some View {
+    private func picker<T: Hashable & Sendable>(_ title: LocalizedStringKey, selection: T, options: [(T, LocalizedStringKey)], set: @escaping @MainActor @Sendable (T) -> Void) -> some View {
         Picker(title, selection: Binding(get: { selection }, set: set)) {
-            ForEach(options, id: \.0) { Text($0.1).tag($0.0) }
+            ForEach(options.indices, id: \.self) { Text(options[$0].1).tag(options[$0].0) }
         }
         .font(.system(size: 12)).frame(maxWidth: 420)
     }

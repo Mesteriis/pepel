@@ -67,15 +67,28 @@ extension View {
     }
 }
 
+/// Literals passed to these primitives are translation keys (as with `Text`); a `String` built
+/// elsewhere is shown as it is, so it must already be localized (`L(...)`).
 struct SectionTitle: View {
-    let title: String
-    var subtitle: String?
+    let title: Text
+    var subtitle: Text?
+
+    init(title: LocalizedStringKey, subtitle: LocalizedStringKey? = nil) {
+        self.title = Text(title)
+        self.subtitle = subtitle.map { Text($0) }
+    }
+
+    @_disfavoredOverload
+    init(title: LocalizedStringKey, subtitle: String?) {
+        self.title = Text(title)
+        self.subtitle = subtitle.map { Text(verbatim: $0) }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.system(size: 20, weight: .semibold)).foregroundStyle(Theme.text)
+            title.font(.system(size: 20, weight: .semibold)).foregroundStyle(Theme.text)
             if let subtitle {
-                Text(subtitle).font(.system(size: 12)).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
+                subtitle.font(.system(size: 12)).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
             }
         }
         .accessibilityElement(children: .combine)
@@ -84,17 +97,20 @@ struct SectionTitle: View {
 }
 
 struct Caption: View {
-    let text: String
-    init(_ text: String) { self.text = text }
+    let text: Text
+    init(_ key: LocalizedStringKey) { text = Text(key) }
+    @_disfavoredOverload init(_ text: String) { self.text = Text(verbatim: text) }
 
     var body: some View {
-        Text(text.uppercased()).font(.system(size: 10, weight: .semibold)).kerning(0.6).foregroundStyle(Theme.tertiary)
+        text.textCase(.uppercase).font(.system(size: 10, weight: .semibold)).kerning(0.6).foregroundStyle(Theme.tertiary)
     }
 }
 
 struct MetricTile: View {
-    let label: String
+    let label: LocalizedStringKey
+    /// A figure, shown as it is.
     let value: String
+    /// Already localized (`L(...)`).
     var detail: String?
     var tint: Color = Theme.text
     var fraction: Double?
@@ -112,7 +128,7 @@ struct MetricTile: View {
         .frame(maxHeight: .infinity, alignment: .topLeading)
         .panel(padding: 11)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(label): \(value)\(detail.map { ", \($0)" } ?? "")")
+        .accessibilityLabel(Text(label) + Text(verbatim: ": \(value)\(detail.map { ", \($0)" } ?? "")"))
     }
 }
 
@@ -135,11 +151,22 @@ struct Meter: View {
 }
 
 struct Badge: View {
-    let text: String
+    let text: Text
     var tint: Color = Theme.secondary
 
+    init(text: LocalizedStringKey, tint: Color = Theme.secondary) {
+        self.text = Text(text)
+        self.tint = tint
+    }
+
+    @_disfavoredOverload
+    init(text: String, tint: Color = Theme.secondary) {
+        self.text = Text(verbatim: text)
+        self.tint = tint
+    }
+
     var body: some View {
-        Text(text).font(.system(size: 10, weight: .semibold)).foregroundStyle(tint)
+        text.font(.system(size: 10, weight: .semibold)).foregroundStyle(tint)
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(tint.opacity(0.14), in: Capsule())
             .lineLimit(1).fixedSize()
@@ -163,14 +190,27 @@ struct ConfidenceBadge: View {
 
 struct EmptyState: View {
     let symbol: String
-    let title: String
-    let message: String
+    let title: Text
+    let message: Text
+
+    init(symbol: String, title: LocalizedStringKey, message: LocalizedStringKey) {
+        self.symbol = symbol
+        self.title = Text(title)
+        self.message = Text(message)
+    }
+
+    @_disfavoredOverload
+    init(symbol: String, title: String, message: String) {
+        self.symbol = symbol
+        self.title = Text(verbatim: title)
+        self.message = Text(verbatim: message)
+    }
 
     var body: some View {
         VStack(spacing: 6) {
             Image(systemName: symbol).font(.system(size: 26, weight: .light)).foregroundStyle(Theme.tertiary)
-            Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
-            Text(message).font(.system(size: 12)).foregroundStyle(Theme.secondary).multilineTextAlignment(.center).frame(maxWidth: 420)
+            title.font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+            message.font(.system(size: 12)).foregroundStyle(Theme.secondary).multilineTextAlignment(.center).frame(maxWidth: 420)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 28)
         .accessibilityElement(children: .combine)
