@@ -50,6 +50,8 @@ public struct LiveState: Codable, Sendable {
     /// Large processes inside "macOS services", restartable ones first.
     public var systemProcesses: [SystemProcess] = []
     public var restartableSystem: [ProcessAssessment] = []
+    /// Where memory use is heading, when it has been rising steadily.
+    public var forecast: MemoryForecast?
     /// Process trees PEPEL has suspended.
     public var frozen: [FrozenTree] = []
 
@@ -140,6 +142,15 @@ public enum AlertEvaluator {
                 PepelAlert(
                     id: "memory-\(live.telemetry.pressure.rawValue)", severity: live.telemetry.pressure == .critical ? .critical : .warning,
                     title: live.memory.headline, message: live.memory.detail))
+        }
+        if let live, live.telemetry.pressure == .normal, let forecast = live.forecast, settings.forecastWarnMinutes > 0,
+            forecast.reachesAt.timeIntervalSince(live.sampledAt) <= TimeInterval(settings.forecastWarnMinutes) * 60
+        {
+            // One alert per hour of the day, so it is said once and again only if it persists.
+            alerts.append(
+                PepelAlert(
+                    id: "memory-forecast-\(Int(live.sampledAt.timeIntervalSince1970 / 3600))", severity: .warning, title: "Memory will run short soon",
+                    message: forecast.sentence(now: live.sampledAt) + " Free memory now to stay ahead of it."))
         }
         for item in live?.overBudget ?? [] {
             alerts.append(

@@ -14,6 +14,15 @@ struct MemorySection: View {
             if let live = model.live {
                 SectionTitle(title: "Memory", subtitle: live.memory.headline + ". " + live.memory.detail)
                 composition(live.telemetry, developer: live.memory.developerFootprintBytes)
+                if let forecast = live.forecast {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "chart.line.uptrend.xyaxis").foregroundStyle(Theme.amber)
+                        Text(forecast.sentence()).font(.system(size: 12)).foregroundStyle(Theme.text).fixedSize(horizontal: false, vertical: true)
+                        Spacer()
+                        Button("Free memory…") { model.prepareReclaim() }.buttonStyle(QuietButtonStyle())
+                    }
+                    .panel(padding: 10)
+                }
                 owners(live)
                 growth(live)
                 unused(live)

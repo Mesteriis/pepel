@@ -297,6 +297,11 @@ public actor PepelEngine {
         recordMemory(owners: owners, now: now)
         state.growth = growthCache
         state.overBudget = OverBudget.find(owners: owners, budgets: settings.memoryBudgets)
+        if telemetry.memoryTotalBytes > 0 {
+            var samples = store.telemetryHistory(since: now.addingTimeInterval(-95 * 60)).map { MemorySample(at: $0.timestamp, bytes: $0.memoryUsed) }
+            samples.append(MemorySample(at: now, bytes: telemetry.memoryUsedBytes))
+            state.forecast = MemoryForecast.project(samples: samples, totalBytes: telemetry.memoryTotalBytes, now: now)
+        }
         state.unusedApplications = unusedApplications(owners: owners, now: now)
         // Agent sessions, the virtual machine and PEPEL's own surroundings have rules of their own.
         var excluded = Set<ProcessIdentity>()

@@ -220,6 +220,11 @@ case "simulators":
         live.simulators.map { [Bytes.format($0.footprintBytes), String($0.processCount), TimeFormat.ago($0.bootedAt), $0.name, $0.udid, $0.inUse ?? "nothing suggests it"] })
     print("\n`pepel simulators shutdown <udid or name>` (or --all) shuts one down; devices and their data stay.")
 
+case "memory" where arguments.positional.first == "forecast":
+    let live = await engine.refreshLive()
+    if arguments.json { Out.json(live.forecast); break }
+    print(live.forecast?.sentence() ?? "No forecast: memory in use has not been rising steadily over the last hour and a half (PEPEL needs at least 20 minutes of readings, taken every five minutes).")
+
 case "memory" where arguments.positional.first == "system":
     let live = await engine.refreshLive()
     if arguments.positional.dropFirst().first == "restart" {
@@ -281,6 +286,7 @@ case "memory":
     }
     let t = live.telemetry
     print("\(live.memory.headline). \(live.memory.detail)\n")
+    if let forecast = live.forecast { print("Forecast: \(forecast.sentence())\n") }
     print("Where it went: \(live.memoryExplanation)\n")
     Out.table(
         ["CHARGED", "IN RAM", "NOT IN RAM", "PROCS", "KIND", "OWNER"],

@@ -1055,6 +1055,41 @@ struct EngineTests {
         #expect(source.signals.map(\.pid) == [700])
     }
 
+    @Test("A forecast is made only from a steady rise that reaches the threshold soon; noise, a level line and a far-off date give none")
+    func memoryForecast() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let total: Int64 = 64 << 30
+        func samples(_ gib: [Double], everyMinutes: Double = 5) -> [MemorySample] {
+            gib.enumerated().map { MemorySample(at: now.addingTimeInterval(-Double(gib.count - 1 - $0.offset) * everyMinutes * 60), bytes: Int64($0.element * Double(1 << 30))) }
+        }
+        // 2 GiB every five minutes from 40 GiB: 57.6 GiB (90%) is 3.6 GiB, nine minutes, away.
+        let rising = try #require(MemoryForecast.project(samples: samples([40, 42, 44, 46, 48, 50, 52, 54]), totalBytes: total, now: now))
+        #expect(abs(rising.reachesAt.timeIntervalSince(now) - 9 * 60) < 30)
+        #expect(abs(Double(rising.perHourBytes) / Double(1 << 30) - 24) < 0.5)
+        #expect(MemoryForecast.project(samples: samples([40, 40.1, 39.9, 40, 40.1, 40, 39.9, 40]), totalBytes: total, now: now) == nil, "level")
+        #expect(MemoryForecast.project(samples: samples([40, 48, 39, 47, 41, 49, 40, 46]), totalBytes: total, now: now) == nil, "noise")
+        #expect(MemoryForecast.project(samples: samples([20, 20.3, 20.6, 20.9, 21.2, 21.5, 21.8, 22.1]), totalBytes: total, now: now) == nil, "ten hours away")
+        #expect(MemoryForecast.project(samples: samples([50, 52, 54]), totalBytes: total, now: now) == nil, "too few readings")
+        #expect(MemoryForecast.project(samples: samples([58, 59, 60, 61, 62, 63]), totalBytes: total, now: now) == nil, "already past the threshold")
+
+        // In the engine: readings from the store plus the current one; the alert carries the Free memory button.
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        let live0 = Date()
+        for (index, gib) in [40.0, 42, 44, 46, 48, 50, 52].enumerated() {
+            store.recordTelemetry(
+                SystemTelemetry(timestamp: live0.addingTimeInterval(-Double(7 - index) * 300), memoryTotalBytes: total, appMemoryBytes: Int64(gib * Double(1 << 30))), reclaimable: nil)
+        }
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: FakeProcessSource(processes: []), telemetry: { SystemTelemetry(memoryTotalBytes: total, appMemoryBytes: 54 << 30) })
+        let live = await engine.refreshLive()
+        #expect(live.forecast != nil)
+        #expect(await engine.alerts().contains { $0.id.hasPrefix("memory-forecast-") && $0.severity == .warning })
+        _ = try await engine.update { $0.forecastWarnMinutes = 0 }
+        #expect(await engine.alerts().contains { $0.id.hasPrefix("memory-forecast-") } == false)
+    }
+
     final class FlushCounter: @unchecked Sendable {
         private let lock = NSLock()
         private var value = 0

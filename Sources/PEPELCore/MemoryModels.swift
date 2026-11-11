@@ -612,3 +612,67 @@ public struct SystemProcess: Codable, Sendable, Identifiable, Hashable {
         self.note = note
     }
 }
+
+// MARK: - Forecast
+
+/// Where memory use is heading, from the readings of the last hour or so.
+public struct MemoryForecast: Codable, Sendable, Hashable {
+    /// When memory in use would reach the level at which macOS usually starts to struggle.
+    public var reachesAt: Date
+    public var perHourBytes: Int64
+    public var basedOn: TimeInterval
+    public var thresholdBytes: Int64
+    public var currentBytes: Int64
+
+    public init(reachesAt: Date, perHourBytes: Int64, basedOn: TimeInterval, thresholdBytes: Int64, currentBytes: Int64) {
+        self.reachesAt = reachesAt
+        self.perHourBytes = perHourBytes
+        self.basedOn = basedOn
+        self.thresholdBytes = thresholdBytes
+        self.currentBytes = currentBytes
+    }
+
+    /// Share of physical memory in use (application, wired and compressed) at which pressure
+    /// usually turns from normal to elevated. An estimate, stated as such wherever it is shown.
+    public static let thresholdShare = 0.9
+
+    /// A straight line through the readings. Reported only when use has been rising steadily:
+    /// at least 20 minutes and four readings, a clear upward slope that explains most of the
+    /// variation, and the threshold within the horizon. Anything less is noise, and no forecast
+    /// is better than a wrong one.
+    public static func project(
+        samples: [MemorySample], totalBytes: Int64, now: Date, window: TimeInterval = 90 * 60, horizon: TimeInterval = 3 * 3600
+    ) -> MemoryForecast? {
+        let recent = samples.filter { now.timeIntervalSince($0.at) <= window && $0.at <= now }.sorted { $0.at < $1.at }
+        guard recent.count >= 4, let first = recent.first, let last = recent.last, totalBytes > 0 else { return nil }
+        let span = last.at.timeIntervalSince(first.at)
+        guard span >= 20 * 60 else { return nil }
+        let xs = recent.map { $0.at.timeIntervalSince(first.at) }
+        let ys = recent.map { Double($0.bytes) }
+        let n = Double(recent.count)
+        let meanX = xs.reduce(0, +) / n, meanY = ys.reduce(0, +) / n
+        var sxx = 0.0, sxy = 0.0, syy = 0.0
+        for (x, y) in zip(xs, ys) {
+            sxx += (x - meanX) * (x - meanX)
+            sxy += (x - meanX) * (y - meanY)
+            syy += (y - meanY) * (y - meanY)
+        }
+        guard sxx > 0, syy > 0 else { return nil }
+        let slope = sxy / sxx  // bytes per second
+        let fit = sxy * sxy / (sxx * syy)
+        let perHour = slope * 3600
+        // At least 1% of memory per hour, and a line that explains most of what was seen.
+        guard perHour >= Double(totalBytes) * 0.01, fit >= 0.7 else { return nil }
+        let threshold = Double(totalBytes) * thresholdShare
+        let current = meanY + slope * (now.timeIntervalSince(first.at) - meanX)
+        guard current < threshold else { return nil }
+        let seconds = (threshold - current) / slope
+        guard seconds <= horizon else { return nil }
+        return MemoryForecast(
+            reachesAt: now.addingTimeInterval(seconds), perHourBytes: Int64(perHour), basedOn: span, thresholdBytes: Int64(threshold), currentBytes: Int64(current))
+    }
+
+    public func sentence(now: Date = Date()) -> String {
+        "Memory in use has risen by about \(Bytes.format(perHourBytes)) an hour over the last \(TimeFormat.age(basedOn)). At that rate it reaches \(Int(Self.thresholdShare * 100))% of this Mac's memory in about \(TimeFormat.age(max(60, reachesAt.timeIntervalSince(now)))), where macOS usually starts to struggle."
+    }
+}
