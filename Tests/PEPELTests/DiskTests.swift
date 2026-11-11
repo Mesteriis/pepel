@@ -798,6 +798,13 @@ struct AndroidEmulatorTests {
         device("kept")
         f.file(avd + "/kept.avd/.pepel-keep")
         f.file(avd + "/orphan.ini", text: "path=nowhere")
+        // An exited emulator leaves its empty lock file behind; that is not a running one.
+        f.file(avd + "/old_qa.avd/multiinstance.lock", text: "")
+        device("held")
+        f.file(avd + "/held.avd/multiinstance.lock", text: "")
+        let holder = open(avd + "/held.avd/multiinstance.lock", O_RDONLY)
+        #expect(systemFlock(holder, LOCK_EX) == 0)
+        defer { close(holder) }
         let qemu = process(900, name: "qemu-system-aarch64", path: "/opt/emulator/qemu/qemu-system-aarch64", args: ["qemu-system-aarch64", "-avd", "busy", "-no-window"])
         #expect(AndroidEmulators.runningNames([qemu, process(901, name: "emulator", args: ["emulator", "@other"])]) == ["busy", "other"])
 
@@ -805,7 +812,8 @@ struct AndroidEmulatorTests {
             paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: try PepelStore.inMemory(), tools: .disabled, analyzers: [],
             processSource: FakeProcessSource(processes: [qemu]), telemetry: { SystemTelemetry() })
         let list = await engine.androidEmulators()
-        #expect(Set(list.map(\.name)) == ["old_qa", "busy", "kept"], "an .ini without its folder is not a device")
+        #expect(Set(list.map(\.name)) == ["old_qa", "busy", "kept", "held"], "an .ini without its folder is not a device")
+        #expect(await engine.deleteAndroidEmulator("held", confirmed: true, initiator: .user) == "It is running (its lock is held).")
         #expect(list.first { $0.name == "busy" }?.running == true && list.first { $0.name == "old_qa" }?.target == "android-37.0")
         #expect(list.allSatisfy { $0.bytes >= 2 << 20 })
 

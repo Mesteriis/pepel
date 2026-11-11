@@ -54,9 +54,10 @@ public struct AndroidEmulators: Sendable {
         guard !running.contains(name) else { return "It is running." }
         guard let path = folder(of: name) else { return "No such emulator." }
         guard PathUtil.keepMarker(at: path, stopAt: home) == nil else { return "It is marked as not to be cleaned." }
-        // The lock file the emulator keeps while it runs, in case it was started some other way.
-        if FileManager.default.fileExists(atPath: path + "/hardware-qemu.ini.lock") || FileManager.default.fileExists(atPath: path + "/multiinstance.lock") {
-            return "It looks as if it is running (its lock file is present)."
+        // In case it was started some other way: the emulator holds a lock while it runs. The lock
+        // files themselves stay behind after it exits, so what counts is whether one is held.
+        if Self.isLockHeld(path + "/multiinstance.lock") || Self.isLockHeld(path + "/hardware-qemu.ini.lock") {
+            return "It is running (its lock is held)."
         }
         do {
             try FileManager.default.removeItem(atPath: path)
@@ -66,4 +67,30 @@ public struct AndroidEmulators: Sendable {
         try? FileManager.default.removeItem(atPath: directory + "/" + name + ".ini")
         return nil
     }
+
+    /// Whether some process holds a lock on the file, or (older emulators) whether the process
+    /// named in a lock folder is alive. A lock file nobody holds is what an exited emulator leaves.
+    static func isLockHeld(_ path: String) -> Bool {
+        var info = stat()
+        guard lstat(path, &info) == 0 else { return false }
+        if (info.st_mode & S_IFMT) == S_IFDIR {
+            guard let text = try? String(contentsOfFile: path + "/pid", encoding: .utf8), let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
+            return kill(pid, 0) == 0 || errno == EPERM
+        }
+        let descriptor = open(path, O_RDONLY | O_CLOEXEC)
+        guard descriptor >= 0 else { return false }
+        defer { close(descriptor) }
+        // A record lock held by another process.
+        var probe = flock()
+        probe.l_type = Int16(F_WRLCK)
+        probe.l_whence = Int16(SEEK_SET)
+        if fcntl(descriptor, F_GETLK, &probe) == 0, probe.l_type != Int16(F_UNLCK) { return true }
+        // A whole-file lock, by anyone.
+        if systemFlock(descriptor, LOCK_SH | LOCK_NB) != 0 { return errno == EWOULDBLOCK }
+        _ = systemFlock(descriptor, LOCK_UN)
+        return false
+    }
 }
+
+/// `flock(2)`. In Swift the name also means the C struct used with `fcntl`, so it is reached by its symbol.
+@_silgen_name("flock") public func systemFlock(_ descriptor: Int32, _ operation: Int32) -> Int32
