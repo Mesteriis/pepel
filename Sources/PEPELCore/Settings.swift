@@ -132,6 +132,11 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     /// Largest size any one tool cache may keep, in GB; 0 means no limit. When a cache is larger,
     /// its least recently used entries go first.
     public var cacheSizeLimitGB = 0
+    /// Once a day, remove caches of applications that are not running and have not used them for `appCacheUnusedDays`.
+    public var cleanAppCaches = false
+    public var appCacheUnusedDays = 30
+    /// What a removed application left behind is listed once it has been untouched this long.
+    public var leftoverDays = 90
     public var freezeIdleAgents = false
     public var freezeAfterMinutes = 20
     /// How often a frozen session is woken for a moment to see whether work is waiting.

@@ -320,3 +320,43 @@ public struct CacheTrimReport: Codable, Sendable, Hashable {
 
     public var bytes: Int64 { steps.reduce(0) { $0 + $1.bytes } }
 }
+
+public enum ApplicationDataOwner: String, Codable, Sendable {
+    /// The application is running now.
+    case running
+    case installed
+    /// Named by a bundle identifier that no installed application has.
+    case removed
+    /// Not named in a way that says whose it is (often a command-line tool).
+    case unknown
+}
+
+/// A folder an application keeps in the Library: its cache, or what it left behind.
+public struct ApplicationData: Codable, Sendable, Identifiable, Hashable {
+    public enum Kind: String, Codable, Sendable {
+        case cache, leftover
+    }
+
+    public var name: String
+    public var path: String
+    public var kind: Kind
+    public var owner: ApplicationDataOwner
+    public var bytes: Int64
+    public var lastUse: Date?
+
+    public var id: String { path }
+
+    public init(name: String, path: String, kind: Kind, owner: ApplicationDataOwner, bytes: Int64, lastUse: Date?) {
+        self.name = name
+        self.path = path
+        self.kind = kind
+        self.owner = owner
+        self.bytes = bytes
+        self.lastUse = lastUse
+    }
+
+    public func unused(days: Int, now: Date = Date()) -> Bool {
+        guard let lastUse else { return false }
+        return now.timeIntervalSince(lastUse) >= Double(days) * 86_400
+    }
+}

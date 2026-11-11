@@ -9,6 +9,9 @@ struct StorageSection: View {
     @State private var confirmDocker = false
     @State private var confirmVolumes = false
     @State private var confirmCaches = false
+    @State private var confirmAppCaches = false
+    @State private var confirmUnknownCaches = false
+    @State private var confirmLeftovers = false
 
     private func matches(_ item: StorageItem) -> Bool {
         if let filter, item.safety != filter { return false }
@@ -131,6 +134,69 @@ struct StorageSection: View {
         }
     }
 
+    /// Application caches by owner and last use, and what removed applications left behind.
+    @ViewBuilder private var applicationData: some View {
+        let days = model.settings.appCacheUnusedDays
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Caption("Application caches")
+                Spacer()
+                if model.isMeasuringAppData { ProgressView().controlSize(.small) }
+                Button(model.appCaches == nil ? "Measure" : "Measure again") { model.measureApplicationData() }.buttonStyle(QuietButtonStyle()).disabled(model.isMeasuringAppData)
+            }
+            if let caches = model.appCaches {
+                let known = caches.filter { ($0.owner == .installed || $0.owner == .removed) && $0.unused(days: days) }
+                let unknown = caches.filter { $0.owner == .unknown && $0.unused(days: days) }
+                ForEach(caches.prefix(12)) { cache in
+                    HStack(spacing: 10) {
+                        Badge(
+                            text: cache.owner == .running ? "running" : cache.owner == .installed ? "installed" : cache.owner == .removed ? "removed" : "unknown",
+                            tint: cache.owner == .running ? Theme.forest : cache.owner == .removed ? Theme.amber : Theme.tertiary)
+                        Text(cache.name).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
+                        Spacer()
+                        Text(cache.lastUse.map { "used \(TimeFormat.ago($0))" } ?? "").font(.system(size: 11)).monospacedDigit()
+                            .foregroundStyle(cache.unused(days: days) && cache.owner != .running ? Theme.copper : Theme.tertiary)
+                        Text(Bytes.format(cache.bytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)
+                    }
+                }
+                if caches.count > 12 { Text("and \(caches.count - 12) smaller ones").font(.system(size: 11)).foregroundStyle(Theme.tertiary) }
+                HStack(spacing: 8) {
+                    Button("Remove \(known.count) unused \(days)+ days · \(Bytes.format(known.reduce(0) { $0 + $1.bytes }))…") { confirmAppCaches = true }
+                        .buttonStyle(CopperButtonStyle(prominent: false)).disabled(known.isEmpty || model.isMeasuringAppData)
+                    Button("Also \(unknown.count) of unknown owner · \(Bytes.format(unknown.reduce(0) { $0 + $1.bytes }))…") { confirmUnknownCaches = true }
+                        .buttonStyle(QuietButtonStyle()).disabled(unknown.isEmpty || model.isMeasuringAppData)
+                    if !model.appLeftovers.isEmpty {
+                        Button("Trash \(model.appLeftovers.count) leftovers of removed applications · \(Bytes.format(model.appLeftovers.reduce(0) { $0 + $1.bytes }))…") { confirmLeftovers = true }
+                            .buttonStyle(QuietButtonStyle()).disabled(model.isMeasuringAppData)
+                    }
+                }
+                Text("A cache is removed only when its application is not running and nothing in it was used for \(days) days. \"Unknown\" are folders PEPEL cannot tie to an application, often command-line tools. What a removed application left elsewhere in the Library may hold documents, so it only ever goes to the Trash.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Measuring walks ~/Library/Caches and takes some seconds; nothing is removed.").font(.system(size: 12)).foregroundStyle(Theme.secondary)
+            }
+        }
+        .panel()
+        .confirmationDialog("Remove unused application caches?", isPresented: $confirmAppCaches, titleVisibility: .visible) {
+            Button("Remove") { model.cleanApplicationCaches(includeUnknown: false) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Caches of applications that are not running, or no longer installed, and that have not been used for \(days) days. An application rebuilds its cache when it needs it.")
+        }
+        .confirmationDialog("Remove caches of unknown owner too?", isPresented: $confirmUnknownCaches, titleVisibility: .visible) {
+            Button("Remove") { model.cleanApplicationCaches(includeUnknown: true) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("These folders in ~/Library/Caches are not named after an installed application. They are caches by location, unused for \(days) days, but PEPEL cannot say whose they are.")
+        }
+        .confirmationDialog("Move leftovers of removed applications to the Trash?", isPresented: $confirmLeftovers, titleVisibility: .visible) {
+            Button("Move to Trash") { model.trashLeftovers() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Folders named after applications that are no longer installed, untouched for \(model.settings.leftoverDays) days. They can be taken back from the Trash.")
+        }
+    }
+
     private func dockerRow(_ title: String, _ count: Int, _ bytes: Int64, _ candidates: Int, _ free: Int64, tint: Color = Theme.copper) -> some View {
         GridRow {
             Text(title).foregroundStyle(Theme.text)
@@ -149,6 +215,7 @@ struct StorageSection: View {
                 subtitle: "Developer artifacts found on this Mac. Sizes are blocks allocated on disk; where files are hard-linked, cloned or unreadable the figure is an upper bound, marked ≤.")
             docker
             caches
+            applicationData
             if let storage = model.storage {
                 breakdown(storage)
                 controls(storage)

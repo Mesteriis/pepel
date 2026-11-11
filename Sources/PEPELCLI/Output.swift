@@ -102,6 +102,8 @@ enum Out {
           pepel memory growth              Applications, sessions and tools whose memory keeps growing
           pepel apps [restart|quit <name>] Applications by memory; ask one to quit, or to quit and open again
           pepel apps tabs [unload]         Browser tab processes by memory; unload the idle ones
+          pepel apps caches [clean]        Application caches by size and last use; remove the unused ones
+          pepel apps leftovers [trash]     What removed applications left in the Library; move it to the Trash
           pepel apps unused                Open applications not used for hours and idle in the background
           pepel memory                     Memory pressure, swap and the largest consumers
           pepel processes [--all]          Developer processes and whether they look abandoned

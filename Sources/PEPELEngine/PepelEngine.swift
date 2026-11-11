@@ -28,6 +28,10 @@ public actor PepelEngine {
     var containerReport: ContainerReport?
     var fileCacheFlusher: FileCacheFlusher = .unavailable
     var containerPeaks: [Int: Int64]?
+    /// Replaces the list of installed applications; tests use a fixed one.
+    var installedApplicationsOverride: InstalledApplications?
+
+    public func setInstalledApplications(_ installed: InstalledApplications?) { installedApplicationsOverride = installed }
     /// The latest reading of what Docker keeps on disk; nil until asked for.
     public internal(set) var lastDockerDisk: DockerDiskReport?
     /// True in the process that watches continuously (the app); a one-off command does not add readings.

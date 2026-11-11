@@ -454,3 +454,18 @@ extension CleanupPolicyEngine {
         }
     }
 }
+
+extension CleanupPolicyEngine {
+    /// Application caches may be removed by a person or by the daily rule. What a removed
+    /// application left behind may hold documents, so only a person can have it moved, and only
+    /// to the Trash.
+    public func applicationDataDenial(_ kind: ApplicationData.Kind, confirmed: Bool, initiator: Initiator, settings: PepelSettings) -> String? {
+        switch initiator {
+        case .agent: return "Agents cannot have application data removed."
+        case .automatic:
+            if kind == .leftover { return "What removed applications left behind is only moved to the Trash when you ask." }
+            return settings.cleanAppCaches && !settings.paused ? nil : "Automatic cleaning of application caches is not enabled."
+        case .user, .cli: return confirmed ? nil : "This needs your confirmation."
+        }
+    }
+}

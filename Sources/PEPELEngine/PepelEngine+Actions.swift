@@ -88,6 +88,7 @@ extension PepelEngine {
         _ = await nightlyVMRefresh()
         _ = await autoCleanDocker()
         _ = await autoTrimCaches()
+        await autoCleanApplicationCaches()
         if let stale = await autoCleanStaleProjects(), stale.succeededCount > 0 { cleanup = stale }
         if settings.monitoringMode == .automaticSafe, let storage {
             let safe = Set(storage.items.filter { $0.safety == .safe }.map(\.id))

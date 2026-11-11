@@ -511,6 +511,44 @@ public final class AppModel {
         }
     }
 
+    // MARK: Application caches and leftovers
+
+    public var appCaches: [ApplicationData]?
+    public var appLeftovers: [ApplicationData] = []
+    public var isMeasuringAppData = false
+
+    public func measureApplicationData() {
+        guard !isMeasuringAppData else { return }
+        isMeasuringAppData = true
+        Task {
+            let data = await engine.applicationData()
+            appCaches = data.caches
+            appLeftovers = data.leftovers
+            isMeasuringAppData = false
+        }
+    }
+
+    public func cleanApplicationCaches(includeUnknown: Bool) {
+        isMeasuringAppData = true
+        Task {
+            let result = await engine.cleanApplicationCaches(includeUnknown: includeUnknown, confirmed: true, initiator: .user)
+            isMeasuringAppData = false
+            message = result.denial.map { "Not done: \($0)" } ?? result.report.map { "Removed \($0.removed.count) caches, \(Bytes.format($0.bytes))." }
+            measureApplicationData()
+            refreshSecondary()
+        }
+    }
+
+    public func trashLeftovers() {
+        isMeasuringAppData = true
+        Task {
+            let result = await engine.trashApplicationLeftovers(confirmed: true, initiator: .user)
+            isMeasuringAppData = false
+            message = result.denial.map { "Not done: \($0)" } ?? result.report.map { "Moved \($0.removed.count) folders (\(Bytes.format($0.bytes))) to the Trash." }
+            measureApplicationData()
+        }
+    }
+
     // MARK: Tool caches
 
     public var managedCaches: [ManagedCache]?

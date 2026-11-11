@@ -172,6 +172,42 @@ case "builds":
 case "apps":
     let live = await engine.refreshLive()
     let apps = live.memoryOwners.filter { $0.kind == .application }
+    if arguments.positional.first == "caches" || arguments.positional.first == "leftovers" {
+        let settings = await engine.currentSettings()
+        let days = arguments.options["days"].flatMap { Int($0) } ?? settings.appCacheUnusedDays
+        if arguments.positional.first == "leftovers" {
+            if arguments.positional.dropFirst().first == "trash" {
+                guard arguments.flags.contains("yes") || Out.confirm("Move what removed applications left behind to the Trash?") else { print("Nothing was moved."); break }
+                let result = await engine.trashApplicationLeftovers(confirmed: true, initiator: .cli)
+                print(result.denial.map { "Not done: \($0)" } ?? result.report.map { "Moved \($0.removed.count) folders (\(Bytes.format($0.bytes))) to the Trash\($0.kept.isEmpty ? "" : "; \($0.kept.count) could not be moved")." } ?? "")
+                break
+            }
+            print("Measuring…")
+            let data = await engine.applicationData()
+            if arguments.json { Out.json(data.leftovers); break }
+            guard !data.leftovers.isEmpty else { print("Nothing left by removed applications has been untouched for \(settings.leftoverDays) days."); break }
+            Out.table(["SIZE", "LAST USED", "WHERE"], data.leftovers.map { [Bytes.format($0.bytes), $0.lastUse.map { TimeFormat.ago($0) } ?? "—", PathUtil.display($0.path, home: appPaths.home)] })
+            print("\n\(Bytes.format(data.leftovers.reduce(0) { $0 + $1.bytes })) in folders named after applications that are no longer installed. `pepel apps leftovers trash` moves them to the Trash.")
+            break
+        }
+        if arguments.positional.dropFirst().first == "clean" {
+            let unknown = arguments.flags.contains("unknown")
+            guard arguments.flags.contains("yes") || Out.confirm("Remove application caches unused for \(days) days\(unknown ? ", including ones PEPEL cannot tie to an application" : "")?") else { print("Nothing was removed."); break }
+            let result = await engine.cleanApplicationCaches(days: days, includeUnknown: unknown, confirmed: true, initiator: .cli)
+            print(result.denial.map { "Not done: \($0)" } ?? result.report.map { "Removed \($0.removed.count) caches, \(Bytes.format($0.bytes))\($0.kept.isEmpty ? "" : "; \($0.kept.count) could not be removed")." } ?? "")
+            break
+        }
+        print("Measuring…")
+        let data = await engine.applicationData()
+        if arguments.json { Out.json(data.caches); break }
+        Out.table(
+            ["SIZE", "LAST USED", "APPLICATION", "CACHE"],
+            data.caches.prefix(arguments.flags.contains("all") ? 10_000 : 30).map { [Bytes.format($0.bytes), $0.lastUse.map { TimeFormat.ago($0) } ?? "—", $0.owner.rawValue, $0.name] })
+        func total(_ owners: Set<ApplicationDataOwner>) -> Int64 { data.caches.filter { owners.contains($0.owner) && $0.unused(days: days) }.reduce(0) { $0 + $1.bytes } }
+        print("\nUnused for \(days)+ days: \(Bytes.format(total([.installed, .removed]))) of applications that are not running or are gone; \(Bytes.format(total([.unknown]))) that PEPEL cannot tie to an application.")
+        print("`pepel apps caches clean` removes the first group; add --unknown for the second. Automatic daily cleaning is \(settings.cleanAppCaches ? "on" : "off") (cleanAppCaches).")
+        break
+    }
     if arguments.positional.first == "tabs" {
         let settings = await engine.currentSettings()
         let idle = live.browserTabs.filter { $0.idleFor != nil }

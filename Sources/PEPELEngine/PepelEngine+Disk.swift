@@ -176,3 +176,112 @@ extension PepelEngine {
         return await trimCaches(confirmed: false, initiator: .automatic).report
     }
 }
+
+public struct ApplicationDataReport: Codable, Sendable {
+    public var kind: ApplicationData.Kind
+    public var removed: [String]
+    public var kept: [String]
+    public var bytes: Int64
+}
+
+/// Application caches, and what removed applications left in the Library.
+extension PepelEngine {
+    func applicationScanner() async -> ApplicationDataScanner {
+        let tools = tools, home = paths.home
+        let installed: InstalledApplications
+        if let fixed = installedApplicationsOverride {
+            installed = fixed
+        } else {
+            installed = await Task.detached(priority: .utility) { InstalledApplications.find(tools: tools, home: home) }.value
+        }
+        var running = Set<String>()
+        for app in applicationControl.running() {
+            if let data = FileManager.default.contents(atPath: app.bundlePath + "/Contents/Info.plist"),
+                let plist = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any], let id = plist["CFBundleIdentifier"] as? String
+            {
+                running.insert(id)
+            }
+        }
+        return ApplicationDataScanner(home: home, installed: installed, running: running)
+    }
+
+    /// Measures application caches and leftovers (walks the folders; some seconds).
+    public func applicationData() async -> (caches: [ApplicationData], leftovers: [ApplicationData]) {
+        let scanner = await applicationScanner()
+        let days = settings.leftoverDays
+        return await Task.detached(priority: .utility) { (scanner.caches(), scanner.leftovers().filter { $0.unused(days: days) }) }.value
+    }
+
+    /// Caches the rule would remove: the application is installed but not running, or gone, and
+    /// nothing in the cache was used for `days`. Caches PEPEL cannot tie to anything are added only on request.
+    static func removableCaches(_ caches: [ApplicationData], days: Int, includeUnknown: Bool) -> [ApplicationData] {
+        caches.filter { cache in
+            guard cache.unused(days: days) else { return false }
+            switch cache.owner {
+            case .running: return false
+            case .installed, .removed: return true
+            case .unknown: return includeUnknown
+            }
+        }
+    }
+
+    public func cleanApplicationCaches(days: Int? = nil, includeUnknown: Bool = false, confirmed: Bool, initiator: Initiator) async -> (denial: String?, report: ApplicationDataReport?) {
+        if let denial = policy.applicationDataDenial(.cache, confirmed: confirmed, initiator: initiator, settings: settings) { return (denial, nil) }
+        let scanner = await applicationScanner()
+        let age = days ?? settings.appCacheUnusedDays
+        let report = await Task.detached(priority: .utility) { () -> ApplicationDataReport in
+            // Measured now, so that what is removed is what is there now.
+            var report = ApplicationDataReport(kind: .cache, removed: [], kept: [], bytes: 0)
+            for cache in Self.removableCaches(scanner.caches(), days: age, includeUnknown: includeUnknown) {
+                guard scanner.isManageable(cache), (try? FileManager.default.removeItem(atPath: cache.path)) != nil else {
+                    report.kept.append(cache.name)
+                    continue
+                }
+                report.removed.append(cache.name)
+                report.bytes += cache.bytes
+            }
+            return report
+        }.value
+        if !report.removed.isEmpty {
+            store.appendAudit(
+                AuditEntry(
+                    kind: .cleanup, initiator: initiator.rawValue, subject: "Application caches: \(report.removed.count)", outcome: "removed", bytes: report.bytes,
+                    detail: ["unusedForDays": "\(age)", "names": report.removed.prefix(40).joined(separator: ", ")]))
+        }
+        return (nil, report)
+    }
+
+    /// Moves what removed applications left behind to the Trash, where it can be taken back.
+    public func trashApplicationLeftovers(confirmed: Bool, initiator: Initiator) async -> (denial: String?, report: ApplicationDataReport?) {
+        if let denial = policy.applicationDataDenial(.leftover, confirmed: confirmed, initiator: initiator, settings: settings) { return (denial, nil) }
+        let scanner = await applicationScanner()
+        let days = settings.leftoverDays
+        let report = await Task.detached(priority: .utility) { () -> ApplicationDataReport in
+            var report = ApplicationDataReport(kind: .leftover, removed: [], kept: [], bytes: 0)
+            for item in scanner.leftovers() where item.unused(days: days) {
+                guard scanner.isManageable(item), (try? FileManager.default.trashItem(at: URL(fileURLWithPath: item.path), resultingItemURL: nil)) != nil else {
+                    report.kept.append(item.name)
+                    continue
+                }
+                report.removed.append(item.name)
+                report.bytes += item.bytes
+            }
+            return report
+        }.value
+        if !report.removed.isEmpty {
+            store.appendAudit(
+                AuditEntry(
+                    kind: .cleanup, initiator: initiator.rawValue, subject: "Left by removed applications: \(report.removed.count)", outcome: "trashed", bytes: report.bytes,
+                    detail: ["names": report.removed.prefix(40).joined(separator: ", ")]))
+        }
+        return (nil, report)
+    }
+
+    func autoCleanApplicationCaches(now: Date = Date()) async {
+        guard settings.cleanAppCaches, !settings.paused else { return }
+        let last = store.value("appcaches.lastAutoClean").flatMap(Double.init).map { Date(timeIntervalSince1970: $0) } ?? .distantPast
+        guard now.timeIntervalSince(last) >= 20 * 3600 else { return }
+        try? store.setValue(String(now.timeIntervalSince1970), for: "appcaches.lastAutoClean")
+        _ = await cleanApplicationCaches(confirmed: false, initiator: .automatic)
+    }
+}

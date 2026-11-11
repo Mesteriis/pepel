@@ -273,6 +273,14 @@ struct SettingsSection: View {
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
 
+            group("Disk: application caches", "Folders in ~/Library/Caches. An application rebuilds its cache when it needs it.") {
+                toggle("Once a day, remove caches of applications that are not running and have not used them", s.cleanAppCaches) { v in model.updateSettings { $0.cleanAppCaches = v } }
+                stepper("Unused means untouched for", s.appCacheUnusedDays, 1...365, suffix: " days") { v in model.updateSettings { $0.appCacheUnusedDays = v } }
+                stepper("List what a removed application left behind after", s.leftoverDays, 7...730, step: 7, suffix: " days untouched") { v in model.updateSettings { $0.leftoverDays = v } }
+                Text("Caches PEPEL cannot tie to an application, and what removed applications left elsewhere in the Library, are never removed automatically.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+
             group("Build retention", "Defaults for every project. Active and pinned builds are always kept.") {
                 stepper("Keep the last", s.defaultRetention.keepSuccessful, 1...20, suffix: " builds") { v in model.updateSettings { $0.defaultRetention.keepSuccessful = v } }
                 stepper("Keep the last", s.defaultRetention.keepFailed, 0...20, suffix: " failed builds") { v in model.updateSettings { $0.defaultRetention.keepFailed = v } }

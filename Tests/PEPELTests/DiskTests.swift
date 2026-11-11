@@ -328,3 +328,72 @@ struct CacheTrimTests {
         #expect(store.audit(kinds: [.cleanup]).contains { $0.subject.hasPrefix("Tool caches:") && $0.initiator == "automatic" })
     }
 }
+
+@Suite("Application data")
+struct ApplicationDataTests {
+    static let installed = InstalledApplications(bundleIDs: ["com.example.editor", "company.thebrowser.dia"], names: ["Editor", "Dia", "Notes"])
+
+    @Test("A Library folder's owner is read from its name: running, installed, removed, or unknown")
+    func ownership() {
+        let apps = Self.installed
+        #expect(apps.owner(of: "com.example.editor", running: []) == .installed)
+        #expect(apps.owner(of: "com.example.editor.ShipIt", running: []) == .installed, "an updater uses the application's identifier as a prefix")
+        #expect(apps.owner(of: "com.example.editor", running: ["com.example.editor"]) == .running)
+        #expect(apps.owner(of: "company.thebrowser.dia", running: []) == .installed)
+        #expect(apps.owner(of: "com.gone.app", running: []) == .removed && apps.owner(of: "com.gone.app.savedState", running: []) == .removed)
+        #expect(apps.owner(of: "Dia", running: ["company.thebrowser.dia"]) == .running && apps.owner(of: "Notes", running: []) == .installed)
+        #expect(apps.owner(of: "staticcheck", running: []) == .unknown && apps.owner(of: "some tool.v2", running: []) == .unknown)
+    }
+
+    @Test("Only caches of applications that are not running and unused long enough are removed; leftovers go to the Trash only when a person asks")
+    func cachesAndLeftovers() async throws {
+        let f = Fixture()
+        let caches = f.home + "/Library/Caches"
+        func cache(_ name: String, daysOld: Double) {
+            f.file(caches + "/\(name)/data.bin", bytes: 30 << 20)
+            if daysOld > 0 { f.age(caches + "/\(name)", hours: 24 * daysOld) }
+        }
+        cache("com.example.editor", daysOld: 60)        // installed, unused
+        cache("company.thebrowser.dia", daysOld: 60)    // running
+        cache("com.gone.app", daysOld: 60)              // removed
+        cache("Notes", daysOld: 2)                      // installed, used recently
+        cache("staticcheck", daysOld: 60)               // unknown
+        cache("go-build", daysOld: 60)                  // managed by the tool cache rules
+        cache("com.apple.Safari", daysOld: 60)          // the system's
+        let support = f.home + "/Library/Application Support"
+        f.file(support + "/com.gone.app/documents.db", bytes: 2 << 20)
+        f.age(support + "/com.gone.app", hours: 24 * 200)
+        f.file(support + "/com.fresh.gone/state", bytes: 2 << 20)
+        f.file(support + "/com.example.editor/state", bytes: 2 << 20)
+        f.age(support + "/com.example.editor", hours: 24 * 200)
+
+        let store = try PepelStore.inMemory()
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: FakeProcessSource(processes: []), telemetry: { SystemTelemetry() })
+        await engine.setInstalledApplications(Self.installed)
+        let scanner = ApplicationDataScanner(home: f.home, installed: Self.installed, running: ["company.thebrowser.dia"])
+        #expect(Set(scanner.caches().map(\.name)) == ["com.example.editor", "company.thebrowser.dia", "com.gone.app", "Notes", "staticcheck"])
+        let removable = PepelEngine.removableCaches(scanner.caches(), days: 30, includeUnknown: false)
+        #expect(Set(removable.map(\.name)) == ["com.example.editor", "com.gone.app"])
+        #expect(Set(PepelEngine.removableCaches(scanner.caches(), days: 30, includeUnknown: true).map(\.name)) == ["com.example.editor", "com.gone.app", "staticcheck"])
+        #expect(scanner.leftovers().map(\.name).sorted() == ["com.fresh.gone", "com.gone.app"], "never the folder of an installed application")
+        var outside = scanner.caches()[0]
+        outside.path = f.home + "/Documents"
+        #expect(!scanner.isManageable(outside), "only a folder directly inside the Library folders is ever touched")
+
+        #expect(await engine.cleanApplicationCaches(confirmed: true, initiator: .agent).denial != nil)
+        _ = await engine.automaticPass()
+        #expect(PathUtil.exists(caches + "/com.example.editor"), "off by default")
+        _ = try await engine.update { $0.cleanAppCaches = true }
+        _ = await engine.automaticPass()
+        #expect(!PathUtil.exists(caches + "/com.example.editor") && !PathUtil.exists(caches + "/com.gone.app"))
+        #expect(PathUtil.exists(caches + "/Notes") && PathUtil.exists(caches + "/staticcheck") && PathUtil.exists(caches + "/go-build") && PathUtil.exists(caches + "/com.apple.Safari"))
+        #expect(PathUtil.exists(support + "/com.gone.app/documents.db"), "leftovers are never part of the automatic rule")
+
+        #expect(await engine.trashApplicationLeftovers(confirmed: true, initiator: .automatic).denial != nil)
+        #expect(await engine.trashApplicationLeftovers(confirmed: false, initiator: .user).denial != nil)
+        #expect(await engine.applicationData().leftovers.map(\.name) == ["com.gone.app"], "only what has been untouched for 90 days is listed")
+        #expect(PathUtil.exists(support + "/com.example.editor/state") && PathUtil.exists(support + "/com.fresh.gone/state"))
+    }
+}
