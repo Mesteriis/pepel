@@ -176,7 +176,7 @@ struct MemorySection: View {
                     .foregroundStyle(Theme.text)
                     .help(group.containers.map { "\($0.name): \(Bytes.format($0.memoryBytes))\($0.isKept ? " — kept" : "")" }.joined(separator: "\n"))
                 }
-                Text("The limit is set in \(report.product) › Settings › Resources. PEPEL does not change it and does not stop or restart containers. \(report.total - report.running) stopped containers use no memory.")
+                Text("The limit is set in \(report.product) › Settings › Resources; PEPEL does not change it. Containers are stopped, never removed. \(report.total - report.running) stopped containers use no memory.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
             .panel()

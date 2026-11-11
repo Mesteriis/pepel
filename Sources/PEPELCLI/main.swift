@@ -267,7 +267,7 @@ case "containers":
             })
     }
     print("\n\(report.total - report.running) more container\(report.total - report.running == 1 ? " is" : "s are") stopped and use no memory.")
-    print("The limit is set in \(report.product) › Settings › Resources. PEPEL does not change it and does not stop or restart containers.")
+    print("The limit is set in \(report.product) › Settings › Resources; PEPEL does not change it. `pepel containers refresh-vm` restarts the VM to return its memory.")
 
 case "leftovers":
     let live = await engine.refreshLive()
