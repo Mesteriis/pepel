@@ -98,6 +98,10 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     public var unusedApplicationHours = 6
     /// Applications never listed as unused (by name), such as a music player or a messenger.
     public var keepApplications: [String] = []
+    /// Control-Option-Command-M opens Free memory from anywhere.
+    public var freeMemoryHotkey = false
+    /// Run the preselected Free memory steps whenever the screen is locked.
+    public var freeMemoryOnLock = false
     public var freezeIdleAgents = false
     public var freezeAfterMinutes = 20
     /// How often a frozen session is woken for a moment to see whether work is waiting.

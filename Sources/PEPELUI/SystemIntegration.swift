@@ -8,19 +8,44 @@ import UserNotifications
 enum Notifier {
     static var available: Bool { Bundle.main.bundleIdentifier != nil && Bundle.main.bundleURL.pathExtension == "app" }
 
+    static let memoryCategory = "PEPEL_MEMORY_PRESSURE"
+    static let freeAction = "PEPEL_FREE_MEMORY"
+
+    /// Receives the "Free memory" button of a memory pressure notification.
+    private final class Responder: NSObject, UNUserNotificationCenterDelegate, @unchecked Sendable {
+        var onFreeMemory: (@MainActor @Sendable () -> Void)?
+
+        func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+            guard response.actionIdentifier == Notifier.freeAction, let action = onFreeMemory else { return }
+            await MainActor.run { action() }
+        }
+    }
+    private static let responder = Responder()
+
+    /// Registers the notification button. Call once at launch, from the main thread.
+    static func configure(onFreeMemory: @escaping @MainActor @Sendable () -> Void) {
+        guard available else { return }
+        responder.onFreeMemory = onFreeMemory
+        let center = UNUserNotificationCenter.current()
+        center.delegate = responder
+        let action = UNNotificationAction(identifier: freeAction, title: "Free memory", options: [])
+        center.setNotificationCategories([UNNotificationCategory(identifier: memoryCategory, actions: [action], intentIdentifiers: [])])
+    }
+
     /// Asks for permission the first time there is actually something to say, not at launch.
-    static func post(id: String, title: String, body: String) {
+    static func post(id: String, title: String, body: String, category: String? = nil) {
         guard available else { return }
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
             guard granted else { return }
-            deliver(id: id, title: title, body: body)
+            deliver(id: id, title: title, body: body, category: category)
         }
     }
 
-    private static func deliver(id: String, title: String, body: String) {
+    private static func deliver(id: String, title: String, body: String, category: String?) {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
+        if let category { content.categoryIdentifier = category }
         // The attachment is moved by the system, so it gets its own copy of the image.
         if let source = Bundle.main.url(forResource: "NotificationIcon", withExtension: "png") {
             let copy = FileManager.default.temporaryDirectory.appendingPathComponent("pepel-notification-\(UUID().uuidString).png")

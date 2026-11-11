@@ -113,6 +113,21 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
     }
 
+    /// Opens the popover with the Free memory plan ready (the global shortcut).
+    func showFreeMemory() {
+        model.prepareReclaim()
+        guard let button = item.button, let window = button.window, window.frame.height > 0 else {
+            // The icon is not on screen (hidden by a menu bar manager): use the dashboard instead.
+            openDashboard(.memory)
+            return
+        }
+        if !popover.isShown {
+            NSApp.activate(ignoringOtherApps: true)
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            popover.contentViewController?.view.window?.makeKey()
+        }
+    }
+
     @objc private func toggle() {
         guard let button = item.button else { return }
         if popover.isShown {
@@ -143,6 +158,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         statusItem = StatusItemController(model: model) { [weak self] section in self?.showDashboard(section) }
         model.start()
+        followHotKeySetting()
+    }
+
+    private let hotKey = HotKey()
+
+    /// Registers or releases the global shortcut whenever the setting changes.
+    private func followHotKeySetting() {
+        withObservationTracking {
+            if model.settings.freeMemoryHotkey {
+                _ = hotKey.register { [weak self] in self?.statusItem?.showFreeMemory() }
+            } else {
+                hotKey.unregister()
+            }
+        } onChange: { [weak self] in
+            Task { @MainActor in self?.followHotKeySetting() }
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

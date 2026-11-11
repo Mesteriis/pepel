@@ -212,6 +212,10 @@ struct SettingsSection: View {
                     }
                 }
                 .onAppear { model.refreshFileCachePermission() }
+                toggle("Open Free memory with Control-Option-Command-M from anywhere", s.freeMemoryHotkey) { v in model.updateSettings { $0.freeMemoryHotkey = v } }
+                toggle("Free memory whenever the screen is locked", s.freeMemoryOnLock) { v in model.updateSettings { $0.freeMemoryOnLock = v } }
+                Text("On lock, and from the button on a memory pressure notification, PEPEL runs only the steps that are preselected in the Free memory plan, and never one that would ask for a password.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
                 toggle("Under memory pressure, act sooner", s.adaptToMemoryPressure) { v in model.updateSettings { $0.adaptToMemoryPressure = v } }
                 Text("Halves the waiting periods below under elevated pressure and quarters them under critical pressure (never under 30 minutes for an agent session), and lets the Docker VM restart outside its night window, at most every six hours. Only affects rules that are switched on.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)

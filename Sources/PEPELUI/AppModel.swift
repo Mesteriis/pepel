@@ -130,6 +130,8 @@ public final class AppModel {
         // Whatever a previous PEPEL left suspended (a crash, a forced quit) is woken first.
         engine.thawAll(reason: "PEPEL started")
         watchFrontmostApplication()
+        watchScreenLock()
+        Notifier.configure { [weak self] in self?.freeMemoryNow(trigger: "the button on a memory pressure notification") }
         Task {
             let frontmost = frontmost
             await engine.setFrontmostProvider { frontmost.get() }
@@ -184,7 +186,40 @@ public final class AppModel {
             !settings.quietHours.contains(hour: Calendar.current.component(.hour, from: Date()))
         else { return }
         for alert in alerts where alert.severity != .info && notified.insert(alert.id).inserted {
-            Notifier.post(id: alert.id, title: alert.title, body: alert.message)
+            // A memory pressure notification carries a button that frees memory right away.
+            Notifier.post(id: alert.id, title: alert.title, body: alert.message, category: alert.id.hasPrefix("memory-") ? Notifier.memoryCategory : nil)
+        }
+    }
+
+    /// Frees memory on a standing instruction (the notification button, the screen locking) and
+    /// says what came of it.
+    public func freeMemoryNow(trigger: String) {
+        guard !isReclaiming else { return }
+        isReclaiming = true
+        Task {
+            let report = await engine.reclaimOnStandingInstruction(trigger: trigger)
+            isReclaiming = false
+            reclaimReport = report ?? reclaimReport
+            live = await engine.live
+            refreshSecondary()
+            if let report, settings.notificationsEnabled {
+                let done = report.results.map { "\($0.title.lowercased()): \($0.done)" }.joined(separator: ", ")
+                Notifier.post(
+                    id: "free-\(Int(report.finishedAt.timeIntervalSince1970))", title: "Memory freed",
+                    body: "Memory used \(Bytes.format(report.before.memoryUsedBytes)) → \(Bytes.format(report.after.memoryUsedBytes)), free \(Bytes.format(report.before.freeBytes)) → \(Bytes.format(report.after.freeBytes)). \(done).")
+            }
+        }
+    }
+
+    private var lockObserver: NSObjectProtocol?
+
+    /// When the screen locks nobody is looking: a good moment, if the user asked for it.
+    private func watchScreenLock() {
+        lockObserver = DistributedNotificationCenter.default().addObserver(forName: Notification.Name("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.settings.freeMemoryOnLock, !self.settings.paused else { return }
+                self.freeMemoryNow(trigger: "the screen was locked")
+            }
         }
     }
 

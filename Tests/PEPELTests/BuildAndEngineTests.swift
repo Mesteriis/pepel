@@ -886,6 +886,37 @@ struct EngineTests {
         #expect(done.results.first?.done == 1 && shut.pid == 1)
     }
 
+    @Test("A standing instruction runs only preselected steps and never one that would raise a prompt")
+    func standingInstruction() async throws {
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        let old: UInt64 = UInt64((Date().timeIntervalSince1970 - 3600) * 1_000_000)
+        let orphan = process(400, name: "gopls", path: "/Users/x/go/bin/gopls", start: old)
+        let forgotten: ProcessSnapshot = {
+            var p = process(50, name: "indexer", path: "/Users/x/bin/indexer", footprint: 4_000_000_000)
+            p.residentBytes = 20_000_000
+            return p
+        }()
+        let source = FakeProcessSource(processes: [orphan, forgotten])
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: source, telemetry: { SystemTelemetry(cachedFileBytes: 6 * Bytes.gb) })
+        let flushes = FlushCounter()
+        await engine.setFileCacheFlusher(FileCacheFlusher(isAvailable: true, hasPermission: { false }, flush: { flushes.bump(); return .flushed }))
+        let first = await engine.reclaimOnStandingInstruction(trigger: "screen locked")
+        #expect(first?.results.map(\.kind) == [.abandonedProcesses], "the cache flush would prompt; the process living in swap is not preselected")
+        #expect(source.signals.map(\.pid) == [400] && flushes.count == 0)
+        #expect(store.audit(kinds: [.termination]).contains { $0.subject == "Free memory, standing instruction" && $0.outcome == "screen locked" })
+
+        // With the permission in place the flush is part of it; with nothing to do, nothing runs.
+        await engine.setFileCacheFlusher(FileCacheFlusher(isAvailable: true, hasPermission: { true }, flush: { flushes.bump(); return .flushed }))
+        let second = await engine.reclaimOnStandingInstruction(trigger: "notification")
+        #expect(second?.results.map(\.kind) == [.fileCache] && flushes.count == 1)
+        await engine.setFileCacheFlusher(.unavailable)
+        #expect(await engine.reclaimOnStandingInstruction(trigger: "notification") == nil)
+        #expect(source.snapshot().map(\.pid) == [50])
+    }
+
     final class FlushCounter: @unchecked Sendable {
         private let lock = NSLock()
         private var value = 0

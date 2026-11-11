@@ -308,4 +308,20 @@ extension PepelEngine {
         }
         return outcome
     }
+
+    /// Free memory without the plan being shown first, on a standing instruction the user gave:
+    /// the button on a memory pressure notification, or "when the screen is locked". Only the
+    /// steps that are preselected in the plan, and never one that would raise a prompt.
+    public func reclaimOnStandingInstruction(trigger: String) async -> ReclaimReport? {
+        let plan = await reclaimPlan()
+        var selection = plan.defaultSelection
+        if !fileCachePermission().granted { selection.remove(ReclaimStepKind.fileCache.rawValue) }
+        guard !selection.isEmpty else { return nil }
+        let report = await reclaim(selection, initiator: .user)
+        store.appendAudit(
+            AuditEntry(
+                kind: .termination, initiator: Initiator.user.rawValue, subject: "Free memory, standing instruction", outcome: trigger,
+                detail: ["steps": selection.sorted().joined(separator: ", ")]))
+        return report
+    }
 }
