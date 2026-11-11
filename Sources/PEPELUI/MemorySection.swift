@@ -206,6 +206,17 @@ struct MemorySection: View {
                             if let over = live.overBudget.first(where: { $0.ownerID == owner.id }) {
                                 Badge(text: "over \(Bytes.format(over.budgetBytes)) budget", tint: Theme.amber)
                             }
+                            if owner.kind == .application {
+                                Menu {
+                                    Button("Restart…") { model.requestApplication(.restart, bundlePath: String(owner.id.dropFirst(4))) }
+                                    Button("Quit…") { model.requestApplication(.quit, bundlePath: String(owner.id.dropFirst(4))) }
+                                } label: {
+                                    Image(systemName: "ellipsis").font(.system(size: 10))
+                                }
+                                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                                .help("Ask \(owner.name) to quit, or to quit and open again.")
+                                .accessibilityLabel("Actions for \(owner.name)")
+                            }
                             Badge(text: ownerLabel(owner.kind), tint: owner.kind == .agentSession ? Theme.forest : Theme.secondary)
                             if owner.confidence != .verified { ConfidenceBadge(confidence: owner.confidence) }
                             Text("\(owner.processCount) process\(owner.processCount == 1 ? "" : "es")").font(.system(size: 10)).foregroundStyle(Theme.tertiary)

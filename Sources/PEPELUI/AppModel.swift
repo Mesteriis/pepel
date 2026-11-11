@@ -454,7 +454,8 @@ public final class AppModel {
 
     public func cancelReclaim() { reclaimPlan = nil }
 
-    public var fileCachePermission: (available: Bool, granted: Bool) = (false, false)
+    /// Nil until it has been read.
+    public var fileCachePermission: (available: Bool, granted: Bool)?
 
     public func refreshFileCachePermission() {
         Task { fileCachePermission = await engine.fileCachePermission() }
@@ -478,6 +479,55 @@ public final class AppModel {
             live = await engine.live
             refreshSecondary()
         }
+    }
+
+    // MARK: Docker VM memory limit
+
+    public var pendingVMLimit: VMLimitDecision?
+
+    public func requestVMLimit(gib: Int) {
+        Task { pendingVMLimit = await engine.vmLimitDecision(Int64(gib) << 30, initiator: .user) }
+    }
+
+    public func confirmVMLimit() {
+        guard let pending = pendingVMLimit else { return }
+        pendingVMLimit = nil
+        isRefreshingVM = true
+        Task {
+            let result = await engine.setContainerVMLimit(pending.newLimitBytes, confirmed: true, initiator: .user)
+            isRefreshingVM = false
+            vmRefreshReport = result?.report ?? vmRefreshReport
+            message = result?.report.map { $0.steps.joined(separator: " ") } ?? "The limit was not changed."
+            live = await engine.live
+            refreshSecondary()
+        }
+    }
+
+    // MARK: Agents' instruction files
+
+    public struct InstructionFile: Identifiable, Sendable {
+        public var agent: String
+        public var path: String
+        public var installed: Bool
+        public var id: String { path }
+    }
+
+    public var instructionFiles: [InstructionFile] = []
+
+    public func refreshInstructionFiles() {
+        instructionFiles = AgentInstructions.status(home: engine.paths.home).map {
+            InstructionFile(agent: $0.0.agent.displayName, path: PathUtil.display($0.0.path, home: engine.paths.home), installed: $0.1)
+        }
+    }
+
+    public func installInstructions() {
+        _ = AgentInstructions.install(home: engine.paths.home, settings: settings, backupDirectory: engine.paths.supportDirectory + "/instruction-backups")
+        refreshInstructionFiles()
+    }
+
+    public func removeInstructions() {
+        _ = AgentInstructions.remove(home: engine.paths.home)
+        refreshInstructionFiles()
     }
 
     // MARK: Applications
