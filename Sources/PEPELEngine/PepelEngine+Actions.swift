@@ -82,6 +82,7 @@ extension PepelEngine {
         var cleanup: CleanupReport?
         var terminations: [TerminationReport] = []
         guard !settings.paused else { return (nil, []) }
+        _ = await stopIdleProjectContainers()
         if settings.monitoringMode == .automaticSafe, let storage {
             let safe = Set(storage.items.filter { $0.safety == .safe }.map(\.id))
             if !safe.isEmpty {
@@ -149,6 +150,38 @@ extension PepelEngine {
         let report = await terminator.terminate(approved, telemetry: readTelemetry)
         await refreshLive()
         return .completed(report)
+    }
+
+    // MARK: Containers
+
+    public func containerStopDecision(groupID: String, initiator: Initiator) async -> ContainerStopDecision? {
+        guard let report = await inspectContainers(), let group = report.groups.first(where: { $0.id == groupID }) else { return nil }
+        return policy.evaluateContainerStop(group, initiator: initiator, settings: settings, protections: store.protections(), leases: store.leases())
+    }
+
+    /// Stops the running containers of one compose project, if policy allows it.
+    public func stopContainers(groupID: String, confirmed: Bool, initiator: Initiator) async -> (decision: ContainerStopDecision, report: ContainerStopReport?)? {
+        guard let decision = await containerStopDecision(groupID: groupID, initiator: initiator) else { return nil }
+        guard let approved = policy.approveContainerStop(decision, confirmed: confirmed, initiator: initiator) else { return (decision, nil) }
+        let tools = tools, store = store
+        let report = await Task.detached(priority: .utility) { ContainerStopper(tools: tools, store: store).stop(approved) }.value
+        containerRefreshStarted = .distantPast  // read the runtime again on the next sample
+        return (decision, report)
+    }
+
+    /// Stops containers of projects no agent session has worked in for the grace period.
+    func stopIdleProjectContainers() async -> [ContainerStopReport] {
+        guard settings.stopContainersOfIdleProjects, let groups = live?.containers?.groups else { return [] }
+        var reports: [ContainerStopReport] = []
+        for group in groups where group.projectID != nil && group.agentSessions == 0 {
+            let quick = policy.evaluateContainerStop(group, initiator: .automatic, settings: settings, protections: store.protections(), leases: store.leases())
+            guard quick.verdict == .allowed else { continue }
+            // Decided again on a fresh reading of the runtime before anything is stopped.
+            if let result = await stopContainers(groupID: group.id, confirmed: false, initiator: .automatic), let report = result.report {
+                reports.append(report)
+            }
+        }
+        return reports
     }
 
     // MARK: Agent API

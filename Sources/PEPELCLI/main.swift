@@ -199,13 +199,41 @@ case "containers":
         print("No container runtime answered. Docker is not installed, or its daemon is not running.")
         break
     }
+    let containerSettings = await engine.currentSettings()
+    if arguments.positional.first == "stop" {
+        guard arguments.positional.count > 1 else { Out.error("usage: pepel containers stop <compose project> [--yes]"); exit(2) }
+        let name = arguments.positional[1]
+        guard let decision = await engine.containerStopDecision(groupID: name, initiator: .cli) else { Out.error("no running compose project named '\(name)'"); exit(1) }
+        print("\(decision.group.name): \(decision.group.containers.count) containers using \(Bytes.format(decision.group.memoryBytes))")
+        for line in decision.reasons + decision.warnings { print("  ! \(line)") }
+        guard decision.verdict != .denied else { print("PEPEL will not stop these containers."); exit(3) }
+        guard arguments.flags.contains("yes") || Out.confirm("Stop them?") else { print("Nothing was stopped."); break }
+        if let report = await engine.stopContainers(groupID: name, confirmed: true, initiator: .cli)?.report {
+            print("Stopped \(report.stopped.count) container\(report.stopped.count == 1 ? "" : "s")\(report.failed.isEmpty ? "" : "; failed: " + report.failed.joined(separator: ", ")).")
+            print("They used \(Bytes.format(report.memoryBytes)) inside the VM. The Mac gets that back only when the VM releases it.")
+        }
+        break
+    }
     if arguments.json { Out.json(report); break }
     print(report.explanation + "\n")
     Out.table(
-        ["MEMORY", "CPU", "CONTAINERS", "COMPOSE PROJECT", "PEPEL PROJECT"],
-        report.groups.map {
-            [Bytes.format($0.memoryBytes), String(format: "%.1f%%", $0.cpuPercent), String($0.containers.count), Out.truncate($0.name, 34), $0.projectID.map { ($0 as NSString).lastPathComponent } ?? "—"]
+        ["MEMORY", "CPU", "CONTAINERS", "COMPOSE PROJECT", "PEPEL PROJECT", "AGENT SESSIONS", "STATUS"],
+        report.groups.map { group in
+            let status: String
+            if group.projectID == nil {
+                status = "not tied to a project; left alone"
+            } else if group.agentSessions > 0 {
+                status = "in use"
+            } else if let idle = group.idleSince {
+                let waited = Date().timeIntervalSince(idle)
+                let grace = TimeInterval(containerSettings.projectIdleGraceMinutes) * 60
+                status = "no agent for \(TimeFormat.age(waited))" + (containerSettings.stopContainersOfIdleProjects ? (waited >= grace ? " → stopping" : " → stops in \(TimeFormat.age(grace - waited))") : "")
+            } else {
+                status = "—"
+            }
+            return [Bytes.format(group.memoryBytes), String(format: "%.1f%%", group.cpuPercent), String(group.containers.count), Out.truncate(group.name, 30), group.projectID.map { ($0 as NSString).lastPathComponent } ?? "—", String(group.agentSessions), status]
         })
+    print("\nContainers of a project with no agent session for \(containerSettings.projectIdleGraceMinutes) minutes are \(containerSettings.stopContainersOfIdleProjects ? "stopped automatically (never removed)" : "only reported; `pepel containers stop <project>` stops them by hand").")
     if arguments.flags.contains("all") {
         print("")
         Out.table(

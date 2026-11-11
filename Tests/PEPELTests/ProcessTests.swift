@@ -420,6 +420,65 @@ struct ProcessTests {
         #expect(!report(used: 8 * gib, limit: 12 * gib, host: 9 * gib).explanation.contains("charged"))
     }
 
+    @Test("Containers are stopped automatically only for a project without an agent session past the grace period")
+    func containerStopPolicy() {
+        let engine = CleanupPolicyEngine()
+        let now = Date()
+        var settings = PepelSettings()
+        func group(project: String? = "/p/app", sessions: Int = 0, idleMinutes: Double? = 45) -> ContainerGroup {
+            var g = ContainerGroup(id: "app", name: "app", projectID: project, projectConfidence: project == nil ? .unknown : .verified, containers: [ContainerMemory(name: "app-db-1", memoryBytes: 1 << 30, cpuPercent: 0)])
+            g.agentSessions = sessions
+            g.idleSince = idleMinutes.map { now.addingTimeInterval(-$0 * 60) }
+            return g
+        }
+        func verdict(_ g: ContainerGroup, _ initiator: Initiator, protections: [ProtectionRule] = [], leases: [ResourceLease] = []) -> CleanupVerdict {
+            engine.evaluateContainerStop(g, initiator: initiator, settings: settings, protections: protections, leases: leases, now: now).verdict
+        }
+        #expect(verdict(group(), .automatic) == .denied, "off by default")
+        settings.stopContainersOfIdleProjects = true
+        #expect(verdict(group(), .automatic) == .allowed)
+        #expect(verdict(group(idleMinutes: 10), .automatic) == .denied, "inside the 30-minute grace period")
+        #expect(verdict(group(sessions: 1, idleMinutes: nil), .automatic) == .denied, "an agent is working in the project")
+        #expect(verdict(group(project: nil), .automatic) == .denied, "not tied to a project")
+        #expect(verdict(group(), .automatic, protections: [ProtectionRule(kind: .project, value: "/p/app")]) == .denied)
+        #expect(verdict(group(), .automatic, leases: [ResourceLease(owner: "codex", path: "/p/app", expiresAt: now.addingTimeInterval(600))]) == .denied)
+        #expect(verdict(group(), .agent) == .denied)
+        // By hand it always asks, also for containers without a project or with a session running.
+        #expect(verdict(group(), .user) == .needsConfirmation)
+        #expect(verdict(group(project: nil), .cli) == .needsConfirmation)
+        #expect(verdict(group(sessions: 2, idleMinutes: nil), .user) == .needsConfirmation)
+
+        let decision = engine.evaluateContainerStop(group(), initiator: .user, settings: settings, protections: [], leases: [], now: now)
+        #expect(engine.approveContainerStop(decision, confirmed: false, initiator: .user) == nil)
+        #expect(engine.approveContainerStop(decision, confirmed: true, initiator: .user) != nil)
+    }
+
+    @Test("Stopping uses `docker stop` only, reports what actually stopped, and is audited")
+    func containerStopper() throws {
+        let store = try PepelStore.inMemory()
+        let engine = CleanupPolicyEngine()
+        var group = ContainerGroup(id: "app", name: "app", projectID: "/p/app", containers: [
+            ContainerMemory(name: "app-db-1", memoryBytes: 1 << 30, cpuPercent: 0), ContainerMemory(name: "app-api-1", memoryBytes: 1 << 29, cpuPercent: 0),
+        ])
+        group.idleSince = Date().addingTimeInterval(-3600)
+        var settings = PepelSettings()
+        settings.stopContainersOfIdleProjects = true
+        let decision = engine.evaluateContainerStop(group, initiator: .automatic, settings: settings, protections: [], leases: [])
+        let approved = try #require(engine.approveContainerStop(decision, confirmed: false, initiator: .automatic))
+
+        let calls = CallLog()
+        let stopper = ContainerStopper(store: store) { arguments, _ in
+            calls.add(arguments)
+            return (0, "app-db-1\n")  // the second container did not stop
+        }
+        let report = stopper.stop(approved)
+        #expect(calls.all == [["stop", "app-db-1", "app-api-1"]])
+        #expect(!calls.all.joined().contains { ["rm", "down", "kill", "prune", "volume"].contains($0) })
+        #expect(report.stopped == ["app-db-1"] && report.failed == ["app-api-1"] && report.memoryBytes == (1 << 30) + (1 << 29))
+        let entry = store.audit(kinds: [.container]).first
+        #expect(entry?.outcome == "stopped 1 of 2" && entry?.initiator == "automatic")
+    }
+
     // MARK: Agents
 
     @Test("Several concurrent agents are detected with their process trees and projects")
@@ -773,4 +832,11 @@ final class TelemetrySequence: @unchecked Sendable {
         defer { lock.unlock() }
         return samples.count > 1 ? samples.removeFirst() : samples[0]
     }
+}
+
+final class CallLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls: [[String]] = []
+    func add(_ call: [String]) { lock.lock(); calls.append(call); lock.unlock() }
+    var all: [[String]] { lock.lock(); defer { lock.unlock() }; return calls }
 }

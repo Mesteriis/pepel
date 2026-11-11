@@ -177,7 +177,7 @@ public struct ResourceLease: Codable, Sendable, Identifiable, Hashable {
 }
 
 public enum AuditKind: String, Codable, Sendable, CaseIterable {
-    case cleanupPreview, cleanup, cleanupDenied, termination, terminationDenied, protection, lease, scan, alert, agent
+    case cleanupPreview, cleanup, cleanupDenied, termination, terminationDenied, protection, lease, scan, alert, agent, container
 }
 
 public struct AuditEntry: Codable, Sendable, Identifiable, Hashable {

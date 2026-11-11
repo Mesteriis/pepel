@@ -91,6 +91,7 @@ enum Out {
           pepel agents                     Agent sessions: working, idle or asleep, and why
           pepel leftovers                  Processes still running after their application quit
           pepel containers [--all]         Memory inside the container VM, by compose project
+          pepel containers stop <project>  Stop (not remove) the containers of one compose project
           pepel cleanup [--dry-run]        Preview what cleanup would do (default)
           pepel cleanup --safe [--yes]     Remove items classified safe
           pepel cleanup --review           Decide interactively on items that need review

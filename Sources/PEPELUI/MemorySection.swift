@@ -143,6 +143,13 @@ struct MemorySection: View {
                         Text(group.name).font(.system(size: 12)).lineLimit(1)
                         Text("\(group.containers.count) container\(group.containers.count == 1 ? "" : "s")").font(.system(size: 10)).foregroundStyle(Theme.tertiary)
                         if let project = model.projectName(group.projectID) { Badge(text: project, tint: Theme.forest) }
+                        if group.projectID == nil {
+                            Text("not tied to a project").font(.system(size: 10)).foregroundStyle(Theme.tertiary)
+                        } else if group.agentSessions > 0 {
+                            Badge(text: "\(group.agentSessions) agent session\(group.agentSessions == 1 ? "" : "s")", tint: Theme.forest)
+                        } else if let idle = group.idleSince {
+                            Badge(text: "no agent for \(TimeFormat.age(Date().timeIntervalSince(idle)))", tint: Theme.amber)
+                        }
                         Spacer(minLength: 0)
                         Text(String(format: "%.1f%% CPU", group.cpuPercent)).font(.system(size: 10)).monospacedDigit().foregroundStyle(Theme.secondary)
                     }

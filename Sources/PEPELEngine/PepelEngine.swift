@@ -19,6 +19,10 @@ public actor PepelEngine {
     var lastObservationWrite = Date.distantPast
     var lastTelemetryWrite = Date.distantPast
     var lastProcesses: [ProcessSnapshot] = []
+    /// Per repository group: the last moment an agent session was seen in it (or, for a project
+    /// first seen without one, when PEPEL started watching it).
+    var projectActivity: [String: Date] = [:]
+    var projectActivityWritten = Date.distantPast
     var containerReport: ContainerReport?
     var containerRefreshStarted = Date.distantPast
     var appTracker = AppExitTracker()
@@ -58,6 +62,7 @@ public actor PepelEngine {
         self.projects = known
         self.projectIndex = ProjectIndex(known)
         self.appTracker = self.store.loadCodable(AppExitTracker.self, key: "apps.tracker") ?? AppExitTracker()
+        self.projectActivity = self.store.loadCodable([String: Date].self, key: "projects.activity") ?? [:]
     }
 
     // MARK: Settings and rules
@@ -118,16 +123,46 @@ public actor PepelEngine {
 
     func setContainerReport(_ report: ContainerReport?) { containerReport = report }
 
+    /// Adds what PEPEL knows from the host side: what the VM is charged, and for each compose
+    /// project whether an agent session is running in its project and since when there has been none.
+    func annotate(_ report: ContainerReport, sessions: [AgentSession], vm: MemoryOwner?, now: Date) -> ContainerReport {
+        var report = report
+        if let vm {
+            report.hostFootprintBytes = vm.footprintBytes
+            report.hostResidentBytes = vm.residentBytes
+        }
+        func group(of projectID: String) -> String { projectIndex.project(id: projectID)?.groupID ?? projectID }
+        var live: [String: Int] = [:]
+        for session in sessions where !session.isService {
+            guard let projectID = session.projectID else { continue }
+            live[group(of: projectID), default: 0] += 1
+        }
+        for key in live.keys { projectActivity[key] = now }
+        for index in report.groups.indices {
+            guard let projectID = report.groups[index].projectID else { continue }
+            let key = group(of: projectID)
+            report.groups[index].agentSessions = live[key] ?? 0
+            if live[key] == nil {
+                // First time PEPEL sees this project without a session: the clock starts now.
+                if projectActivity[key] == nil { projectActivity[key] = now }
+                report.groups[index].idleSince = projectActivity[key]
+            }
+        }
+        if now.timeIntervalSince(projectActivityWritten) >= 60 {
+            projectActivityWritten = now
+            projectActivity = projectActivity.filter { now.timeIntervalSince($0.value) < 30 * 86_400 }
+            try? store.saveCodable(projectActivity, key: "projects.activity")
+        }
+        return report
+    }
+
     /// Asks the container runtime now (blocking for a couple of seconds); used by the command line.
     public func inspectContainers() async -> ContainerReport? {
         let liveState = await refreshLive()
         let tools = tools, index = projectIndex
         guard var report = await Task.detached(priority: .utility, operation: { ContainerInspector(tools: tools).inspect(attributor: index) }).value else { return nil }
-        if let vm = liveState.memoryOwners.first(where: { $0.kind == .virtualMachine }) {
-            report.hostFootprintBytes = vm.footprintBytes
-            report.hostResidentBytes = vm.residentBytes
-        }
         containerReport = report
+        report = annotate(report, sessions: liveState.agentSessions, vm: liveState.memoryOwners.first { $0.kind == .virtualMachine }, now: Date())
         return report
     }
 
@@ -203,10 +238,8 @@ public actor PepelEngine {
                 await self?.setContainerReport(report)
             }
         }
-        if var report = containerReport, let vm {
-            report.hostFootprintBytes = vm.footprintBytes
-            report.hostResidentBytes = vm.residentBytes
-            state.containers = report
+        if let report = containerReport, let vm {
+            state.containers = annotate(report, sessions: sessions, vm: vm, now: now)
         }
         state.agentHelpers = AgentDetector.helperGroups(processes: processes, sessions: sessions)
         state.memoryOwners = owners

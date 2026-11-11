@@ -116,6 +116,10 @@ public struct ContainerGroup: Codable, Sendable, Hashable, Identifiable {
     public var projectID: String?
     public var projectConfidence: Confidence
     public var containers: [ContainerMemory]
+    /// Agent sessions running in the project these containers belong to, right now.
+    public var agentSessions = 0
+    /// Since when the project has had no agent session, as far as PEPEL has observed.
+    public var idleSince: Date?
 
     public init(id: String, name: String, projectID: String? = nil, projectConfidence: Confidence = .unknown, containers: [ContainerMemory]) {
         self.id = id
