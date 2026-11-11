@@ -841,6 +841,51 @@ struct EngineTests {
         #expect(source.signals.map(\.pid) == [50])
     }
 
+    @Test("Booted simulators are found from the process table and shut down only by a person; a language server whose editor is gone is ended")
+    func simulatorsAndOrphanedTools() async throws {
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        let udid = "0A1B2C3D-1111-2222-3333-444455556666"
+        let device = f.home + "/Library/Developer/CoreSimulator/Devices/\(udid)"
+        try FileManager.default.createDirectory(atPath: device, withIntermediateDirectories: true)
+        try PropertyListSerialization.data(fromPropertyList: ["name": "iPhone 17 Pro", "UDID": udid], format: .xml, options: 0).write(to: URL(fileURLWithPath: device + "/device.plist"))
+        let launchd = process(300, name: "launchd_sim", path: "/Library/Developer/CoreSimulator/launchd_sim", args: ["launchd_sim", device + "/data/var/run/launchd_bootstrap.plist"], footprint: 50_000_000)
+        let springboard = process(301, parent: 300, name: "SpringBoard", path: "/Library/Developer/CoreSimulator/Volumes/iOS/SpringBoard", footprint: 900_000_000)
+        let old: UInt64 = UInt64((Date().timeIntervalSince1970 - 3600) * 1_000_000)
+        let orphan = process(400, name: "sourcekit-lsp", path: "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/sourcekit-lsp", start: old, footprint: 700_000_000)
+        let served = process(401, parent: 300, name: "gopls", path: "/Users/x/go/bin/gopls", start: old)
+        let listening = process(402, name: "clangd", path: "/usr/local/bin/clangd", start: old, ports: [9000])
+        let fresh = process(403, name: "gopls", path: "/Users/x/go/bin/gopls", start: UInt64(Date().timeIntervalSince1970 * 1_000_000))
+        let source = FakeProcessSource(processes: [launchd, springboard, orphan, served, listening, fresh])
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: source, telemetry: { SystemTelemetry() })
+        let live = await engine.refreshLive()
+        #expect(live.simulators.map(\.name) == ["iPhone 17 Pro"] && live.simulators.first?.udid == udid)
+        #expect(live.simulators.first?.footprintBytes == 1_030_000_000 && live.simulators.first?.inUse == nil, "launchd_sim, SpringBoard and the gopls inside it")
+        #expect(live.orphanedTools.map(\.process.pid) == [400], "not the one with a parent, the one on a port, or the one just started")
+
+        // Without simctl nothing is offered or done.
+        #expect(await engine.reclaimPlan().steps.map(\.kind) == [.abandonedProcesses])
+        let shut = PIDBox()
+        await engine.setSimulatorShutdown { id in if id == udid { shut.set(1) }; return id == udid }
+        let plan = await engine.reclaimPlan()
+        #expect(plan.steps.map(\.kind) == [.abandonedProcesses, .simulators] && plan.defaultSelection == ["abandonedProcesses", "simulators"])
+        #expect(await engine.shutdownSimulator(udid: udid, initiator: .agent).done == false)
+        #expect(await engine.shutdownSimulator(udid: udid, initiator: .automatic).done == false && shut.pid == nil)
+        #expect(await engine.shutdownSimulator(udid: "not-booted", initiator: .user).done == false)
+
+        // The orphaned language server: off by default, then ended by the automatic pass.
+        _ = await engine.automaticPass()
+        #expect(source.signals.isEmpty)
+        _ = try await engine.update { $0.autoTerminateAbandoned = true }
+        _ = await engine.automaticPass()
+        #expect(source.signals.map(\.pid) == [400])
+
+        let done = await engine.reclaim(["simulators"])
+        #expect(done.results.first?.done == 1 && shut.pid == 1)
+    }
+
     final class FlushCounter: @unchecked Sendable {
         private let lock = NSLock()
         private var value = 0

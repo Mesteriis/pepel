@@ -29,6 +29,10 @@ public actor PepelEngine {
     var fileCacheFlusher: FileCacheFlusher = .unavailable
     var containerPeaks: [Int: Int64]?
     var applicationControl: ApplicationControl = .unavailable
+    /// Shuts one simulator down by UDID; nil when `simctl` is not available.
+    var simulatorShutdown: (@Sendable (String) -> Bool)?
+
+    public func setSimulatorShutdown(_ shutdown: (@Sendable (String) -> Bool)?) { simulatorShutdown = shutdown }
     var lastMemoryWrite = Date.distantPast
     var growthCache: [MemoryGrowth] = []
 
@@ -68,6 +72,14 @@ public actor PepelEngine {
         self.readTelemetry = telemetry ?? { TelemetryReader().read(volumePath: home) }
         self.fileCacheFlusher = paths.isRedirected ? .unavailable : .system(tools: self.tools)
         self.applicationControl = paths.isRedirected ? .unavailable : .system
+        let runner = self.tools
+        if runner.locate("xcrun") != nil {
+            self.simulatorShutdown = { udid in
+                // A UDID and nothing else ever reaches the command line.
+                guard UUID(uuidString: udid) != nil else { return false }
+                return runner.run("xcrun", ["simctl", "shutdown", udid], timeout: 60)?.status == 0
+            }
+        }
         self.settings = self.store.loadSettings(home: paths.home)
         let saved = self.store.loadCodable(StorageState.self, key: "storage.state")
         self.storage = saved
@@ -297,6 +309,14 @@ public actor PepelEngine {
             excluded.insert(own.identity)
             excluded.formUnion(processTree.ancestors(of: own).map(\.identity))
         }
+        state.orphanedTools = Simulators.orphanedTools(processes: processes, excluded: excluded, attributor: projectIndex, currentUID: getuid(), now: now)
+        state.simulators = Simulators.booted(
+            processes: processes, home: paths.home, workingSessions: sessions.filter { $0.state == .working && !$0.isService }.count)
+        for simulator in state.simulators {
+            excluded.insert(simulator.root)
+            if let root = processTree.process(simulator.root) { excluded.formUnion(processTree.descendants(of: root).map(\.identity)) }
+        }
+        excluded.formUnion(state.orphanedTools.map(\.process.identity))
         state.dormant = DormantProcesses.find(
             processes: processes, assessments: assessments, history: history, excluded: excluded, attributor: projectIndex, currentUID: getuid(), now: now)
         state.memoryExplanation = MemoryAttributor.explanation(owners: owners, telemetry: telemetry)

@@ -11,7 +11,7 @@ extension PepelEngine {
         let live = await refreshLive()
         var steps: [ReclaimStep] = []
 
-        let abandoned = live.abandoned.filter { !$0.eligibility.isNever }
+        let abandoned = live.abandoned.filter { !$0.eligibility.isNever } + live.orphanedTools
         if !abandoned.isEmpty {
             steps.append(
                 ReclaimStep(
@@ -100,6 +100,17 @@ extension PepelEngine {
                     estimatedBytes: 0, selectedByDefault: false))
         }
 
+        if !live.simulators.isEmpty, simulatorShutdown != nil {
+            steps.append(
+                ReclaimStep(
+                    kind: .simulators, title: "Shut down booted simulators",
+                    detail: "Shut down the way Xcode does; devices and their data stay." + (live.simulators.first?.inUse.map { " " + $0 } ?? ""),
+                    targets: live.simulators.map { "\($0.name) (\(Bytes.format($0.footprintBytes)), booted \(TimeFormat.ago($0.bootedAt)))" },
+                    estimatedBytes: live.simulators.reduce(0) { $0 + $1.footprintBytes },
+                    // On by default only when nothing suggests one is being used.
+                    selectedByDefault: live.simulators.allSatisfy { $0.inUse == nil }))
+        }
+
         if let containers = live.containers {
             let unused = containers.groups.filter { $0.projectID != nil && $0.agentSessions == 0 && !$0.stoppable.isEmpty }
             if !unused.isEmpty {
@@ -168,7 +179,7 @@ extension PepelEngine {
             let live = self.live
             switch step.kind {
             case .abandonedProcesses:
-                results.append(await terminate((live?.abandoned ?? []).filter { !$0.eligibility.isNever }.map(\.process.identity), kind: step.kind, title: step.title))
+                results.append(await terminate(((live?.abandoned ?? []).filter { !$0.eligibility.isNever } + (live?.orphanedTools ?? [])).map(\.process.identity), kind: step.kind, title: step.title))
             case .appLeftovers:
                 results.append(await terminate((live?.leftovers ?? []).flatMap(\.processes).filter { !$0.eligibility.isNever }.map(\.process.identity), kind: step.kind, title: step.title))
             case .sleepingAgents:
@@ -210,6 +221,15 @@ extension PepelEngine {
                 results.append(ReclaimStepResult(kind: step.kind, title: step.title, done: done, attempted: unused.count, notes: notes))
             case .dormantProcesses:
                 results.append(await terminate((live?.dormant ?? []).filter { !$0.eligibility.isNever }.map(\.process.identity), kind: step.kind, title: step.title))
+            case .simulators:
+                var done = 0
+                var notes: [String] = []
+                let simulators = live?.simulators ?? []
+                for simulator in simulators {
+                    let result = await shutdownSimulator(udid: simulator.udid, initiator: initiator)
+                    if result.done { done += 1 } else { notes.append(result.note) }
+                }
+                results.append(ReclaimStepResult(kind: step.kind, title: step.title, done: done, attempted: simulators.count, notes: notes))
             case .idleContainers:
                 var done = 0, attempted = 0
                 var notes: [String] = []

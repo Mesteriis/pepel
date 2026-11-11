@@ -179,6 +179,8 @@ public struct ProcessAssessment: Codable, Sendable, Identifiable, Hashable {
     public var leftoverOf: String?
     /// Set when the process lives almost entirely in swap and has not used CPU.
     public var dormant = false
+    /// Set for a language server or indexer whose editor or agent has exited.
+    public var orphanedTool = false
 
     public var id: ProcessIdentity { process.identity }
 

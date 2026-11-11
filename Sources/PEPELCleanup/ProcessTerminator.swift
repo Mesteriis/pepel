@@ -47,7 +47,8 @@ extension CleanupPolicyEngine {
         let leftover = target.leftoverOf != nil
         // …and, only when a person asks, a process that lives in swap and does nothing.
         let dormant = target.dormant
-        if !target.role.isDeveloperWorkload && !leftover && !dormant { denials.append("Not a developer workload; PEPEL leaves applications and system processes alone.") }
+        // …and a language server whose editor is gone.
+        if !target.role.isDeveloperWorkload && !leftover && !dormant && !target.orphanedTool { denials.append("Not a developer workload; PEPEL leaves applications and system processes alone.") }
 
         switch target.eligibility {
         case .never(let reason):

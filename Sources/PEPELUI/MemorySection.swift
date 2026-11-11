@@ -17,6 +17,7 @@ struct MemorySection: View {
                 growth(live)
                 unused(live)
                 dormant(live)
+                simulators(live)
                 containers(live)
                 if let report = model.terminationReport { terminationResult(report) }
                 leftovers(live)
@@ -38,6 +39,36 @@ struct MemorySection: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(((model.pendingApplication?.reasons ?? []) + (model.pendingApplication?.warnings ?? [])).joined(separator: "\n"))
+        }
+    }
+
+    /// Booted simulators and language servers nobody can talk to any more.
+    @ViewBuilder private func simulators(_ live: LiveState) -> some View {
+        if !live.simulators.isEmpty || !live.orphanedTools.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Caption("Simulators and orphaned tools")
+                ForEach(live.simulators) { simulator in
+                    HStack(spacing: 10) {
+                        Text(simulator.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                        Text("booted \(TimeFormat.ago(simulator.bootedAt)) · \(simulator.processCount) processes" + (simulator.inUse.map { " · " + $0 } ?? ""))
+                            .font(.system(size: 11)).foregroundStyle(Theme.secondary).lineLimit(1)
+                        Spacer()
+                        Text(Bytes.format(simulator.footprintBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit()
+                        Button("Shut down") { model.shutdownSimulator(simulator) }.buttonStyle(QuietButtonStyle())
+                    }
+                }
+                ForEach(live.orphanedTools) { tool in
+                    HStack(spacing: 10) {
+                        Text(tool.process.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                        Text("PID \(tool.process.pid) · its editor or agent has exited").font(.system(size: 11)).foregroundStyle(Theme.secondary).lineLimit(1)
+                        Spacer()
+                        Text(Bytes.format(tool.subtreeFootprintBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit()
+                        Button("Review & terminate…") { model.requestTermination(tool) }.buttonStyle(QuietButtonStyle())
+                    }
+                    .help(tool.evidence.joined(separator: "\n"))
+                }
+            }
+            .panel()
         }
     }
 

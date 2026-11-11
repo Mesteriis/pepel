@@ -162,4 +162,21 @@ extension PepelEngine {
         if changed { try? store.saveCodable(known.filter { now.timeIntervalSince($0.value) < 30 * 86_400 }, key: Self.lastActiveKey) }
         return result.sorted { $0.footprintBytes > $1.footprintBytes }
     }
+
+    // MARK: Simulators
+
+    /// Shuts a booted simulator down the way Xcode does. Only a person can ask.
+    public func shutdownSimulator(udid: String, initiator: Initiator) async -> (done: Bool, note: String) {
+        guard initiator == .user || initiator == .cli else { return (false, "Only you can have a simulator shut down.") }
+        let liveState = await refreshLive()
+        guard let simulator = liveState.simulators.first(where: { $0.udid == udid }) else { return (false, "That simulator is not booted.") }
+        guard let shutdown = simulatorShutdown else { return (false, "simctl is not available.") }
+        let done = await Task.detached(priority: .utility) { shutdown(udid) }.value
+        store.appendAudit(
+            AuditEntry(
+                kind: .termination, initiator: initiator.rawValue, subject: "Simulator \(simulator.name)", outcome: done ? "shut down" : "shutdown failed",
+                bytes: done ? simulator.footprintBytes : 0, detail: ["udid": udid, "held": Bytes.format(simulator.footprintBytes)]))
+        await refreshLive()
+        return (done, done ? "\(simulator.name) was shut down; it held \(Bytes.format(simulator.footprintBytes))." : "simctl could not shut \(simulator.name) down.")
+    }
 }

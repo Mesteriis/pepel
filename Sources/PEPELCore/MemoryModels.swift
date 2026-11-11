@@ -214,7 +214,7 @@ public struct ContainerReport: Codable, Sendable, Hashable {
 // MARK: - Free memory
 
 public enum ReclaimStepKind: String, Codable, Sendable, CaseIterable {
-    case abandonedProcesses, appLeftovers, sleepingAgents, freezeAgents, idleAgents, grownApps, unusedApps, dormantProcesses, idleContainers, containerVM, fileCache
+    case abandonedProcesses, appLeftovers, sleepingAgents, freezeAgents, idleAgents, grownApps, unusedApps, dormantProcesses, simulators, idleContainers, containerVM, fileCache
 }
 
 /// One thing "Free memory" can do, with what it would act on and what it could give back.
@@ -453,5 +453,31 @@ public struct UnusedApplication: Codable, Sendable, Identifiable, Hashable {
         self.residentBytes = residentBytes
         self.lastActive = lastActive
         self.cpuPercent = cpuPercent
+    }
+}
+
+// MARK: - Simulators
+
+/// An iOS (or watchOS, tvOS, visionOS) simulator that is booted, with what it holds in memory.
+public struct BootedSimulator: Codable, Sendable, Identifiable, Hashable {
+    public var udid: String
+    public var name: String
+    public var root: ProcessIdentity
+    public var processCount: Int
+    public var footprintBytes: Int64
+    public var bootedAt: Date
+    /// Why PEPEL thinks it is being used right now; nil when nothing suggests it is.
+    public var inUse: String?
+
+    public var id: String { udid }
+
+    public init(udid: String, name: String, root: ProcessIdentity, processCount: Int, footprintBytes: Int64, bootedAt: Date, inUse: String?) {
+        self.udid = udid
+        self.name = name
+        self.root = root
+        self.processCount = processCount
+        self.footprintBytes = footprintBytes
+        self.bootedAt = bootedAt
+        self.inUse = inUse
     }
 }

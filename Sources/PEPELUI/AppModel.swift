@@ -465,6 +465,13 @@ public final class AppModel {
         }
     }
 
+    public func shutdownSimulator(_ simulator: BootedSimulator) {
+        Task {
+            message = await engine.shutdownSimulator(udid: simulator.udid, initiator: .user).note
+            live = await engine.live
+        }
+    }
+
     // MARK: Containers
 
     public var pendingVMRefresh: VMRefreshDecision?

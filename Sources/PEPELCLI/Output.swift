@@ -88,6 +88,7 @@ enum Out {
           pepel builds                     Build generations, retention verdicts and budgets
           pepel free [--all] [--no-cache]  Free memory: show what would be stopped and flushed, then do it (--yes) and measure
           pepel free permission [--revoke] Whether PEPEL may flush the file cache without asking; remove that permission
+          pepel simulators [shutdown …]    Booted simulators and what they hold; shut one or all down
           pepel memory swapped             Processes that live almost entirely in swap and do nothing
           pepel memory growth              Applications, sessions and tools whose memory keeps growing
           pepel apps [restart|quit <name>] Applications by memory; ask one to quit, or to quit and open again

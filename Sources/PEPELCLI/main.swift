@@ -183,6 +183,21 @@ case "apps":
         if report.quit { print("Charged: \(Bytes.format(report.footprintBefore)) before, \(Bytes.format(report.footprintAfter)) after.") }
     }
 
+case "simulators":
+    let live = await engine.refreshLive()
+    if arguments.positional.first == "shutdown" {
+        let targets = arguments.flags.contains("all") ? live.simulators : live.simulators.filter { sim in arguments.positional.dropFirst().contains { $0 == sim.udid || $0.lowercased() == sim.name.lowercased() } }
+        guard !targets.isEmpty else { Out.error("usage: pepel simulators shutdown <udid or name>|--all"); exit(2) }
+        for simulator in targets { print(await engine.shutdownSimulator(udid: simulator.udid, initiator: .cli).note) }
+        break
+    }
+    if arguments.json { Out.json(live.simulators); break }
+    if live.simulators.isEmpty { print("No simulator is booted."); break }
+    Out.table(
+        ["MEMORY", "PROCS", "BOOTED", "NAME", "UDID", "IN USE"],
+        live.simulators.map { [Bytes.format($0.footprintBytes), String($0.processCount), TimeFormat.ago($0.bootedAt), $0.name, $0.udid, $0.inUse ?? "nothing suggests it"] })
+    print("\n`pepel simulators shutdown <udid or name>` (or --all) shuts one down; devices and their data stay.")
+
 case "memory" where arguments.positional.first == "swapped":
     let live = await engine.refreshLive()
     if arguments.json { Out.json(live.dormant); break }

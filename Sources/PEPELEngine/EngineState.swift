@@ -35,6 +35,9 @@ public struct LiveState: Codable, Sendable {
     public var unusedApplications: [UnusedApplication] = []
     /// Processes that live almost entirely in swap and do nothing.
     public var dormant: [ProcessAssessment] = []
+    /// Language servers and indexers whose editor or agent has exited.
+    public var orphanedTools: [ProcessAssessment] = []
+    public var simulators: [BootedSimulator] = []
     /// Process trees PEPEL has suspended.
     public var frozen: [FrozenTree] = []
 
