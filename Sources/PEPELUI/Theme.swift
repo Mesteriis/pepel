@@ -56,6 +56,52 @@ public enum Theme {
     }
 
     public static let mono = Font.system(size: 11, design: .monospaced)
+
+    /// Display words for enums whose `rawValue` is their stored identity.
+    public static func title(for safety: SafetyClass) -> String {
+        switch safety {
+        case .safe: L("safe")
+        case .review: L("review")
+        case .protected: L("protected")
+        }
+    }
+
+    public static func title(for pressure: MemoryPressureLevel) -> String {
+        switch pressure {
+        case .normal: L("Normal")
+        case .elevated: L("Elevated")
+        case .critical: L("Critical")
+        }
+    }
+
+    public static func title(for confidence: Confidence) -> String {
+        switch confidence {
+        case .unknown: L("unknown")
+        case .probable: L("probable")
+        case .verified: L("verified")
+        }
+    }
+
+    public static func title(for lifecycle: LifecycleClass) -> String {
+        switch lifecycle {
+        case .agentSession: L("agent session")
+        case .activeBuildOrTest: L("active build or test")
+        case .activeDevService: L("active dev service")
+        case .backgroundService: L("background service")
+        case .abandonedSubprocess: L("abandoned subprocess")
+        case .suspiciousOrphan: L("suspicious orphan")
+        case .unknown: L("unknown")
+        }
+    }
+
+    public static func title(for status: BuildStatus) -> String {
+        switch status {
+        case .succeeded: L("succeeded")
+        case .failed: L("failed")
+        case .running: L("running")
+        case .unknown: L("unknown")
+        }
+    }
 }
 
 extension View {
@@ -178,7 +224,7 @@ struct ConfidenceBadge: View {
 
     var body: some View {
         Badge(
-            text: confidence.rawValue,
+            text: Theme.title(for: confidence),
             tint: confidence == .verified ? Theme.forest : confidence == .probable ? Theme.amber : Theme.tertiary
         )
         .help(

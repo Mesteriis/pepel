@@ -25,7 +25,7 @@ struct HistorySection: View {
     private func figure(_ label: LocalizedStringKey, _ value: GrowthFigure?) -> some View {
         MetricTile(
             label: label, value: value.map { Bytes.formatDelta($0.deltaBytes) } ?? "—",
-            detail: value.map { $0.coversWindow ? "disk usage change" : "only \(TimeFormat.age($0.actualSpan)) of history" } ?? "no history yet",
+            detail: value.map { $0.coversWindow ? L("disk usage change") : L("only \(TimeFormat.age($0.actualSpan)) of history") } ?? L("no history yet"),
             tint: (value?.deltaBytes ?? 0) > 0 ? Theme.amber : Theme.forest)
     }
 
@@ -36,7 +36,7 @@ struct HistorySection: View {
             figure("Last week", model.growth?.week)
             MetricTile(
                 label: "Sudden spikes · 7 d", value: "\(model.growth?.spikes.count ?? 0)",
-                detail: model.growth?.spikes.last.map { "latest \(Bytes.formatDelta($0.deltaBytes)) \(TimeFormat.ago($0.at))" } ?? "none recorded")
+                detail: model.growth?.spikes.last.map { L("latest \(Bytes.formatDelta($0.deltaBytes)) \(TimeFormat.ago($0.at))") } ?? L("none recorded"))
         }
     }
 
@@ -69,7 +69,7 @@ struct HistorySection: View {
         .panel()
     }
 
-    private func range(_ r: JournalDigest.Range) -> String { "\(Bytes.format(r.min)) – \(Bytes.format(r.max)), average \(Bytes.format(r.average))" }
+    private func range(_ r: JournalDigest.Range) -> String { L("\(Bytes.format(r.min)) – \(Bytes.format(r.max)), average \(Bytes.format(r.average))") }
     private func shares(_ values: [String: Double]) -> String {
         values.sorted { $0.value > $1.value }.map { "\($0.key) \(Int(($0.value * 100).rounded()))%" }.joined(separator: ", ")
     }
@@ -80,7 +80,7 @@ struct HistorySection: View {
             HStack {
                 Caption("Memory journal · 7 days")
                 Spacer()
-                Text("\(model.journalFiles.days) day\(model.journalFiles.days == 1 ? "" : "s") · \(Bytes.format(model.journalFiles.bytes))").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
+                Text("\(model.journalFiles.days) days · \(Bytes.format(model.journalFiles.bytes))").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
                 Button("Open folder") { model.revealJournal() }.buttonStyle(QuietButtonStyle())
             }
             if let digest = model.journalDigest, digest.samples > 0 {
@@ -95,7 +95,8 @@ struct HistorySection: View {
                     }
                     GridRow {
                         Text("Browsers").foregroundStyle(Theme.secondary)
-                        Text(digest.browsers.isEmpty ? "none seen" : digest.browsers.map { "\($0.name) \(range($0.memory))" }.joined(separator: "; ") + "; idle tabs \(range(digest.idleTabMemory))")
+                        let browsers = digest.browsers.map { "\($0.name) \(range($0.memory))" }.joined(separator: "; ")
+                        Text(digest.browsers.isEmpty ? L("none seen") : L("\(browsers); idle tabs \(range(digest.idleTabMemory))"))
                     }
                 }
                 .font(.system(size: 12)).monospacedDigit().foregroundStyle(Theme.text)
@@ -139,6 +140,23 @@ struct HistorySection: View {
         }
     }
 
+    /// The kind of an audit entry, in words; the entry itself stays as recorded.
+    static func auditKindTitle(_ kind: AuditKind) -> String {
+        switch kind {
+        case .cleanupPreview: L("preview")
+        case .cleanup: L("cleanup")
+        case .cleanupDenied: L("skipped")
+        case .termination: L("termination")
+        case .terminationDenied: L("not terminated")
+        case .protection: L("protection")
+        case .lease: L("lease")
+        case .scan: L("scan")
+        case .alert: L("alert")
+        case .agent: L("agent")
+        case .container: L("container")
+        }
+    }
+
     private var log: some View {
         let entries = model.audit.filter { kind == nil || $0.kind == kind }
         return VStack(alignment: .leading, spacing: 0) {
@@ -165,10 +183,10 @@ struct HistorySection: View {
                     Divider().overlay(Theme.stroke.opacity(0.6))
                     HStack(spacing: 10) {
                         Text(entry.timestamp.formatted(date: .abbreviated, time: .shortened)).font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.tertiary).frame(width: 118, alignment: .leading)
-                        Badge(text: entry.kind.rawValue, tint: entry.kind == .cleanup || entry.kind == .termination ? Theme.copper : Theme.secondary).frame(width: 104, alignment: .leading)
+                        Badge(text: Self.auditKindTitle(entry.kind), tint: entry.kind == .cleanup || entry.kind == .termination ? Theme.copper : Theme.secondary).frame(width: 104, alignment: .leading)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(entry.subject).font(.system(size: 12)).foregroundStyle(Theme.text).lineLimit(1)
-                            Text(entry.outcome + (entry.detail["observedChange"].map { " · memory \($0)" } ?? "")).font(.system(size: 11)).foregroundStyle(Theme.secondary).lineLimit(2)
+                            Text(entry.detail["observedChange"].map { L("\(entry.outcome) · memory \($0)") } ?? entry.outcome).font(.system(size: 11)).foregroundStyle(Theme.secondary).lineLimit(2)
                         }
                         Spacer(minLength: 4)
                         Text(entry.initiator).font(.system(size: 10)).foregroundStyle(Theme.tertiary)
@@ -527,7 +545,7 @@ struct SettingsSection: View {
                         .accessibilityLabel("Quit \(app.name) when it has no window")
                         if app.windowlessNow { Badge(text: "open, no window", tint: Theme.amber) } else if app.running { Badge(text: "open", tint: Theme.forest) }
                         Spacer()
-                        Text(app.timesSeen > 0 ? "seen without windows \(app.timesSeen)×, last \(app.lastSeen.map { TimeFormat.ago($0) } ?? "")" : app.known ? "known to stay open" : "")
+                        Text(app.timesSeen > 0 ? L("seen without windows \(app.timesSeen)×, last \(app.lastSeen.map { TimeFormat.ago($0) } ?? "")") : app.known ? L("known to stay open") : "")
                             .font(.system(size: 11)).foregroundStyle(Theme.secondary)
                     }
                 }
@@ -614,10 +632,13 @@ struct SettingsSection: View {
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
                 if let report = model.live?.containers, report.product.lowercased().contains("docker desktop") {
                     Divider().overlay(Theme.stroke)
-                    Text("The VM may use up to \(Bytes.format(report.vmLimitBytes)). Containers use \(Bytes.format(report.usedByContainersBytes)) now"
-                        + (report.peakUsedBytes > 0 ? ", \(Bytes.format(report.peakUsedBytes)) at most in the days PEPEL has watched" : "") + ". "
-                        + "The lowest limit PEPEL accepts is \(Bytes.format(report.minimumLimitBytes))"
-                        + (report.suggestedLimitBytes.map { "; it suggests \(Bytes.format($0))." } ?? "."))
+                    let limit = Bytes.format(report.vmLimitBytes), used = Bytes.format(report.usedByContainersBytes), lowest = Bytes.format(report.minimumLimitBytes)
+                    let usage = report.peakUsedBytes > 0
+                        ? L("The VM may use up to \(limit). Containers use \(used) now, \(Bytes.format(report.peakUsedBytes)) at most in the days PEPEL has watched.")
+                        : L("The VM may use up to \(limit). Containers use \(used) now.")
+                    let lowestLimit = report.suggestedLimitBytes.map { L("The lowest limit PEPEL accepts is \(lowest); it suggests \(Bytes.format($0)).") }
+                        ?? L("The lowest limit PEPEL accepts is \(lowest).")
+                    Text(usage + " " + lowestLimit)
                         .font(.system(size: 12)).foregroundStyle(Theme.text).fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {
                         Stepper(value: $vmLimitGiB, in: 2...256) { Text("New limit: \(vmLimitGiB) GiB").font(.system(size: 12)).monospacedDigit() }
@@ -649,7 +670,7 @@ struct SettingsSection: View {
                 }
             }
             .confirmationDialog(
-                model.pendingVMLimit.map { "Change the VM memory limit to \(Bytes.format($0.newLimitBytes))?" } ?? "",
+                model.pendingVMLimit.map { L("Change the VM memory limit to \(Bytes.format($0.newLimitBytes))?") } ?? "",
                 isPresented: Binding(get: { model.pendingVMLimit != nil }, set: { if !$0 { model.pendingVMLimit = nil } }), titleVisibility: .visible
             ) {
                 if model.pendingVMLimit?.verdict != .denied { Button("Change and restart Docker Desktop") { model.confirmVMLimit() } }
@@ -668,7 +689,7 @@ struct SettingsSection: View {
             group("Protection rules", "Paths, projects and services PEPEL must leave alone. Credentials, agent state, git metadata, source code and model weights are protected without any rule.") {
                 ForEach(model.protections) { rule in
                     HStack(spacing: 8) {
-                        Badge(text: rule.kind.rawValue, tint: Theme.forest)
+                        Badge(text: Self.protectionKindTitle(rule.kind), tint: Theme.forest)
                         Text(rule.kind == .path || rule.kind == .pin || rule.kind == .project ? PathUtil.display(rule.value) : rule.value).font(Theme.mono).foregroundStyle(Theme.text).lineLimit(1).truncationMode(.middle)
                         if !rule.note.isEmpty { Text(rule.note).font(.system(size: 10)).foregroundStyle(Theme.tertiary).lineLimit(1) }
                         Spacer()
@@ -704,9 +725,21 @@ struct SettingsSection: View {
 
     private func modeHelp(_ mode: MonitoringMode) -> String {
         switch mode {
-        case .manual: "PEPEL samples memory and processes but scans storage only when you ask."
-        case .notifyOnly: "PEPEL scans in the background and tells you what it finds. Nothing is removed without you."
-        case .automaticSafe: "As above, and items classified safe are removed automatically when no build, agent session or lease involves them."
+        case .manual: L("PEPEL samples memory and processes but scans storage only when you ask.")
+        case .notifyOnly: L("PEPEL scans in the background and tells you what it finds. Nothing is removed without you.")
+        case .automaticSafe: L("As above, and items classified safe are removed automatically when no build, agent session or lease involves them.")
+        }
+    }
+
+    /// The kind of a protection rule, in words; `rawValue` stays the stored identity.
+    static func protectionKindTitle(_ kind: ProtectionKind) -> String {
+        switch kind {
+        case .path: L("path")
+        case .pin: L("pin")
+        case .project: L("project")
+        case .processName: L("process name")
+        case .command: L("command")
+        case .port: L("port")
         }
     }
 
@@ -748,29 +781,42 @@ struct SettingsSection: View {
 
     /// The one-line state shown on a folded group's heading.
     private func status(_ title: String, _ s: PepelSettings) -> (text: String, on: Bool)? {
-        func rule(_ on: Bool, _ detail: String) -> (String, Bool) { (on ? "On · " + detail : "Off", on) }
+        // Each badge is one whole phrase; `on()` is the text when the rule is switched on.
+        func rule(_ isOn: Bool, _ on: @autoclosure () -> String) -> (String, Bool) { (isOn ? on() : L("Off"), isOn) }
         switch title {
-        case "Project roots": return ("\(s.projectRoots.count) root\(s.projectRoots.count == 1 ? "" : "s")", true)
-        case "Monitoring": return (s.paused ? "Paused" : s.monitoringMode == .manual ? "Manual" : s.monitoringMode == .notifyOnly ? "Notify only" : "Automatic", !s.paused)
-        case "Cleanup": return (s.deletionMode == .trash ? "Always Trash" : s.deletionMode == .permanent ? "Permanent" : "Safe removed · review to Trash", true)
-        case "Disk: Docker": return rule(s.dockerAutoClean, "\(s.dockerUnusedDays) days")
-        case "Disk: projects left untouched": return rule(s.cleanStaleProjects, "\(s.staleProjectDays) days")
-        case "Disk: tool caches": return rule(s.trimCaches, "\(s.cacheUnusedDays) days" + (s.cacheSizeLimitGB > 0 ? " · \(s.cacheSizeLimitGB) GB cap" : ""))
-        case "Disk: application caches": return rule(s.cleanAppCaches, "\(s.appCacheUnusedDays) days")
-        case "Disk: Android emulators": return rule(s.cleanAndroidEmulators, "\(s.emulatorUnusedDays) days" + (s.cleanUnusedSystemImages ? " · images" : ""))
+        case "Project roots": return (L("\(s.projectRoots.count) roots"), true)
+        case "Monitoring": return (s.paused ? L("Paused") : s.monitoringMode == .manual ? L("Manual") : s.monitoringMode == .notifyOnly ? L("Notify only") : L("Automatic"), !s.paused)
+        case "Cleanup": return (s.deletionMode == .trash ? L("Always Trash") : s.deletionMode == .permanent ? L("Permanent") : L("Safe removed · review to Trash"), true)
+        case "Disk: Docker": return rule(s.dockerAutoClean, L("On · \(s.dockerUnusedDays) days"))
+        case "Disk: projects left untouched": return rule(s.cleanStaleProjects, L("On · \(s.staleProjectDays) days"))
+        case "Disk: tool caches":
+            return rule(s.trimCaches, s.cacheSizeLimitGB > 0 ? L("On · \(s.cacheUnusedDays) days · \(s.cacheSizeLimitGB) GB cap") : L("On · \(s.cacheUnusedDays) days"))
+        case "Disk: application caches": return rule(s.cleanAppCaches, L("On · \(s.appCacheUnusedDays) days"))
+        case "Disk: Android emulators":
+            return rule(s.cleanAndroidEmulators, s.cleanUnusedSystemImages ? L("On · \(s.emulatorUnusedDays) days · images") : L("On · \(s.emulatorUnusedDays) days"))
         case "Disk: Downloads and screenshots":
-            let parts = (s.tidyScreenshots ? ["screenshots \(s.screenshotDays) d"] : []) + (s.tidyDownloads ? ["downloads \(s.downloadDays) d"] : [])
-            return rule(!parts.isEmpty, parts.joined(separator: " · "))
-        case "Disk: Clausona backups": return rule(s.cleanToolBackups, "keep \(s.toolBackupsKeep), \(s.toolBackupsDays) days")
-        case "Disk: temporary files": return rule(s.cleanTempFiles, "\(s.tempDays) days")
-        case "Disk: logs": return rule(s.cleanOldLogs, "\(s.logDays) days")
-        case "Agent sessions": return rule(s.freezeIdleAgents || s.terminateSleepingAgents, s.freezeIdleAgents ? "freeze after \(s.freezeAfterMinutes) min" : "end after \(s.agentSleepMinutes) min")
-        case "Apps that stay open without windows": return rule(!s.quitWhenWindowless.isEmpty, "\(s.quitWhenWindowless.count) app\(s.quitWhenWindowless.count == 1 ? "" : "s")")
+            let text: String
+            switch (s.tidyScreenshots, s.tidyDownloads) {
+            case (true, true): text = L("On · screenshots \(s.screenshotDays) d · downloads \(s.downloadDays) d")
+            case (true, false): text = L("On · screenshots \(s.screenshotDays) d")
+            case (false, true): text = L("On · downloads \(s.downloadDays) d")
+            case (false, false): text = ""
+            }
+            return rule(s.tidyScreenshots || s.tidyDownloads, text)
+        case "Disk: Clausona backups": return rule(s.cleanToolBackups, L("On · keep \(s.toolBackupsKeep), \(s.toolBackupsDays) days"))
+        case "Disk: temporary files": return rule(s.cleanTempFiles, L("On · \(s.tempDays) days"))
+        case "Disk: logs": return rule(s.cleanOldLogs, L("On · \(s.logDays) days"))
+        case "Agent sessions":
+            return rule(s.freezeIdleAgents || s.terminateSleepingAgents, s.freezeIdleAgents ? L("On · freeze after \(s.freezeAfterMinutes) min") : L("On · end after \(s.agentSleepMinutes) min"))
+        case "Apps that stay open without windows": return rule(!s.quitWhenWindowless.isEmpty, L("On · \(s.quitWhenWindowless.count) apps"))
         case "Leave alone": return ("\(s.leaveAlone.count)", true)
-        case "Memory budgets": return s.memoryBudgets.isEmpty ? ("None", false) : ("\(s.memoryBudgets.count)", true)
-        case "Containers": return rule(s.stopContainersOfIdleProjects, "after \(s.projectIdleGraceMinutes) min idle")
-        case "Processes": return rule(s.autoTerminateAbandoned, "abandoned only")
-        case "Free memory": return rule(s.freeMemoryHotkey || s.freeMemoryOnLock, [s.freeMemoryHotkey ? "hotkey" : nil, s.freeMemoryOnLock ? "on lock" : nil].compactMap { $0 }.joined(separator: " · "))
+        case "Memory budgets": return s.memoryBudgets.isEmpty ? (L("None"), false) : ("\(s.memoryBudgets.count)", true)
+        case "Containers": return rule(s.stopContainersOfIdleProjects, L("On · after \(s.projectIdleGraceMinutes) min idle"))
+        case "Processes": return rule(s.autoTerminateAbandoned, L("On · abandoned only"))
+        case "Free memory":
+            return rule(
+                s.freeMemoryHotkey || s.freeMemoryOnLock,
+                s.freeMemoryHotkey && s.freeMemoryOnLock ? L("On · hotkey · on lock") : s.freeMemoryHotkey ? L("On · hotkey") : L("On · on lock"))
         case "Protection rules": return ("\(model.protections.count)", !model.protections.isEmpty)
         default: return nil
         }
@@ -783,7 +829,7 @@ struct SettingsSection: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("Rule set").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
                 Spacer()
-                Badge(text: current?.title ?? "Custom", tint: current == nil ? Theme.amber : Theme.forest)
+                Badge(text: current?.title ?? L("Custom"), tint: current == nil ? Theme.amber : Theme.forest)
             }
             HStack(alignment: .top, spacing: 8) {
                 ForEach(SettingsPreset.allCases, id: \.self) { preset in
@@ -822,7 +868,8 @@ struct SettingsSection: View {
             Button("Cancel", role: .cancel) { pendingPreset = nil }
         } message: {
             let changes = pendingPreset?.changes(from: s) ?? []
-            Text(changes.isEmpty ? "Nothing changes." : "\(changes.count) setting\(changes.count == 1 ? "" : "s") change:\n" + changes.prefix(14).joined(separator: "\n") + (changes.count > 14 ? "\n…" : ""))
+            let list = changes.prefix(14).joined(separator: "\n") + (changes.count > 14 ? "\n…" : "")
+            Text(changes.isEmpty ? L("Nothing changes.") : L("\(changes.count) settings change:\n\(list)"))
         }
     }
 
@@ -844,14 +891,14 @@ struct SettingsSection: View {
 
     static func leaveAloneLabel(_ key: String) -> String {
         if key.hasPrefix("path:") { return PathUtil.display(String(key.dropFirst(5))) }
-        if key.hasPrefix("cache:") { return "Tool cache " + key.dropFirst(6) }
-        if key.hasPrefix("container:") { return "Docker container " + key.dropFirst(10) }
-        if key == "docker:images" { return "Docker images" }
-        if key == "docker:buildCache" { return "Docker build cache" }
+        if key.hasPrefix("cache:") { return L("Tool cache \(String(key.dropFirst(6)))") }
+        if key.hasPrefix("container:") { return L("Docker container \(String(key.dropFirst(10)))") }
+        if key == "docker:images" { return L("Docker images") }
+        if key == "docker:buildCache" { return L("Docker build cache") }
         return key
     }
 
-    private func line(_ label: String, _ path: String, remove: @escaping @MainActor @Sendable () -> Void) -> some View {
+    private func line(_ label: LocalizedStringKey, _ path: String, remove: @escaping @MainActor @Sendable () -> Void) -> some View {
         HStack {
             Badge(text: label)
             PathText(path: PathUtil.expand(path))
@@ -886,7 +933,7 @@ struct SettingsSection: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.prompt = "Choose"
+        panel.prompt = L("Choose")
         if panel.runModal() == .OK, let url = panel.url { done(url.path) }
     }
 }

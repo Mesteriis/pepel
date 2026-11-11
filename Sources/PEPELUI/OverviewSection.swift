@@ -8,7 +8,7 @@ struct OverviewSection: View {
         VStack(alignment: .leading, spacing: 16) {
             SectionTitle(
                 title: "Overview",
-                subtitle: model.healthSentence.trimmingCharacters(in: CharacterSet(charactersIn: ".")) + "." + (model.cadence.isEmpty ? "" : " Monitoring cadence: \(model.cadence)."))
+                subtitle: subtitle)
 
             if let notice = model.menuBarNotice {
                 Label(notice, systemImage: "menubar.rectangle").font(.system(size: 12)).foregroundStyle(Theme.text)
@@ -48,6 +48,11 @@ struct OverviewSection: View {
         }
     }
 
+    private var subtitle: String {
+        let health = model.healthSentence.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        return model.cadence.isEmpty ? health + "." : L("\(health). Monitoring cadence: \(model.cadence).")
+    }
+
     private var tiles: some View {
         let t = model.live?.telemetry
         let storage = model.storage
@@ -55,37 +60,38 @@ struct OverviewSection: View {
             GridRow {
                 MetricTile(
                     label: "Disk available", value: t.map { Bytes.format($0.diskAvailableBytes) } ?? "—",
-                    detail: t.map { "\(Bytes.format($0.diskUsedBytes)) used of \(Bytes.format($0.diskTotalBytes))" },
+                    detail: t.map { L("\(Bytes.format($0.diskUsedBytes)) used of \(Bytes.format($0.diskTotalBytes))") },
                     fraction: t.map { $0.diskTotalBytes > 0 ? Double($0.diskUsedBytes) / Double($0.diskTotalBytes) : 0 })
                 MetricTile(
                     label: "Reclaimable now", value: model.reclaimableText,
                     detail: storage.map { state in
                         let found = state.safeBytes + state.reviewBytes
                         let busy = max(0, found - state.reclaimableBytes)
-                        return "\(state.reclaimableIsApproximate ? "Upper bound. " : "")\(Bytes.format(found)) found" + (busy > 0 ? ", \(Bytes.format(busy)) of it in use" : "")
-                    } ?? "Run a scan to measure",
+                        let figures = busy > 0 ? L("\(Bytes.format(found)) found, \(Bytes.format(busy)) of it in use") : L("\(Bytes.format(found)) found")
+                        return state.reclaimableIsApproximate ? L("Upper bound.") + " " + figures : figures
+                    } ?? L("Run a scan to measure"),
                     tint: Theme.copper)
                 MetricTile(
-                    label: "Memory pressure", value: t.map { $0.pressure.rawValue.capitalized } ?? "—",
-                    detail: t.map { "\(Bytes.format($0.memoryUsedBytes)) used · \(Bytes.format($0.compressedBytes)) compressed" },
+                    label: "Memory pressure", value: t.map { Theme.title(for: $0.pressure) } ?? "—",
+                    detail: t.map { L("\(Bytes.format($0.memoryUsedBytes)) used · \(Bytes.format($0.compressedBytes)) compressed") },
                     tint: t.map { Theme.color(for: $0.pressure) } ?? Theme.text)
                 MetricTile(
                     label: "Swap", value: t.map { Bytes.format($0.swapUsedBytes) } ?? "—",
-                    detail: t.map { "of \(Bytes.format($0.swapTotalBytes)) allocated by macOS" })
+                    detail: t.map { L("of \(Bytes.format($0.swapTotalBytes)) allocated by macOS") })
             }
             GridRow {
                 MetricTile(
                     label: "Active builds", value: model.live.map { "\($0.activeBuildCount)" } ?? "—",
-                    detail: storage.map { "\(Bytes.format($0.buildTotalBytes)) of build output on disk" })
+                    detail: storage.map { L("\(Bytes.format($0.buildTotalBytes)) of build output on disk") })
                 MetricTile(
                     label: "Abandoned processes", value: model.live.map { "\($0.abandoned.count)" } ?? "—",
-                    detail: model.live.map { $0.abandoned.isEmpty ? "None among \($0.assessments.count) developer processes" : "holding up to \(Bytes.format($0.memory.proposalFootprintBytes))" },
+                    detail: model.live.map { $0.abandoned.isEmpty ? L("None among \($0.assessments.count) developer processes") : L("holding up to \(Bytes.format($0.memory.proposalFootprintBytes))") },
                     tint: (model.live?.abandoned.isEmpty ?? true) ? Theme.text : Theme.amber)
                 MetricTile(
                     label: "Agent sessions", value: model.live.map { "\($0.agentSessions.count)" } ?? "—",
                     detail: model.live.map { live in
                         let total = live.agentSessions.reduce(Int64(0)) { $0 + $1.footprintBytes }
-                        return live.agentSessions.isEmpty ? "No agents running" : "\(Bytes.format(total)) across their process trees"
+                        return live.agentSessions.isEmpty ? L("No agents running") : L("\(Bytes.format(total)) across their process trees")
                     })
                 growthTile
             }
@@ -95,11 +101,19 @@ struct OverviewSection: View {
     private var growthTile: some View {
         let day = model.growth?.day
         let delta = day?.deltaBytes ?? 0
-        let span = day.map { $0.coversWindow ? "than a day ago" : "than \(TimeFormat.age($0.actualSpan)) ago" } ?? ""
+        let change = Bytes.format(abs(delta))
         return MetricTile(
             label: "Disk used · 24 h", value: day.map { Bytes.formatDelta($0.deltaBytes) } ?? "—",
-            detail: day.map { _ in delta < 0 ? "\(Bytes.format(-delta)) less in use \(span)" : delta > 0 ? "\(Bytes.format(delta)) more in use \(span)" : "Unchanged" }
-                ?? "History starts with the first scan",
+            detail: day.map { day in
+                let age = TimeFormat.age(day.actualSpan)
+                switch (delta < 0, delta > 0, day.coversWindow) {
+                case (true, _, true): return L("\(change) less in use than a day ago")
+                case (true, _, false): return L("\(change) less in use than \(age) ago")
+                case (_, true, true): return L("\(change) more in use than a day ago")
+                case (_, true, false): return L("\(change) more in use than \(age) ago")
+                default: return L("Unchanged")
+                }
+            } ?? L("History starts with the first scan"),
             tint: delta > 20 * Bytes.gb ? Theme.amber : delta < 0 ? Theme.forest : Theme.text)
     }
 
@@ -119,7 +133,7 @@ struct OverviewSection: View {
                     HStack(spacing: 8) {
                         Text(Bytes.format(item.reclaimableBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit()
                             .foregroundStyle(Theme.text).frame(width: 64, alignment: .trailing)
-                        Badge(text: item.safety.rawValue, tint: Theme.color(for: item.safety))
+                        Badge(text: Theme.title(for: item.safety), tint: Theme.color(for: item.safety))
                         Text(item.title).font(.system(size: 12)).foregroundStyle(Theme.text).lineLimit(1)
                         Spacer(minLength: 4)
                         Text(item.category.displayName).font(.system(size: 11)).foregroundStyle(Theme.tertiary).lineLimit(1)

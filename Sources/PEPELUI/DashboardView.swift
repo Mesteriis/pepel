@@ -46,7 +46,7 @@ public struct DashboardView: View {
                 if model.isScanning {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.small)
-                        Text(model.scanProgress.map { $0.total > 0 ? "\($0.completed)/\($0.total)" : $0.phase } ?? "Scanning")
+                        Text(model.scanProgress.map { $0.total > 0 ? "\($0.completed)/\($0.total)" : $0.phase } ?? L("Scanning"))
                             .font(.system(size: 11)).foregroundStyle(Theme.secondary).monospacedDigit().lineLimit(1)
                     }
                 }
@@ -57,7 +57,7 @@ public struct DashboardView: View {
                 }
                 .buttonStyle(QuietButtonStyle())
                 .keyboardShortcut("r")
-                Text(model.storage.map { "Last scan \(TimeFormat.ago($0.scan.finishedAt))" } ?? "Not scanned yet")
+                Text(model.storage.map { L("Last scan \(TimeFormat.ago($0.scan.finishedAt))") } ?? L("Not scanned yet"))
                     .font(.system(size: 10)).foregroundStyle(Theme.tertiary)
                 SelfUsageLine()
             }
@@ -146,7 +146,7 @@ struct TerminationSheet: View {
             HStack {
                 Text("Terminate \(target.process.name)?").font(.system(size: 15, weight: .semibold))
                 Spacer()
-                Badge(text: target.lifecycle.rawValue, tint: Theme.amber)
+                Badge(text: Theme.title(for: target.lifecycle), tint: Theme.amber)
                 ConfidenceBadge(confidence: target.confidence)
             }
             Text(target.process.displayCommand).font(Theme.mono).foregroundStyle(Theme.secondary).lineLimit(3).textSelection(.enabled)

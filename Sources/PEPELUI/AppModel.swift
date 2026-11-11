@@ -7,7 +7,21 @@ public enum DashboardSection: String, CaseIterable, Identifiable, Sendable {
     case overview, storage, map, memory, builds, projects, agents, cleanup, history, settings
 
     public var id: String { rawValue }
-    public var title: String { self == .map ? "Disk map" : rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
+    /// The name shown in the sidebar; `rawValue` stays the identity.
+    public var title: String {
+        switch self {
+        case .overview: L("Overview")
+        case .storage: L("Storage")
+        case .map: L("Disk map")
+        case .memory: L("Memory")
+        case .builds: L("Builds")
+        case .projects: L("Projects")
+        case .agents: L("Agents")
+        case .cleanup: L("Cleanup")
+        case .history: L("History")
+        case .settings: L("Settings")
+        }
+    }
 
     public var symbol: String {
         switch self {
@@ -63,7 +77,7 @@ public final class AppModel {
     /// Set while macOS is not showing PEPEL's menu bar item; explains why and what to do.
     public var menuBarNotice: String?
     private var menuBarNoticePosted = false
-    public var apiStatus = "Not started"
+    public var apiStatus = L("Not started")
     public var loginItemStatus = LoginItem.statusText
 
     /// What the rules will do next, what they did, and what PEPEL itself costs.
@@ -73,6 +87,20 @@ public final class AppModel {
         self.engine = engine
         self.monitor = MonitorService(engine: engine)
         self.activity = ActivityModel(engine: engine)
+    }
+
+    /// A heavy job's name in words. The names themselves stay English: they are stored and the
+    /// command-line tool prints them.
+    static func heavyTaskTitle(_ name: String) -> String {
+        switch name {
+        case "Disk map": L("Disk map")
+        case "Large files search": L("Large files search")
+        case "Storage scan": L("Storage scan")
+        case "Cache measuring": L("Cache measuring")
+        case "Folder measuring": L("Folder measuring")
+        case "Plan for the next day": L("Plan for the next day")
+        default: name
+        }
     }
 
     /// Heavy jobs running in this app right now, by name.
@@ -96,7 +124,7 @@ public final class AppModel {
             // Keep the app usable without persistence rather than failing to launch.
             let fallback = try! PepelEngine(paths: paths, store: try! PepelStore.inMemory())
             let model = AppModel(engine: fallback)
-            model.message = "PEPEL could not open its database (\(error)). Running without history."
+            model.message = L("PEPEL could not open its database (\(String(describing: error))). Running without history.")
             return model
         }
     }
@@ -132,7 +160,7 @@ public final class AppModel {
     public func freeze(_ session: AgentSession) {
         Task {
             if let decision = await engine.freeze(session.root, confirmed: true, initiator: .user), decision.verdict == .denied {
-                message = "Not suspended: \(decision.reasons.joined(separator: " "))"
+                message = L("Not suspended: \(decision.reasons.joined(separator: " "))")
             }
             live = await engine.live
         }
@@ -174,7 +202,7 @@ public final class AppModel {
             }
         case .scanStarted:
             isScanning = true
-            scanProgress = ScanProgress(phase: "Starting")
+            scanProgress = ScanProgress(phase: L("Starting"))
         case .scanProgress(let progress):
             scanProgress = progress
         case .storage(let state):
@@ -190,13 +218,13 @@ public final class AppModel {
         case .automatic(let cleanup, let terminations):
             if let cleanup, cleanup.succeededCount > 0 {
                 Notifier.post(
-                    id: "auto-cleanup-\(Int(cleanup.finishedAt.timeIntervalSince1970))", title: "Safe cleanup finished",
-                    body: "\(cleanup.succeededCount) item\(cleanup.succeededCount == 1 ? "" : "s") cleaned, up to \(Bytes.format(cleanup.estimatedBytes)).")
+                    id: "auto-cleanup-\(Int(cleanup.finishedAt.timeIntervalSince1970))", title: L("Safe cleanup finished"),
+                    body: L("\(cleanup.succeededCount) items cleaned, up to \(Bytes.format(cleanup.estimatedBytes))."))
             }
             for report in terminations where report.exited {
                 Notifier.post(
-                    id: "auto-term-\(report.target.pid)", title: "PEPEL terminated \(report.name)",
-                    body: "PID \(report.target.pid) had been idle past its threshold. It held \(Bytes.format(report.footprintBefore)) with its child processes.")
+                    id: "auto-term-\(report.target.pid)", title: L("PEPEL terminated \(report.name)"),
+                    body: L("PID \(Int(report.target.pid)) had been idle past its threshold. It held \(Bytes.format(report.footprintBefore)) with its child processes."))
             }
             refreshSecondary()
         case .cadence(let reason):
@@ -230,8 +258,8 @@ public final class AppModel {
             if let report, settings.notificationsEnabled {
                 let done = report.results.map { "\($0.title.lowercased()): \($0.done)" }.joined(separator: ", ")
                 Notifier.post(
-                    id: "free-\(Int(report.finishedAt.timeIntervalSince1970))", title: "Memory freed",
-                    body: "Memory used \(Bytes.format(report.before.memoryUsedBytes)) → \(Bytes.format(report.after.memoryUsedBytes)), free \(Bytes.format(report.before.freeBytes)) → \(Bytes.format(report.after.freeBytes)). \(done).")
+                    id: "free-\(Int(report.finishedAt.timeIntervalSince1970))", title: L("Memory freed"),
+                    body: L("Memory used \(Bytes.format(report.before.memoryUsedBytes)) → \(Bytes.format(report.after.memoryUsedBytes)), free \(Bytes.format(report.before.freeBytes)) → \(Bytes.format(report.after.freeBytes)). \(done)."))
             }
         }
     }
@@ -255,9 +283,9 @@ public final class AppModel {
             let server = LocalAPIServer(socketPath: engine.paths.socket, token: token, service: engine.makeAgentService())
             try server.start()
             apiServer = server
-            apiStatus = "Listening"
+            apiStatus = L("Listening")
         } catch {
-            apiStatus = "Unavailable: \(error)"
+            apiStatus = L("Unavailable: \(String(describing: error))")
         }
     }
 
@@ -292,17 +320,17 @@ public final class AppModel {
         let running = NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier.flatMap { managers[$0] } }.first
         let installed = Bundle.main.bundlePath.hasPrefix("/Applications/")
         if let running, !installed {
-            menuBarNotice = "macOS is not showing PEPEL's menu bar icon. On macOS 27, \(running) hides apps that do not run from /Applications: install PEPEL there (Scripts/install.sh, or drag PEPEL.app into Applications), then expand \(running) and collapse it again. Opening PEPEL.app again shows this window."
+            menuBarNotice = L("macOS is not showing PEPEL's menu bar icon. On macOS 27, \(running) hides apps that do not run from /Applications: install PEPEL there (Scripts/install.sh, or drag PEPEL.app into Applications), then expand \(running) and collapse it again. Opening PEPEL.app again shows this window.")
         } else if let running {
-            menuBarNotice = "macOS is not showing PEPEL's menu bar icon. \(running) hides every app that was not running when it last collapsed: expand \(running) and collapse it again, and the icon appears to the right of its arrow. Until then, opening PEPEL.app again shows this window."
+            menuBarNotice = L("macOS is not showing PEPEL's menu bar icon. \(running) hides every app that was not running when it last collapsed: expand \(running) and collapse it again, and the icon appears to the right of its arrow. Until then, opening PEPEL.app again shows this window.")
         } else {
-            menuBarNotice = "macOS is not showing PEPEL's menu bar icon. Check System Settings › Menu Bar › Allow in the Menu Bar, and whether the menu bar has room for it. Opening PEPEL.app again shows this window."
+            menuBarNotice = L("macOS is not showing PEPEL's menu bar icon. Check System Settings › Menu Bar › Allow in the Menu Bar, and whether the menu bar has room for it. Opening PEPEL.app again shows this window.")
         }
         guard !menuBarNoticePosted else { return }
         menuBarNoticePosted = true
         Notifier.post(
-            id: "menubar-hidden", title: "PEPEL's menu bar icon is hidden",
-            body: running.map { "Expand \($0) and collapse it again to bring the icon back." } ?? "Check System Settings › Menu Bar.")
+            id: "menubar-hidden", title: L("PEPEL's menu bar icon is hidden"),
+            body: running.map { L("Expand \($0) and collapse it again to bring the icon back.") } ?? L("Check System Settings › Menu Bar."))
     }
 
     // MARK: Derived
@@ -314,13 +342,13 @@ public final class AppModel {
     }
 
     public var healthSentence: String {
-        if settings.paused { return "Monitoring is paused." }
+        if settings.paused { return L("Monitoring is paused.") }
         switch health {
-        case .critical: return alerts.first { $0.severity == .critical }?.title ?? "Needs attention now."
+        case .critical: return alerts.first { $0.severity == .critical }?.title ?? L("Needs attention now.")
         case .attention:
             let count = live?.abandoned.count ?? 0
-            return alerts.first { $0.severity == .warning }?.title ?? (count == 1 ? "One process looks abandoned." : "\(count) processes look abandoned.")
-        case .healthy: return "Workstation is healthy."
+            return alerts.first { $0.severity == .warning }?.title ?? L("\(count) processes look abandoned.")
+        case .healthy: return L("Workstation is healthy.")
         }
     }
 
@@ -333,7 +361,7 @@ public final class AppModel {
         switch settings.menuBarMode {
         case .iconOnly: return nil
         case .reclaimable: return storage == nil ? nil : reclaimableText
-        case .memoryPressure: return live.map { $0.telemetry.pressure == .normal ? "OK" : $0.telemetry.pressure.rawValue.capitalized }
+        case .memoryPressure: return live.map { $0.telemetry.pressure == .normal ? L("OK") : $0.telemetry.pressure == .elevated ? L("Elevated") : L("Critical") }
         case .activeBuilds: return live.map { "\($0.activeBuildCount)" }
         }
     }
@@ -363,7 +391,7 @@ public final class AppModel {
                 storage = await engine.storage
                 await monitor.poke()
             } catch {
-                message = "Settings could not be saved: \(error)"
+                message = L("Settings could not be saved: \(String(describing: error))")
             }
         }
     }
@@ -407,7 +435,7 @@ public final class AppModel {
     public func requestTermination(_ assessment: ProcessAssessment) {
         Task {
             pendingTermination = await engine.terminationDecision(assessment.process.identity, initiator: .user)
-            if pendingTermination == nil { message = "That process has already exited." }
+            if pendingTermination == nil { message = L("That process has already exited.") }
         }
     }
 
@@ -417,8 +445,8 @@ public final class AppModel {
         Task {
             switch await engine.terminate(decision.target.process.identity, confirmed: true, force: force, initiator: .user) {
             case .completed(let report): terminationReport = report
-            case .denied(let d), .needsConfirmation(let d): message = "Not terminated: \(d.reasons.joined(separator: " "))"
-            case .notFound: message = "That process has already exited."
+            case .denied(let d), .needsConfirmation(let d): message = L("Not terminated: \(d.reasons.joined(separator: " "))")
+            case .notFound: message = L("That process has already exited.")
             }
             live = await engine.live
             refreshSecondary()
@@ -433,7 +461,7 @@ public final class AppModel {
                 storage = await engine.storage
                 refreshSecondary()
             } catch {
-                message = "Could not add the protection: \(error)"
+                message = L("Could not add the protection: \(String(describing: error))")
             }
         }
     }
@@ -458,7 +486,7 @@ public final class AppModel {
 
     public func restore(_ entry: AuditEntry) {
         guard let trashed = entry.detail["trashedTo"], let original = entry.detail["path"] else { return }
-        message = engine.restore(trashedPath: trashed, originalPath: original).map { "Could not restore: \($0)" } ?? "Restored \(PathUtil.display(original))."
+        message = engine.restore(trashedPath: trashed, originalPath: original).map { L("Could not restore: \($0)") } ?? L("Restored \(PathUtil.display(original)).")
         refreshSecondary()
     }
 
@@ -489,7 +517,7 @@ public final class AppModel {
 
     public func revokeFileCachePermission() {
         Task {
-            if case .failed(let reason) = await engine.revokeFileCachePermission(initiator: .user) { message = "Not removed: \(reason)" }
+            if case .failed(let reason) = await engine.revokeFileCachePermission(initiator: .user) { message = L("Not removed: \(reason)") }
             fileCachePermission = await engine.fileCachePermission()
         }
     }
@@ -516,7 +544,7 @@ public final class AppModel {
             for item in stale {
                 if case .completed(let report) = await engine.terminate(item.process.identity, confirmed: true, force: false, initiator: .user), report.exited { ended += 1 }
             }
-            message = "Ended \(ended) of \(stale.count) old copies inside agent servers."
+            message = L("Ended \(ended) of \(stale.count) old copies inside agent servers.")
             live = await engine.live
             refreshSecondary()
         }
@@ -529,7 +557,7 @@ public final class AppModel {
             for item in idle {
                 if case .completed(let report) = await engine.terminate(item.process.identity, confirmed: true, force: false, initiator: .user), report.exited { done += 1 }
             }
-            message = "Unloaded \(done) of \(idle.count) idle browser tab processes."
+            message = L("Unloaded \(done) of \(idle.count) idle browser tab processes.")
             live = await engine.live
             refreshSecondary()
         }
@@ -557,7 +585,7 @@ public final class AppModel {
 
     /// The name of the disk, for the first crumb.
     public var diskName: String {
-        (try? URL(fileURLWithPath: "/").resourceValues(forKeys: [.volumeNameKey]).volumeName) ?? "This Mac"
+        (try? URL(fileURLWithPath: "/").resourceValues(forKeys: [.volumeNameKey]).volumeName) ?? L("This Mac")
     }
 
     /// The folder on screen with, at the top of the disk, one more tile for the space the disk
@@ -567,7 +595,7 @@ public final class AppModel {
         if level.path == "/", level.pending == 0, let t = live?.telemetry, t.diskTotalBytes > 0 {
             let rest = (t.diskTotalBytes - t.diskFreeBytes) - level.bytes
             if rest > max(Bytes.gb, level.bytes / 100) {
-                level.nodes.append(DiskNode(path: "/", name: "Not measured", kind: .unmeasured, bytes: rest))
+                level.nodes.append(DiskNode(path: "/", name: L("Not measured"), kind: .unmeasured, bytes: rest))
             }
         }
         return level
@@ -693,7 +721,7 @@ public final class AppModel {
     public func cleanToolBackups() {
         Task {
             let result = await engine.cleanToolBackups(confirmed: true, initiator: .user)
-            message = result.denial.map { "Not done: \($0)" } ?? "Removed \(result.removed) backups; free space grew by \(Bytes.format(result.bytes)), less than their size when they shared blocks with the live files." + (result.skipped.isEmpty ? "" : " " + result.skipped.joined(separator: " "))
+            message = result.denial.map { L("Not done: \($0)") } ?? ([L("Removed \(result.removed) backups; free space grew by \(Bytes.format(result.bytes)), less than their size when they shared blocks with the live files.")] + result.skipped).joined(separator: " ")
             toolBackups = await engine.toolBackups(keep: settings.toolBackupsKeep, days: settings.toolBackupsDays)
         }
     }
@@ -704,7 +732,7 @@ public final class AppModel {
             for image in systemImages where image.usedBy.isEmpty {
                 if await engine.deleteSystemImage(image.id, confirmed: true, initiator: .user) == nil { deleted += 1 }
             }
-            message = "Deleted \(deleted) unused system image\(deleted == 1 ? "" : "s")."
+            message = L("Deleted \(deleted) unused system images.")
             systemImages = await engine.androidSystemImages()
         }
     }
@@ -728,7 +756,7 @@ public final class AppModel {
             for name in names {
                 if let refusal = await engine.deleteAndroidEmulator(name, confirmed: true, initiator: .user) { notes.append("\(name): \(refusal)") } else { deleted += 1 }
             }
-            message = "Deleted \(deleted) emulator\(deleted == 1 ? "" : "s")." + (notes.isEmpty ? "" : " " + notes.joined(separator: " "))
+            message = ([L("Deleted \(deleted) emulators.")] + notes).joined(separator: " ")
             androidEmulators = await engine.androidEmulators()
             measureOtherPlaces()
         }
@@ -741,7 +769,7 @@ public final class AppModel {
     public func cleanTemp() {
         Task {
             let result = await engine.cleanTemp(confirmed: true, initiator: .user)
-            message = result.denial.map { "Not done: \($0)" } ?? "Removed \(result.removed) temporary entries, \(Bytes.format(result.bytes))."
+            message = result.denial.map { L("Not done: \($0)") } ?? L("Removed \(result.removed) temporary entries, \(Bytes.format(result.bytes)).")
             measureTemp()
         }
     }
@@ -749,7 +777,7 @@ public final class AppModel {
     public func removeOldLogs() {
         Task {
             let result = await engine.removeOldLogs(confirmed: true, initiator: .user)
-            message = result.denial.map { "Not done: \($0)" } ?? "Removed \(result.removed) log files, \(Bytes.format(result.bytes))."
+            message = result.denial.map { L("Not done: \($0)") } ?? L("Removed \(result.removed) log files, \(Bytes.format(result.bytes)).")
             measureOtherPlaces()
         }
     }
@@ -776,7 +804,7 @@ public final class AppModel {
         Task {
             let result = await engine.cleanApplicationCaches(includeUnknown: includeUnknown, confirmed: true, initiator: .user)
             isMeasuringAppData = false
-            message = result.denial.map { "Not done: \($0)" } ?? result.report.map { "Removed \($0.removed.count) caches, \(Bytes.format($0.bytes))." }
+            message = result.denial.map { L("Not done: \($0)") } ?? result.report.map { L("Removed \($0.removed.count) caches, \(Bytes.format($0.bytes)).") }
             measureApplicationData()
             refreshSecondary()
         }
@@ -787,7 +815,7 @@ public final class AppModel {
         Task {
             let result = await engine.trashApplicationLeftovers(confirmed: true, initiator: .user)
             isMeasuringAppData = false
-            message = result.denial.map { "Not done: \($0)" } ?? result.report.map { "Moved \($0.removed.count) folders (\(Bytes.format($0.bytes))) to the Trash." }
+            message = result.denial.map { L("Not done: \($0)") } ?? result.report.map { L("Moved \($0.removed.count) folders (\(Bytes.format($0.bytes))) to the Trash.") }
             measureApplicationData()
         }
     }
@@ -813,8 +841,8 @@ public final class AppModel {
         Task {
             let result = await engine.trimCaches(confirmed: true, initiator: .user)
             isTrimmingCaches = false
-            message = result.denial.map { "Not done: \($0)" }
-                ?? result.report.map { $0.steps.isEmpty ? "Nothing to remove." : "Removed \(Bytes.format($0.bytes)) from \($0.steps.count) caches. Disk available \(Bytes.format($0.diskAvailableBefore)) → \(Bytes.format($0.diskAvailableAfter))." }
+            message = result.denial.map { L("Not done: \($0)") }
+                ?? result.report.map { $0.steps.isEmpty ? L("Nothing to remove.") : L("Removed \(Bytes.format($0.bytes)) from \($0.steps.count) caches. Disk available \(Bytes.format($0.diskAvailableBefore)) → \(Bytes.format($0.diskAvailableAfter)).") }
             measureCaches()
             refreshSecondary()
         }
@@ -834,7 +862,7 @@ public final class AppModel {
         Task {
             let result = await engine.runTidy(screenshots: true, downloads: true, confirmed: true, initiator: .user)
             isTidying = false
-            message = result.denial.map { "Not done: \($0)" } ?? "\(settings.tidyAction == .trash ? "Moved to the Trash" : "Removed"): \(result.removed) items, \(Bytes.format(result.bytes))."
+            message = result.denial.map { L("Not done: \($0)") } ?? (settings.tidyAction == .trash ? L("Moved to the Trash: \(result.removed) items, \(Bytes.format(result.bytes)).") : L("Removed: \(result.removed) items, \(Bytes.format(result.bytes))."))
             measureTidy()
         }
     }
@@ -872,9 +900,9 @@ public final class AppModel {
     public func trashIgnoredFolder(_ folder: IgnoredFolder) {
         Task {
             if let refusal = await engine.trashIgnoredFolder(folder.path, confirmed: true, initiator: .user) {
-                message = "Not moved: \(refusal)"
+                message = L("Not moved: \(refusal)")
             } else {
-                message = "\(folder.projectName) · \((folder.path as NSString).lastPathComponent) moved to the Trash (\(Bytes.format(folder.bytes)))."
+                message = L("\(folder.projectName) · \((folder.path as NSString).lastPathComponent) moved to the Trash (\(Bytes.format(folder.bytes))).")
                 ignoredFolders?.removeAll { $0.id == folder.id }
             }
         }
@@ -894,7 +922,7 @@ public final class AppModel {
         Task {
             let report = await engine.cleanStaleProjects(confirmed: true, initiator: .user)
             isCleaningStale = false
-            message = report.map { "Removed \($0.succeededCount) of \($0.outcomes.count) items. Disk available \(Bytes.format($0.diskAvailableBefore)) → \(Bytes.format($0.diskAvailableAfter))." } ?? "Nothing to remove."
+            message = report.map { L("Removed \($0.succeededCount) of \($0.outcomes.count) items. Disk available \(Bytes.format($0.diskAvailableBefore)) → \(Bytes.format($0.diskAvailableAfter)).") } ?? L("Nothing to remove.")
             scanNow()
             refreshSecondary()
         }
@@ -935,7 +963,7 @@ public final class AppModel {
             let result = await engine.cleanDocker(kinds: kinds, confirmed: true, initiator: .user)
             isCleaningDocker = false
             dockerCleanReport = result.report
-            if let denial = result.denial { message = "Not done: \(denial)" }
+            if let denial = result.denial { message = L("Not done: \(denial)") }
             refreshDocker()
             refreshSecondary()
         }
@@ -947,7 +975,7 @@ public final class AppModel {
         Task {
             let outcome = await Task.detached(priority: .utility) { engine.dockerDiskCompact() }.value
             isCleaningDocker = false
-            message = outcome.done ? "Trimmed: \(outcome.note)" : "Not trimmed: \(outcome.note)"
+            message = outcome.done ? L("Trimmed: \(outcome.note)") : L("Not trimmed: \(outcome.note)")
             refreshDocker()
         }
     }
@@ -996,9 +1024,10 @@ public final class AppModel {
         Task {
             let result = await engine.summary(hours: frequency.hours)
             summary = result
-            let open = result.open.isEmpty ? "" : " Waiting for you: " + result.open.prefix(2).joined(separator: " ")
+            let waiting = result.open.prefix(2).joined(separator: " ")
+            let open = result.open.isEmpty ? "" : " " + L("Waiting for you: \(waiting)")
             Notifier.post(
-                id: "summary-\(Int(now.timeIntervalSince1970))", title: frequency == .weekly ? "PEPEL, this week" : "PEPEL, last 24 hours",
+                id: "summary-\(Int(now.timeIntervalSince1970))", title: frequency == .weekly ? L("PEPEL, this week") : L("PEPEL, last 24 hours"),
                 body: result.headline + " " + result.done.prefix(3).joined(separator: " ") + open)
         }
     }
@@ -1019,7 +1048,7 @@ public final class AppModel {
             let result = await engine.setContainerVMLimit(pending.newLimitBytes, confirmed: true, initiator: .user)
             isRefreshingVM = false
             vmRefreshReport = result?.report ?? vmRefreshReport
-            message = result?.report.map { $0.steps.joined(separator: " ") } ?? "The limit was not changed."
+            message = result?.report.map { $0.steps.joined(separator: " ") } ?? L("The limit was not changed.")
             live = await engine.live
             refreshSecondary()
         }
@@ -1065,7 +1094,7 @@ public final class AppModel {
         pendingApplication = nil
         Task {
             message = await engine.performApplication(pending.action, bundlePath: pending.bundlePath, confirmed: true, initiator: .user).map {
-                $0.quit ? "\($0.note) Charged \(Bytes.format($0.footprintBefore)) before, \(Bytes.format($0.footprintAfter)) after." : $0.note
+                $0.quit ? $0.note + " " + L("Charged \(Bytes.format($0.footprintBefore)) before, \(Bytes.format($0.footprintAfter)) after.") : $0.note
             }
             live = await engine.live
             refreshSecondary()
@@ -1103,8 +1132,8 @@ public final class AppModel {
     public func pauseContainers(_ group: ContainerGroup) {
         Task {
             if let result = await engine.stopContainers(groupID: group.id, confirmed: true, initiator: .user, action: .pause) {
-                message = result.report.map { "Paused \($0.stopped.count) container\($0.stopped.count == 1 ? "" : "s") of \($0.groupName). They continue when an agent session starts in the project, or with Resume." }
-                    ?? "Not paused: \(result.decision.reasons.joined(separator: " "))"
+                message = result.report.map { L("Paused \($0.stopped.count) containers of \($0.groupName). They continue when an agent session starts in the project, or with Resume.") }
+                    ?? L("Not paused: \(result.decision.reasons.joined(separator: " "))")
             }
             live = await engine.refreshLive()
         }
@@ -1113,7 +1142,7 @@ public final class AppModel {
     public func resumeContainers(_ group: ContainerGroup) {
         Task {
             let resumed = await engine.resumeContainers(groupID: group.id, reason: "you asked")
-            message = "Resumed \(resumed.count) container\(resumed.count == 1 ? "" : "s") of \(group.name)."
+            message = L("Resumed \(resumed.count) containers of \(group.name).")
             live = await engine.refreshLive()
         }
     }
@@ -1121,8 +1150,11 @@ public final class AppModel {
     public func stopContainers(_ group: ContainerGroup) {
         Task {
             if let result = await engine.stopContainers(groupID: group.id, confirmed: true, initiator: .user) {
-                message = result.report.map { "Stopped \($0.stopped.count) container\($0.stopped.count == 1 ? "" : "s") of \($0.groupName)." + ($0.failed.isEmpty ? "" : " Not stopped: \($0.failed.joined(separator: ", ")).") }
-                    ?? "Not stopped: \(result.decision.reasons.joined(separator: " "))"
+                message = result.report.map { report in
+                    let failed = report.failed.joined(separator: ", ")
+                    return ([L("Stopped \(report.stopped.count) containers of \(report.groupName).")] + (report.failed.isEmpty ? [] : [L("Not stopped: \(failed).")])).joined(separator: " ")
+                }
+                    ?? L("Not stopped: \(result.decision.reasons.joined(separator: " "))")
             }
             live = await engine.refreshLive()
             refreshSecondary()

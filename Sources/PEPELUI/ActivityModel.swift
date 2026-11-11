@@ -36,7 +36,7 @@ public final class ActivityModel {
         Task {
             _ = try? await engine.setLeftAlone([action.id], true)
             withAnimation(.easeOut(duration: 0.2)) { plan?.actions.removeAll { $0.id == action.id } }
-            message = "\(action.title) will be left alone. Settings › Leave alone lists it."
+            message = L("\(action.title) will be left alone. Settings › Leave alone lists it.")
         }
     }
 
@@ -59,9 +59,9 @@ public final class ActivityModel {
 
     public func restore(_ record: TrashRecord) {
         if let problem = engine.restoreTrashed(id: record.id) {
-            message = "Could not put \(record.name) back: \(problem)"
+            message = L("Could not put \(record.name) back: \(problem)")
         } else {
-            message = "\(record.name) is back in \(PathUtil.display((record.originalPath as NSString).deletingLastPathComponent))."
+            message = L("\(record.name) is back in \(PathUtil.display((record.originalPath as NSString).deletingLastPathComponent)).")
         }
         refreshRestore()
     }
@@ -77,7 +77,7 @@ public final class ActivityModel {
             // Said once an hour at most; the sidebar shows it all along.
             if let warning = selfWarning, notify, Date().timeIntervalSince(warnedAt) > 3600 {
                 warnedAt = Date()
-                Notifier.post(id: "pepel-self", title: "PEPEL is in the way", body: warning)
+                Notifier.post(id: "pepel-self", title: L("PEPEL is in the way"), body: warning)
             }
         }
     }
