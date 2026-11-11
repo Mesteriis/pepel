@@ -453,6 +453,32 @@ struct SettingsSection: View {
                 .onAppear { model.refreshInstructionFiles() }
             }
 
+            group("Apps that stay open without windows", "Preview, TextEdit and most document apps keep running after their last window is closed. Tick the ones PEPEL should quit when no window is open.") {
+                stepper("Quit after", s.windowlessQuitMinutes, 0...120, suffix: " min with no window, when not in front") { v in model.updateSettings { $0.windowlessQuitMinutes = v } }
+                if model.windowlessApps.isEmpty {
+                    Text("None seen yet. PEPEL notices an application running with no window and lists it here.").font(.system(size: 12)).foregroundStyle(Theme.secondary)
+                }
+                ForEach(model.windowlessApps) { app in
+                    HStack(spacing: 10) {
+                        Toggle(isOn: Binding(get: { app.quitWhenWindowless }, set: { model.setQuitWhenWindowless(app, $0) })) {
+                            HStack(spacing: 8) {
+                                Image(nsImage: NSWorkspace.shared.icon(forFile: app.path)).resizable().frame(width: 18, height: 18)
+                                Text(app.name).font(.system(size: 12, weight: .medium))
+                            }
+                        }
+                        .toggleStyle(.checkbox)
+                        .accessibilityLabel("Quit \(app.name) when it has no window")
+                        if app.windowlessNow { Badge(text: "open, no window", tint: Theme.amber) } else if app.running { Badge(text: "open", tint: Theme.forest) }
+                        Spacer()
+                        Text(app.timesSeen > 0 ? "seen without windows \(app.timesSeen)×, last \(app.lastSeen.map { TimeFormat.ago($0) } ?? "")" : app.known ? "known to stay open" : "")
+                            .font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                    }
+                }
+                Text("A ticked app is asked to quit the normal way, never forced. It is left alone while it is in front, while it is busy with no window (playing, exporting, syncing), and when an agent session or a build runs inside it. A window that is minimised, hidden or on another Space counts as open.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+            .onAppear { model.refreshWindowlessApps() }
+
             group("Applications", "Leftovers of applications that quit, and applications that stay open unused. Quitting an application is always the ordinary request and always asks you first.") {
                 toggle("Terminate what an application leaves running after it quits", s.terminateAppLeftovers) { v in model.updateSettings { $0.terminateAppLeftovers = v } }
                 stepper("Wait", s.appLeftoverGraceMinutes, 1...240, suffix: " min after the application quit") { v in model.updateSettings { $0.appLeftoverGraceMinutes = v } }

@@ -83,6 +83,7 @@ extension PepelEngine {
         var terminations: [TerminationReport] = []
         await freezePass()
         await resumeContainersOfActiveProjects()
+        await windowlessPass()
         guard !settings.paused else { return (nil, []) }
         _ = await stopIdleProjectContainers()
         _ = await nightlyVMRefresh()

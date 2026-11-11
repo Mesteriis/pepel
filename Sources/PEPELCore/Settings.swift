@@ -157,6 +157,10 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     public var cleanToolBackups = false
     public var toolBackupsKeep = 1
     public var toolBackupsDays = 7
+    /// Applications (by bundle identifier) PEPEL quits when they have had no window for
+    /// `windowlessQuitMinutes` while not in front and not busy.
+    public var quitWhenWindowless: [String] = []
+    public var windowlessQuitMinutes = 2
     public var freezeIdleAgents = false
     public var freezeAfterMinutes = 20
     /// How often a frozen session is woken for a moment to see whether work is waiting.

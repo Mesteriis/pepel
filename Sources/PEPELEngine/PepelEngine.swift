@@ -40,6 +40,11 @@ public actor PepelEngine {
 
     public func setJournaling(_ on: Bool) { journaling = on }
     var applicationControl: ApplicationControl = .unavailable
+    /// Applications seen with no window in the current stretch, by bundle identifier.
+    var windowlessStates: [String: WindowlessState] = [:]
+    /// Processes already asked to quit by the rule. One that is still running declined (or is
+    /// asking about something) and is not asked again.
+    var windowlessAsked: Set<ProcessIdentity> = []
     /// Replaces the `docker` command line; tests use a scripted one.
     nonisolated(unsafe) var containerRunner: ContainerStopper.Runner?
 

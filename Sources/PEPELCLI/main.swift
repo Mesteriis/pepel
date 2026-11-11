@@ -189,6 +189,32 @@ case "builds":
 case "apps":
     let live = await engine.refreshLive()
     let apps = live.memoryOwners.filter { $0.kind == .application }
+    if arguments.positional.first == "windowless" {
+        let verb = arguments.positional.dropFirst().first
+        let apps = await engine.windowlessApps()
+        if verb == "on" || verb == "off" {
+            let wanted = arguments.positional.dropFirst(2).joined(separator: " ").lowercased()
+            guard let app = apps.first(where: { $0.name.lowercased() == wanted || $0.bundleID.lowercased() == wanted }) else {
+                Out.error("no such application in the list; see `pepel apps windowless`"); exit(1)
+            }
+            try await engine.setQuitWhenWindowless(app.bundleID, verb == "on")
+            let minutes = await engine.currentSettings().windowlessQuitMinutes
+            print(verb == "on" ? "\(app.name) will be quit after \(minutes) min with no window, when it is not in front and not busy." : "\(app.name) is left alone.")
+            break
+        }
+        if arguments.json { Out.json(apps); break }
+        let minutes = await engine.currentSettings().windowlessQuitMinutes
+        Out.table(
+            ["QUIT", "NOW", "SEEN WITHOUT WINDOWS", "APPLICATION", "BUNDLE ID"],
+            apps.map {
+                [
+                    $0.quitWhenWindowless ? "yes" : "", $0.windowlessNow ? "no window" : $0.running ? "open" : "",
+                    $0.timesSeen > 0 ? "\($0.timesSeen)×, last \($0.lastSeen.map { TimeFormat.ago($0) } ?? "—")" : $0.known ? "known to" : "", $0.name, $0.bundleID,
+                ]
+            })
+        print("\n`pepel apps windowless on|off <name>` decides for one. A chosen app is quit normally after \(minutes) min with no window (windowlessQuitMinutes), when it is not in front and not busy.")
+        break
+    }
     if arguments.positional.first == "caches" || arguments.positional.first == "leftovers" {
         let settings = await engine.currentSettings()
         let days = arguments.options["days"].flatMap { Int($0) } ?? settings.appCacheUnusedDays

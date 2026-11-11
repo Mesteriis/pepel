@@ -801,6 +801,22 @@ public final class AppModel {
         }
     }
 
+    // MARK: Applications open without windows
+
+    public var windowlessApps: [WindowlessApp] = []
+
+    public func refreshWindowlessApps() {
+        Task { windowlessApps = await engine.windowlessApps() }
+    }
+
+    public func setQuitWhenWindowless(_ app: WindowlessApp, _ on: Bool) {
+        Task {
+            try? await engine.setQuitWhenWindowless(app.bundleID, on)
+            settings = await engine.currentSettings()
+            windowlessApps = await engine.windowlessApps()
+        }
+    }
+
     // MARK: Large ignored folders
 
     public var ignoredFolders: [IgnoredFolder]?

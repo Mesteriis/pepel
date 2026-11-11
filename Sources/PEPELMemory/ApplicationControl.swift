@@ -15,11 +15,18 @@ public struct ApplicationControl: Sendable {
     public var hide: @Sendable (Int32) -> Bool
     /// Applications macOS lists as running.
     public var running: @Sendable () -> [RunningApplicationInfo]
+    /// Normal windows each process has, open, minimised, hidden or on another Space.
+    public var windowCounts: @Sendable () -> [Int32: Int]
+    /// Where an application with this bundle identifier is installed.
+    public var locate: @Sendable (String) -> String?
 
     public init(
         isAvailable: Bool, quit: @escaping @Sendable (Int32) -> Bool, launch: @escaping @Sendable (String) async -> Bool,
-        hide: @escaping @Sendable (Int32) -> Bool = { _ in false }, running: @escaping @Sendable () -> [RunningApplicationInfo] = { [] }
+        hide: @escaping @Sendable (Int32) -> Bool = { _ in false }, running: @escaping @Sendable () -> [RunningApplicationInfo] = { [] },
+        windowCounts: @escaping @Sendable () -> [Int32: Int] = { [:] }, locate: @escaping @Sendable (String) -> String? = { _ in nil }
     ) {
+        self.windowCounts = windowCounts
+        self.locate = locate
         self.isAvailable = isAvailable
         self.quit = quit
         self.launch = launch
@@ -48,7 +55,21 @@ public struct ApplicationControl: Sendable {
                 guard let path = app.bundleURL?.path else { return nil }
                 return RunningApplicationInfo(
                     pid: app.processIdentifier, bundlePath: path, name: app.localizedName ?? (path as NSString).lastPathComponent,
-                    isRegular: app.activationPolicy == .regular)
+                    isRegular: app.activationPolicy == .regular, bundleID: app.bundleIdentifier)
             }
-        })
+        },
+        windowCounts: {
+            // Window owners and sizes are available without the Screen Recording permission; titles are not read.
+            let info = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+            var counts: [Int32: Int] = [:]
+            for window in info {
+                guard let pid = window[kCGWindowOwnerPID as String] as? Int32, (window[kCGWindowLayer as String] as? Int) == 0 else { continue }
+                let bounds = window[kCGWindowBounds as String] as? [String: CGFloat] ?? [:]
+                // Tiny or empty windows are an application's own scaffolding, not something a person opened.
+                guard (bounds["Width"] ?? 0) >= 40, (bounds["Height"] ?? 0) >= 40 else { continue }
+                counts[pid, default: 0] += 1
+            }
+            return counts
+        },
+        locate: { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0)?.path })
 }

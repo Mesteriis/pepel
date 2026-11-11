@@ -1016,3 +1016,78 @@ struct ToolBackupTests {
     }
 }
 
+
+@Suite("Apps open without windows")
+struct WindowlessTests {
+    final class Box: @unchecked Sendable {
+        private let lock = NSLock()
+        private var counts: [Int32: Int] = [:]
+        private var front: Int32?
+        private var quitted: [Int32] = []
+        func set(_ pid: Int32, windows: Int) { lock.lock(); counts[pid] = windows; lock.unlock() }
+        func setFront(_ pid: Int32?) { lock.lock(); front = pid; lock.unlock() }
+        var windowCounts: [Int32: Int] { lock.lock(); defer { lock.unlock() }; return counts }
+        var frontmost: Int32? { lock.lock(); defer { lock.unlock() }; return front }
+        func quit(_ pid: Int32) { lock.lock(); quitted.append(pid); lock.unlock() }
+        var quit: [Int32] { lock.lock(); defer { lock.unlock() }; return quitted }
+    }
+
+    @Test("A ticked app with no window is quit after the grace period; one in front, busy, unticked or with a window is not")
+    func rule() async throws {
+        let f = Fixture()
+        let apps: [(Int32, String, String)] = [(100, "Preview", "com.apple.Preview"), (200, "TextEdit", "com.apple.TextEdit"), (300, "QuickTime Player", "com.apple.QuickTimePlayerX"), (400, "Notes", "com.apple.Notes")]
+        var processes: [ProcessSnapshot] = []
+        var running: [RunningApplicationInfo] = []
+        for (pid, name, id) in apps {
+            let path = "/System/Applications/\(name).app"
+            processes.append(process(pid, name: name, path: path + "/Contents/MacOS/\(name)"))
+            running.append(RunningApplicationInfo(pid: pid, bundlePath: path, name: name, isRegular: true, bundleID: id))
+        }
+        let source = FakeProcessSource(processes: processes)
+        let box = Box()
+        for (pid, _, _) in apps { box.set(pid, windows: 0) }
+        box.set(400, windows: 1)  // Notes has a window
+        let runningApps = running
+        let control = ApplicationControl(
+            isAvailable: true, quit: { pid in box.quit(pid); return true }, launch: { _ in true }, running: { runningApps }, windowCounts: { box.windowCounts },
+            locate: { $0 == "com.apple.FontBook" ? "/System/Applications/Font Book.app" : nil })
+        let store = try PepelStore.inMemory()
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: source, telemetry: { SystemTelemetry() })
+        await engine.setApplicationControl(control)
+        await engine.setFrontmostProvider { box.frontmost }
+        box.setFront(200)  // TextEdit is in front
+        await engine.refreshLive()
+        _ = try await engine.update { $0.quitWhenWindowless = ["com.apple.Preview", "com.apple.TextEdit", "com.apple.QuickTimePlayerX", "com.apple.Notes"]; $0.windowlessQuitMinutes = 2 }
+
+        let start = Date()
+        #expect(await engine.windowlessPass(now: start).isEmpty, "the clock starts")
+        // QuickTime is exporting: its CPU time grows.
+        source.mutate(300) { $0.cpuTimeNs += 30 * 1_000_000_000 }
+        await engine.refreshLive()
+        #expect(await engine.windowlessPass(now: start.addingTimeInterval(60)).isEmpty, "not two minutes yet")
+        let quit = await engine.windowlessPass(now: start.addingTimeInterval(150))
+        #expect(quit == ["Preview"], "TextEdit is in front, QuickTime is busy, Notes has a window")
+        #expect(box.quit == [100])
+        #expect(store.audit(kinds: [.termination]).contains { $0.subject == "Preview" && $0.outcome == "quit (no window)" })
+
+        // The list: what was seen, and installed known apps.
+        let listed = await engine.windowlessApps()
+        #expect(Set(listed.map(\.bundleID)).isSuperset(of: ["com.apple.Preview", "com.apple.TextEdit", "com.apple.QuickTimePlayerX", "com.apple.FontBook"]))
+        #expect(!listed.contains { $0.bundleID == "com.apple.Notes" }, "never seen without a window and not a known one")
+        #expect(listed.first { $0.bundleID == "com.apple.TextEdit" }?.windowlessNow == true && listed.first { $0.bundleID == "com.apple.TextEdit" }?.timesSeen == 1)
+        #expect(listed.first { $0.bundleID == "com.apple.FontBook" }?.known == true && listed.first { $0.bundleID == "com.apple.FontBook" }?.timesSeen == 0)
+
+        // Unticked: never quit. QuickTime, idle again, is; Preview, which did not quit when asked, is not asked again.
+        try await engine.setQuitWhenWindowless("com.apple.TextEdit", false)
+        box.setFront(nil)
+        _ = await engine.windowlessPass(now: start.addingTimeInterval(400))
+        _ = await engine.windowlessPass(now: start.addingTimeInterval(600))
+        #expect(box.quit == [100, 300])
+        // Paused: nothing is quit.
+        _ = try await engine.update { $0.paused = true }
+        _ = await engine.windowlessPass(now: start.addingTimeInterval(900))
+        #expect(box.quit == [100, 300])
+    }
+}

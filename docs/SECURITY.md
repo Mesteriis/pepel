@@ -129,6 +129,15 @@ Refused: for agents and the automatic pass; for an application with agent sessio
 or servers running inside it (a terminal, an editor with an agent); for PEPEL and the application
 it runs in; for system components under `/System/Library`.
 
+**Applications open without windows.** PEPEL counts each application's normal windows from the
+window list macOS gives without the Screen Recording permission (owner and size only, never
+titles or contents); a minimised, hidden or other-Space window counts as open. Applications
+seen running with no window are listed next to Apple's document apps. For the ones the user
+ticks (`quitWhenWindowless`), PEPEL sends the ordinary quit request after
+`windowlessQuitMinutes` (2) with no window, unless the app is in front, used CPU in that time
+(playing, exporting), or has agent sessions or builds inside it. A running copy that does not
+quit is not asked again.
+
 **Unused applications** are only listed: an ordinary application, not in front for
 `unusedApplicationHours` (6) as far as PEPEL has seen, using under 2% of a core over the last
 hour (so a music player or a syncing client is not mistaken for unused), holding at least

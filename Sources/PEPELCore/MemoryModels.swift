@@ -435,12 +435,14 @@ public struct RunningApplicationInfo: Codable, Sendable, Hashable {
     public var name: String
     /// An ordinary application with a Dock icon, as opposed to a menu bar item or a helper.
     public var isRegular: Bool
+    public var bundleID: String?
 
-    public init(pid: Int32, bundlePath: String, name: String, isRegular: Bool) {
+    public init(pid: Int32, bundlePath: String, name: String, isRegular: Bool, bundleID: String? = nil) {
         self.pid = pid
         self.bundlePath = bundlePath
         self.name = name
         self.isRegular = isRegular
+        self.bundleID = bundleID
     }
 }
 
@@ -816,4 +818,41 @@ public struct DailySummary: Codable, Sendable, Hashable {
         if !cleanups.isEmpty { done.append("Cleaned \(plural(cleanups.count, "item", "items")) of developer storage, \(Bytes.format(disk)).") }
         return DailySummary(from: from, to: to, done: done, open: open, memoryFreedBytes: vmBytes + freeBytes, diskFreedBytes: disk)
     }
+}
+
+// MARK: - Applications open without windows
+
+/// An application that keeps running after its last window is closed (Preview, TextEdit and
+/// most document apps on macOS do), as PEPEL has seen it or knows it.
+public struct WindowlessApp: Codable, Sendable, Identifiable, Hashable {
+    public var bundleID: String
+    public var name: String
+    public var path: String
+    /// How many times PEPEL has seen it running with no window at all.
+    public var timesSeen: Int
+    public var lastSeen: Date?
+    /// Known to behave this way (Apple's document apps), even before PEPEL saw it.
+    public var known: Bool
+    /// Running right now with no window.
+    public var windowlessNow = false
+    /// Running right now.
+    public var running = false
+    /// The user asked PEPEL to quit it when it has no window.
+    public var quitWhenWindowless = false
+    public var id: String { bundleID }
+
+    public init(bundleID: String, name: String, path: String, timesSeen: Int, lastSeen: Date?, known: Bool) {
+        self.bundleID = bundleID
+        self.name = name
+        self.path = path
+        self.timesSeen = timesSeen
+        self.lastSeen = lastSeen
+        self.known = known
+    }
+
+    /// Apple's document apps, which stay open with no window by design.
+    public static let knownApps: [String] = [
+        "com.apple.Preview", "com.apple.TextEdit", "com.apple.QuickTimePlayerX", "com.apple.iWork.Pages", "com.apple.iWork.Numbers",
+        "com.apple.iWork.Keynote", "com.apple.ScriptEditor2", "com.apple.FontBook", "com.apple.Safari", "com.apple.PhotoBooth",
+    ]
 }
