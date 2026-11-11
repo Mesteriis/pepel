@@ -13,15 +13,18 @@ public struct ApplicationControl: Sendable {
     public var launch: @Sendable (String) async -> Bool
     /// Hides the application's windows.
     public var hide: @Sendable (Int32) -> Bool
+    /// Applications macOS lists as running.
+    public var running: @Sendable () -> [RunningApplicationInfo]
 
     public init(
         isAvailable: Bool, quit: @escaping @Sendable (Int32) -> Bool, launch: @escaping @Sendable (String) async -> Bool,
-        hide: @escaping @Sendable (Int32) -> Bool = { _ in false }
+        hide: @escaping @Sendable (Int32) -> Bool = { _ in false }, running: @escaping @Sendable () -> [RunningApplicationInfo] = { [] }
     ) {
         self.isAvailable = isAvailable
         self.quit = quit
         self.launch = launch
         self.hide = hide
+        self.running = running
     }
 
     public static let unavailable = ApplicationControl(isAvailable: false, quit: { _ in false }, launch: { _ in false })
@@ -39,5 +42,13 @@ public struct ApplicationControl: Sendable {
                 }
             }
         },
-        hide: { pid in NSRunningApplication(processIdentifier: pid)?.hide() ?? false })
+        hide: { pid in NSRunningApplication(processIdentifier: pid)?.hide() ?? false },
+        running: {
+            NSWorkspace.shared.runningApplications.compactMap { app in
+                guard let path = app.bundleURL?.path else { return nil }
+                return RunningApplicationInfo(
+                    pid: app.processIdentifier, bundlePath: path, name: app.localizedName ?? (path as NSString).lastPathComponent,
+                    isRegular: app.activationPolicy == .regular)
+            }
+        })
 }

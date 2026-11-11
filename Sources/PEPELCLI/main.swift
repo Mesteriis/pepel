@@ -149,6 +149,19 @@ case "builds":
 case "apps":
     let live = await engine.refreshLive()
     let apps = live.memoryOwners.filter { $0.kind == .application }
+    if arguments.positional.first == "unused" {
+        let settings = await engine.currentSettings()
+        if arguments.json { Out.json(live.unusedApplications); break }
+        if live.unusedApplications.isEmpty {
+            print("No application has been open and unused for \(settings.unusedApplicationHours) hours. PEPEL counts from when it first saw an application or last saw it in front.")
+        } else {
+            Out.table(
+                ["CHARGED", "IN RAM", "LAST IN FRONT", "CPU, LAST HOUR", "APPLICATION"],
+                live.unusedApplications.map { [Bytes.format($0.footprintBytes), Bytes.format($0.residentBytes), TimeFormat.ago($0.lastActive), $0.cpuPercent.map { String(format: "%.1f%%", $0) } ?? "—", $0.name] })
+            print("\n`pepel apps quit <name>` asks one to quit. Add a name to keepApplications in the settings to never list it.")
+        }
+        break
+    }
     guard let verb = arguments.positional.first, ["restart", "quit"].contains(verb) else {
         Out.table(["CHARGED", "IN RAM", "PROCS", "APPLICATION"], apps.map { [Bytes.format($0.footprintBytes), Bytes.format($0.residentBytes), String($0.processCount), $0.name] })
         print("\n`pepel apps restart <name>` asks an application to quit and opens it again; `pepel apps quit <name>` only asks it to quit.")

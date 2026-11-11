@@ -214,7 +214,7 @@ public struct ContainerReport: Codable, Sendable, Hashable {
 // MARK: - Free memory
 
 public enum ReclaimStepKind: String, Codable, Sendable, CaseIterable {
-    case abandonedProcesses, appLeftovers, sleepingAgents, freezeAgents, idleAgents, grownApps, idleContainers, containerVM, fileCache
+    case abandonedProcesses, appLeftovers, sleepingAgents, freezeAgents, idleAgents, grownApps, unusedApps, idleContainers, containerVM, fileCache
 }
 
 /// One thing "Free memory" can do, with what it would act on and what it could give back.
@@ -409,5 +409,49 @@ public enum MemoryGrowthAnalyzer {
         return MemoryGrowth(
             id: id, kind: kind, name: name, baselineBytes: baseline, currentBytes: current, since: first.at,
             perHourBytes: Int64(Double(current - baseline) / (span / 3600)))
+    }
+}
+
+// MARK: - Unused applications
+
+/// What macOS says about a running application.
+public struct RunningApplicationInfo: Codable, Sendable, Hashable {
+    public var pid: Int32
+    public var bundlePath: String
+    public var name: String
+    /// An ordinary application with a Dock icon, as opposed to a menu bar item or a helper.
+    public var isRegular: Bool
+
+    public init(pid: Int32, bundlePath: String, name: String, isRegular: Bool) {
+        self.pid = pid
+        self.bundlePath = bundlePath
+        self.name = name
+        self.isRegular = isRegular
+    }
+}
+
+/// An application that is open but has not been brought to the front for a long time and is
+/// not doing anything in the background either.
+public struct UnusedApplication: Codable, Sendable, Identifiable, Hashable {
+    public var bundlePath: String
+    public var name: String
+    public var pid: Int32
+    public var footprintBytes: Int64
+    public var residentBytes: Int64
+    /// When it was last in front, as far as PEPEL has seen.
+    public var lastActive: Date
+    /// Average share of one core over the last hour; nil when PEPEL has no readings yet.
+    public var cpuPercent: Double?
+
+    public var id: String { bundlePath }
+
+    public init(bundlePath: String, name: String, pid: Int32, footprintBytes: Int64, residentBytes: Int64, lastActive: Date, cpuPercent: Double?) {
+        self.bundlePath = bundlePath
+        self.name = name
+        self.pid = pid
+        self.footprintBytes = footprintBytes
+        self.residentBytes = residentBytes
+        self.lastActive = lastActive
+        self.cpuPercent = cpuPercent
     }
 }

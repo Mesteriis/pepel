@@ -116,6 +116,11 @@ Refused: for agents and the automatic pass; for an application with agent sessio
 or servers running inside it (a terminal, an editor with an agent); for PEPEL and the application
 it runs in; for system components under `/System/Library`.
 
+**Unused applications** are only listed: an ordinary application, not in front for
+`unusedApplicationHours` (6) as far as PEPEL has seen, using under 2% of a core over the last
+hour (so a music player or a syncing client is not mistaken for unused), holding at least
+200 MB, and not named in `keepApplications`. Quitting one is the same confirmed request as above.
+
 ### Free memory
 
 "Free memory" (popover button, `pepel free`) is one pass over what PEPEL can already stop:

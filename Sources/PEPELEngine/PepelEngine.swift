@@ -284,6 +284,7 @@ public actor PepelEngine {
         state.memoryOwners = owners
         recordMemory(owners: owners, now: now)
         state.growth = growthCache
+        state.unusedApplications = unusedApplications(owners: owners, now: now)
         state.memoryExplanation = MemoryAttributor.explanation(owners: owners, telemetry: telemetry)
         live = state
         return state

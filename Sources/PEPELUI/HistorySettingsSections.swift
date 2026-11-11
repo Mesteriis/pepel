@@ -219,6 +219,7 @@ struct SettingsSection: View {
                 stepper("Wait", s.appLeftoverGraceMinutes, 1...240, suffix: " min after the application quit") { v in model.updateSettings { $0.appLeftoverGraceMinutes = v } }
                 Text("Covers helpers and child processes PEPEL saw the application start, or that run from inside its bundle. System-managed components, agent sessions and container runtimes are never included.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+                stepper("List an open application as unused after", s.unusedApplicationHours, 1...168, suffix: " h without being in front") { v in model.updateSettings { $0.unusedApplicationHours = v } }
                 toggle("Suspend agent sessions that have gone quiet, instead of waiting to end them", s.freezeIdleAgents) { v in model.updateSettings { $0.freezeIdleAgents = v } }
                 stepper("Suspend after", s.freezeAfterMinutes, 5...240, step: 5, suffix: " min of quiet") { v in model.updateSettings { $0.freezeAfterMinutes = v } }
                 stepper("Look for waiting work every", s.freezePeekMinutes, 2...120, suffix: " min") { v in model.updateSettings { $0.freezePeekMinutes = v } }

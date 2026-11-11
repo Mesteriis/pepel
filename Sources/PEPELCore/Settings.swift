@@ -94,6 +94,10 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     public var adaptToMemoryPressure = false
     /// Suspend agent sessions that have gone quiet instead of waiting to end them. A suspended
     /// session keeps everything and continues when its application comes to the front.
+    /// An open application counts as unused after this long without being in front.
+    public var unusedApplicationHours = 6
+    /// Applications never listed as unused (by name), such as a music player or a messenger.
+    public var keepApplications: [String] = []
     public var freezeIdleAgents = false
     public var freezeAfterMinutes = 20
     /// How often a frozen session is woken for a moment to see whether work is waiting.

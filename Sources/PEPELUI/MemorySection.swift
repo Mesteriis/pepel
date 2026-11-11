@@ -15,6 +15,7 @@ struct MemorySection: View {
                 composition(live.telemetry, developer: live.memory.developerFootprintBytes)
                 owners(live)
                 growth(live)
+                unused(live)
                 containers(live)
                 if let report = model.terminationReport { terminationResult(report) }
                 leftovers(live)
@@ -27,6 +28,38 @@ struct MemorySection: View {
                 SectionTitle(title: "Memory")
                 EmptyState(symbol: "memorychip", title: "Sampling…", message: "Waiting for the first memory and process sample.")
             }
+        }
+        .confirmationDialog(
+            model.pendingApplication.map { "\($0.action == .restart ? "Restart" : "Quit") \($0.name)?" } ?? "",
+            isPresented: Binding(get: { model.pendingApplication != nil }, set: { if !$0 { model.pendingApplication = nil } }), titleVisibility: .visible
+        ) {
+            if model.pendingApplication?.verdict != .denied { Button(model.pendingApplication?.action == .quit ? "Quit" : "Restart") { model.confirmApplication() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(((model.pendingApplication?.reasons ?? []) + (model.pendingApplication?.warnings ?? [])).joined(separator: "\n"))
+        }
+    }
+
+    /// Applications that are open but have not been used for hours.
+    @ViewBuilder private func unused(_ live: LiveState) -> some View {
+        if !live.unusedApplications.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Caption("Open but unused")
+                ForEach(live.unusedApplications) { app in
+                    HStack(spacing: 10) {
+                        Text(app.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                        Text("last in front \(TimeFormat.ago(app.lastActive))").font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                        Spacer()
+                        Text(Bytes.format(app.footprintBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit()
+                        Button("Keep") { model.updateSettings { $0.keepApplications.append(app.name) } }.buttonStyle(QuietButtonStyle())
+                            .help("Never list \(app.name) here again.")
+                        Button("Quit…") { model.requestApplication(.quit, bundlePath: app.bundlePath) }.buttonStyle(QuietButtonStyle())
+                    }
+                }
+                Text("Not brought to the front for \(model.settings.unusedApplicationHours) hours and using almost no CPU. PEPEL only lists them; quitting is the ordinary request, so an application with unsaved changes will ask.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+            .panel()
         }
     }
 
@@ -51,15 +84,6 @@ struct MemorySection: View {
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
             .panel()
-            .confirmationDialog(
-                model.pendingApplication.map { "\($0.action == .restart ? "Restart" : "Quit") \($0.name)?" } ?? "",
-                isPresented: Binding(get: { model.pendingApplication != nil }, set: { if !$0 { model.pendingApplication = nil } }), titleVisibility: .visible
-            ) {
-                if model.pendingApplication?.verdict != .denied { Button(model.pendingApplication?.action == .quit ? "Quit" : "Restart") { model.confirmApplication() } }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text(((model.pendingApplication?.reasons ?? []) + (model.pendingApplication?.warnings ?? [])).joined(separator: "\n"))
-            }
         }
     }
 

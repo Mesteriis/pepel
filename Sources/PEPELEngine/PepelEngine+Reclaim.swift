@@ -81,6 +81,15 @@ extension PepelEngine {
                     estimatedBytes: grown.reduce(0) { $0 + $1.grownBytes }, selectedByDefault: false))
         }
 
+        if !live.unusedApplications.isEmpty {
+            steps.append(
+                ReclaimStep(
+                    kind: .unusedApps, title: "Quit applications you have not used",
+                    detail: "Open, but not brought to the front for \(settings.unusedApplicationHours) hours and idle in the background. Asked to quit normally; one that does not quit is left running.",
+                    targets: live.unusedApplications.map { "\($0.name) (\(Bytes.format($0.footprintBytes)), last used \(TimeFormat.ago($0.lastActive)))" },
+                    estimatedBytes: live.unusedApplications.reduce(0) { $0 + $1.footprintBytes }, selectedByDefault: false))
+        }
+
         if let containers = live.containers {
             let unused = containers.groups.filter { $0.projectID != nil && $0.agentSessions == 0 && !$0.stoppable.isEmpty }
             if !unused.isEmpty {
@@ -180,6 +189,15 @@ extension PepelEngine {
                     notes.append(report.quit ? "\(growth.name): \(Bytes.format(report.footprintBefore)) → \(Bytes.format(report.footprintAfter))." : report.note)
                 }
                 results.append(ReclaimStepResult(kind: step.kind, title: step.title, done: done, attempted: grown.count, notes: notes))
+            case .unusedApps:
+                var done = 0
+                var notes: [String] = []
+                let unused = live?.unusedApplications ?? []
+                for app in unused {
+                    guard let report = await performApplication(.quit, bundlePath: app.bundlePath, confirmed: true, initiator: initiator) else { continue }
+                    if report.quit { done += 1 } else { notes.append(report.note) }
+                }
+                results.append(ReclaimStepResult(kind: step.kind, title: step.title, done: done, attempted: unused.count, notes: notes))
             case .idleContainers:
                 var done = 0, attempted = 0
                 var notes: [String] = []

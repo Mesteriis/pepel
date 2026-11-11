@@ -762,6 +762,45 @@ struct EngineTests {
         #expect(plan.steps.map(\.kind) == [.grownApps] && plan.defaultSelection.isEmpty, "offered, never preselected")
     }
 
+    @Test("An application is unused only when open, long out of front, idle in the background and not kept; quitting it is offered, never preselected")
+    func unusedApplications() async throws {
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        func app(_ pid: Int32, _ name: String, gib: Int64 = 1, cpuMs: UInt64 = 0) -> ProcessSnapshot {
+            process(pid, name: name, path: "/Applications/\(name).app/Contents/MacOS/\(name)", cpu: cpuMs * 1_000_000, footprint: gib << 30)
+        }
+        // CPU counters as they stand now; the engine records them on its first sample.
+        let source = FakeProcessSource(processes: [app(1, "Notes", cpuMs: 600), app(2, "Music", cpuMs: 360_000), app(3, "Mail"), app(4, "Editor"), app(5, "Tiny", gib: 0), app(6, "Fresh")])
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: source, telemetry: { SystemTelemetry() })
+        let names = ["Notes", "Music", "Mail", "Editor", "Tiny", "Fresh"]
+        let running = names.enumerated().map { RunningApplicationInfo(pid: Int32($0.offset + 1), bundlePath: "/Applications/\($0.element).app", name: $0.element, isRegular: true) }
+        await engine.setApplicationControl(
+            ApplicationControl(isAvailable: true, quit: { pid in source.send(SIGTERM, to: pid) }, launch: { _ in true }, running: { running }))
+        let front = PIDBox()
+        front.set(4)  // Editor is in front
+        await engine.setFrontmostProvider { front.pid }
+        let now = Date()
+        for name in names where name != "Fresh" { engine.noteActivation(bundlePath: "/Applications/\(name).app", at: now.addingTimeInterval(-7 * 3600)) }
+        // Over the last hour Music used 10% of a core, Notes almost nothing; Mail has no readings.
+        for (minutesAgo, music, notes) in [(60.0, 0, 0), (30, 180_000, 300), (1, 360_000, 600)] as [(Double, Int64, Int64)] {
+            store.recordUsage(scope: "appcpu", entries: [("/Applications/Music.app", "", music), ("/Applications/Notes.app", "", notes)], at: now.addingTimeInterval(-minutesAgo * 60))
+        }
+        _ = try await engine.update { $0.keepApplications = ["mail"] }
+
+        let live = await engine.refreshLive()
+        #expect(live.unusedApplications.map(\.name) == ["Notes"], "Music is busy, Mail is kept, Editor is in front, Tiny is small, Fresh was first seen now")
+        #expect(live.unusedApplications.first?.cpuPercent.map { $0 < 0.1 } == true)
+        #expect(engine.lastActive()["/Applications/Editor.app"].map { now.timeIntervalSince($0) < 60 } == true, "being in front resets the clock")
+
+        let plan = await engine.reclaimPlan()
+        #expect(plan.steps.map(\.kind) == [.unusedApps] && plan.defaultSelection.isEmpty)
+        #expect(source.signals.isEmpty)
+        let done = await engine.reclaim(["unusedApps"])
+        #expect(done.results.first?.done == 1 && !source.snapshot().contains { $0.pid == 1 } && source.snapshot().count == 5)
+    }
+
     final class FlushCounter: @unchecked Sendable {
         private let lock = NSLock()
         private var value = 0

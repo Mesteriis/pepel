@@ -105,6 +105,7 @@ public final class AppModel {
             guard let pid = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier else { return }
             frontmost.set(pid)
             engine.applicationActivated(pid: pid)
+            if let path = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleURL?.path { engine.noteActivation(bundlePath: path) }
         }
     }
 

@@ -183,6 +183,7 @@ extension PepelStore {
             try db.execute("DELETE FROM usage WHERE ts < ?", [.double(now.timeIntervalSince1970 - 90 * day)])
             // Memory readings are taken every few minutes; a week of them is enough to see growth.
             try db.execute("DELETE FROM usage WHERE scope = 'memory' AND ts < ?", [.double(now.timeIntervalSince1970 - 7 * day)])
+            try db.execute("DELETE FROM usage WHERE scope = 'appcpu' AND ts < ?", [.double(now.timeIntervalSince1970 - day)])
         }
     }
 }

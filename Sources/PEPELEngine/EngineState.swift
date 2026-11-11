@@ -31,6 +31,8 @@ public struct LiveState: Codable, Sendable {
     public var leftovers: [AppLeftovers] = []
     /// Owners whose memory has kept growing while PEPEL watched.
     public var growth: [MemoryGrowth] = []
+    /// Open applications nobody has used for a long time.
+    public var unusedApplications: [UnusedApplication] = []
     /// Process trees PEPEL has suspended.
     public var frozen: [FrozenTree] = []
 
