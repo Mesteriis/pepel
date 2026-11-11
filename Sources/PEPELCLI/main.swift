@@ -782,6 +782,41 @@ case "roots":
     let settings = await engine.currentSettings()
     if arguments.json { Out.json(settings.projectRoots) } else { settings.projectRoots.forEach { print($0) } }
 
+case "journal":
+    let journal = engine.journal
+    let files = journal.files()
+    if arguments.positional.first == "path" { print(journal.directory); break }
+    let days = arguments.options["days"].flatMap { Double($0) } ?? 7
+    let digest = engine.journalDigest(days: days)
+    if arguments.json { Out.json(digest); break }
+    let settings = await engine.currentSettings()
+    print("Journal: \(PathUtil.display(journal.directory, home: appPaths.home)) — \(files.count) day\(files.count == 1 ? "" : "s"), \(Bytes.format(files.reduce(0) { $0 + $1.bytes })), \(settings.journalEnabled ? "a reading every five minutes while the PEPEL app runs, kept \(settings.journalRetentionDays) days" : "switched off").")
+    guard digest.samples > 0, let from = digest.from, let to = digest.to else { print("No readings in the last \(Int(days)) days yet."); break }
+    func range(_ r: JournalDigest.Range) -> String { "\(Bytes.format(r.min)) – \(Bytes.format(r.max)), average \(Bytes.format(r.average))" }
+    func percent(_ shares: [String: Double]) -> String { shares.sorted { $0.value > $1.value }.map { "\($0.key) \(Int(($0.value * 100).rounded()))%" }.joined(separator: ", ") }
+    print("\n\(digest.samples) readings from \(from.formatted(date: .abbreviated, time: .shortened)) to \(to.formatted(date: .abbreviated, time: .shortened)).\n")
+    print("Memory in use  \(range(digest.used))")
+    print("Wired          \(range(digest.wired))")
+    print("Compressed     \(range(digest.compressed))")
+    print("Swap           \(range(digest.swap))")
+    print("Pressure       \(percent(digest.pressure))")
+    print("\nWho held memory (average while present):")
+    Out.table(
+        ["AVERAGE", "PEAK", "CHANGE", "PRESENT", "KIND", "OWNER"],
+        digest.owners.prefix(12).map { [Bytes.format($0.memory.average), Bytes.format($0.memory.max), Bytes.formatDelta($0.change), "\(Int(($0.presence * 100).rounded()))%", $0.kind, Out.truncate($0.name, 40)] })
+    print("\nAgents: \(digest.agentSessions.min)–\(digest.agentSessions.max) sessions at a time (average \(digest.agentSessions.average)), holding \(range(digest.agentMemory)). States: \(percent(digest.agentStates)).")
+    Out.table(
+        ["AVERAGE", "PEAK", "PRESENT", "KIND", "AGENT · PROJECT"],
+        digest.agents.prefix(12).map { [Bytes.format($0.memory.average), Bytes.format($0.memory.max), "\(Int(($0.presence * 100).rounded()))%", $0.kind, Out.truncate($0.name, 50)] })
+    if digest.browsers.isEmpty {
+        print("\nBrowsers: none seen.")
+    } else {
+        print("\nBrowsers: \(digest.browserTabs.min)–\(digest.browserTabs.max) tab processes of 150 MB or more; idle ones held \(range(digest.idleTabMemory)).")
+        Out.table(["AVERAGE", "PEAK", "CHANGE", "PRESENT", "BROWSER"], digest.browsers.map { [Bytes.format($0.memory.average), Bytes.format($0.memory.max), Bytes.formatDelta($0.change), "\(Int(($0.presence * 100).rounded()))%", $0.name] })
+    }
+    if !digest.actions.isEmpty { print("\nWhat PEPEL did: " + digest.actions.sorted { $0.value > $1.value }.prefix(10).map { "\($0.key) ×\($0.value)" }.joined(separator: ", ") + ".") }
+    if digest.forecasts > 0 { print("A shortage was forecast in \(digest.forecasts) reading\(digest.forecasts == 1 ? "" : "s").") }
+
 case "summary":
     let hours = arguments.options["hours"].flatMap { Double($0) } ?? 24
     let summary = await engine.summary(hours: hours)

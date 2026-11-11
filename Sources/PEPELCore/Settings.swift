@@ -115,6 +115,9 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     /// Post a summary of the last day once a day at `dailySummaryHour`.
     public var dailySummary = false
     public var dailySummaryHour = 9
+    /// Write the memory journal: a reading every five minutes, kept as daily files.
+    public var journalEnabled = true
+    public var journalRetentionDays = 30
     public var freezeIdleAgents = false
     public var freezeAfterMinutes = 20
     /// How often a frozen session is woken for a moment to see whether work is waiting.

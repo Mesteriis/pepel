@@ -28,6 +28,11 @@ public actor PepelEngine {
     var containerReport: ContainerReport?
     var fileCacheFlusher: FileCacheFlusher = .unavailable
     var containerPeaks: [Int: Int64]?
+    /// True in the process that watches continuously (the app); a one-off command does not add readings.
+    var journaling = false
+    var lastJournalAt = Date.distantPast
+
+    public func setJournaling(_ on: Bool) { journaling = on }
     var applicationControl: ApplicationControl = .unavailable
     /// Replaces the `docker` command line; tests use a scripted one.
     nonisolated(unsafe) var containerRunner: ContainerStopper.Runner?
@@ -382,6 +387,7 @@ public actor PepelEngine {
             processes: processes, assessments: assessments, history: history, excluded: excluded, attributor: projectIndex, currentUID: getuid(), now: now)
         state.memoryExplanation = MemoryAttributor.explanation(owners: owners, telemetry: telemetry)
         live = state
+        writeJournal(state, now: now)
         return state
     }
 

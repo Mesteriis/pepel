@@ -1144,6 +1144,94 @@ struct EngineTests {
         #expect(quiet.done.isEmpty && quiet.headline == "PEPEL did not need to do anything.")
     }
 
+    @Test("The journal records a reading every five minutes with agents, browsers and actions, only when asked to, and prunes old days")
+    func memoryJournal() async throws {
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        let alpha = f.gitRepo(f.projects + "/alpha")
+        let helper = "/Applications/Dia.app/Contents/Frameworks/Core.framework/Helpers/Browser Helper"
+        let browser = process(600, name: "Dia", path: "/Applications/Dia.app/Contents/MacOS/Dia", footprint: 600_000_000)
+        let tab = process(601, parent: 600, name: "Browser Helper", path: helper, args: [helper, "--type=renderer"], footprint: 400_000_000)
+        let session = process(10, name: "claude", path: "/Users/x/.local/bin/claude", args: ["claude", "--api-key", "sk-secret"], cwd: alpha, footprint: 300_000_000)
+        let source = FakeProcessSource(processes: [browser, tab, session])
+        var settings = PepelSettings()
+        settings.projectRoots = [f.projects]
+        try store.saveSettings(settings)
+        let paths = AppPaths(home: f.home, supportDirectory: f.root + "/support")
+        let engine = try PepelEngine(
+            paths: paths, store: store, tools: .disabled, analyzers: [], processSource: source,
+            telemetry: { SystemTelemetry(memoryTotalBytes: 64 << 30, appMemoryBytes: 20 << 30, wiredBytes: 8 << 30, compressedBytes: 4 << 30, swapUsedBytes: 2 << 30) })
+        let journal = engine.journal
+        let start = Date()
+
+        // A one-off command does not add readings.
+        await engine.refreshLive(now: start)
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(journal.files().isEmpty)
+
+        await engine.setJournaling(true)
+        store.appendAudit(AuditEntry(kind: .termination, initiator: "automatic", subject: "node (PID 9)", outcome: "terminated"))
+        await engine.refreshLive(now: start.addingTimeInterval(1))
+        await engine.refreshLive(now: start.addingTimeInterval(60))  // too soon for a second reading
+        await engine.refreshLive(now: start.addingTimeInterval(301))
+        try await Task.sleep(for: .milliseconds(300))
+        let readings = journal.read(since: start.addingTimeInterval(-10))
+        #expect(readings.count == 2)
+        let first = try #require(readings.first)
+        #expect(first.wired == 8 << 30 && first.used == 32 << 30 && first.swap == 2 << 30 && first.pressure == "normal")
+        #expect(first.agents.map(\.agent) == ["Claude Code"] && first.agents.first?.project == "alpha" && first.agents.first?.bytes == 300_000_000)
+        #expect(first.browsers.map(\.name) == ["Dia"] && first.browsers.first?.bytes == 1_000_000_000 && first.browsers.first?.tabs == 1)
+        #expect(first.actions.map(\.outcome) == ["terminated"] && readings[1].actions.isEmpty, "an action appears in the reading after it, once")
+        let raw = try String(contentsOfFile: journal.path(for: first.ts), encoding: .utf8)
+        #expect(!raw.contains("sk-secret") && !raw.contains(alpha), "names only: no command lines, no paths")
+        let mode = try FileManager.default.attributesOfItem(atPath: journal.path(for: first.ts))[.posixPermissions] as? NSNumber
+        #expect(mode?.intValue == 0o600)
+
+        // Switched off: nothing more is written.
+        _ = try await engine.update { $0.journalEnabled = false }
+        await engine.refreshLive(now: start.addingTimeInterval(700))
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(journal.read(since: start.addingTimeInterval(-10)).count == 2)
+
+        // Old days go; a file the journal did not write stays.
+        let old = JournalSample(ts: start.addingTimeInterval(-40 * 86_400), total: 1, used: 1, app: 1, wired: 1, compressed: 0, cached: 0, free: 0, swap: 0, pressure: "normal", owners: [], agents: [], browsers: [], counts: [:], forecastMinutes: nil, actions: [])
+        #expect(journal.append(old))
+        try Data("keep".utf8).write(to: URL(fileURLWithPath: journal.directory + "/notes.txt"))
+        #expect(journal.files().count == 2)
+        journal.prune(keepDays: 30, now: start)
+        #expect(journal.files().count == 1 && FileManager.default.fileExists(atPath: journal.directory + "/notes.txt"))
+    }
+
+    @Test("The digest reads ranges, shares and per-holder figures out of the journal")
+    func journalDigest() {
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        func sample(_ index: Int, used: Int64, wired: Int64, pressure: String, sessions: [(String, String, Bool, Int64)], dia: Int64?, action: String? = nil) -> JournalSample {
+            JournalSample(
+                ts: start.addingTimeInterval(Double(index) * 300), total: 64, used: used, app: used, wired: wired, compressed: 0, cached: 0, free: 0, swap: Int64(index), pressure: pressure,
+                owners: [JournalSample.Owner(name: "Dia", kind: "application", bytes: dia ?? 0, resident: 0, procs: 1)].filter { _ in dia != nil },
+                agents: sessions.map { JournalSample.Agent(agent: "Claude Code", project: $0.0, pid: 1, state: $0.1, suspended: $0.2, bytes: $0.3, resident: 0, procs: 1, quietMinutes: nil, ageMinutes: 1) },
+                browsers: dia.map { [JournalSample.Browser(name: "Dia", bytes: $0, resident: 0, procs: 3, tabs: 4, idleTabs: 1, idleBytes: 100, largestTab: 50)] } ?? [],
+                counts: [:], forecastMinutes: index == 2 ? 30 : nil,
+                actions: action.map { [JournalSample.Action(at: start, by: "automatic", subject: "x", outcome: $0, bytes: 0)] } ?? [])
+        }
+        let digest = JournalDigest.make([
+            sample(0, used: 30, wired: 8, pressure: "normal", sessions: [("a", "working", false, 10), ("a", "idle", false, 20)], dia: 100),
+            sample(1, used: 40, wired: 9, pressure: "normal", sessions: [("a", "idle", true, 30)], dia: 200, action: "suspended"),
+            sample(2, used: 50, wired: 10, pressure: "elevated", sessions: [("b", "sleeping", false, 5)], dia: 300, action: "suspended"),
+            sample(3, used: 44, wired: 11, pressure: "normal", sessions: [], dia: nil),
+        ])
+        #expect(digest.samples == 4 && digest.used == JournalDigest.Range(min: 30, average: 41, max: 50) && digest.wired.max == 11 && digest.swap.max == 3)
+        #expect(digest.pressure == ["normal": 0.75, "elevated": 0.25])
+        #expect(digest.agentSessions == JournalDigest.Range(min: 0, average: 1, max: 2) && digest.agentMemory.max == 30)
+        #expect(digest.agentStates == ["working": 0.25, "idle": 0.25, "suspended": 0.25, "sleeping": 0.25])
+        let a = digest.agents.first { $0.name == "Claude Code · a" }
+        #expect(a?.memory == JournalDigest.Range(min: 30, average: 30, max: 30) && a?.presence == 0.5, "two sessions in one project count together")
+        let dia = digest.browsers.first
+        #expect(dia?.memory == JournalDigest.Range(min: 100, average: 200, max: 300) && dia?.change == 200 && dia?.presence == 0.75)
+        #expect(digest.actions == ["suspended": 2] && digest.forecasts == 1 && digest.browserTabs.max == 4)
+        #expect(JournalDigest.make([]).samples == 0)
+    }
+
     final class FlushCounter: @unchecked Sendable {
         private let lock = NSLock()
         private var value = 0

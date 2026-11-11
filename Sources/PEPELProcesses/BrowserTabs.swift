@@ -12,7 +12,7 @@ import PEPELCore
 public enum BrowserTabs {
     /// Browsers only. Electron applications use the same process layout, but there a renderer
     /// is the application's own window.
-    static let browsers: [String] = [
+    public static let browsers: [String] = [
         "Google Chrome", "Google Chrome Beta", "Google Chrome Canary", "Chromium", "Dia", "Arc", "Microsoft Edge", "Brave Browser", "Vivaldi", "Opera",
         "Yandex",
     ]

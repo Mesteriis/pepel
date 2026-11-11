@@ -10,6 +10,7 @@ struct HistorySection: View {
         VStack(alignment: .leading, spacing: 14) {
             SectionTitle(title: "History", subtitle: "Recorded measurements only. Growth figures say how far back the data actually reaches.")
             summary
+            journal
             growth
             chart
             log
@@ -17,6 +18,7 @@ struct HistorySection: View {
         .onAppear {
             model.refreshSecondary()
             model.refreshSummary()
+            model.refreshJournal()
         }
     }
 
@@ -64,6 +66,55 @@ struct HistorySection: View {
                 .font(.system(size: 10))
             }
         }
+        .panel()
+    }
+
+    private func range(_ r: JournalDigest.Range) -> String { "\(Bytes.format(r.min)) – \(Bytes.format(r.max)), average \(Bytes.format(r.average))" }
+    private func shares(_ values: [String: Double]) -> String {
+        values.sorted { $0.value > $1.value }.map { "\($0.key) \(Int(($0.value * 100).rounded()))%" }.joined(separator: ", ")
+    }
+
+    /// What the memory journal has recorded over the last week.
+    private var journal: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Caption("Memory journal · 7 days")
+                Spacer()
+                Text("\(model.journalFiles.days) day\(model.journalFiles.days == 1 ? "" : "s") · \(Bytes.format(model.journalFiles.bytes))").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
+                Button("Open folder") { model.revealJournal() }.buttonStyle(QuietButtonStyle())
+            }
+            if let digest = model.journalDigest, digest.samples > 0 {
+                Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 3) {
+                    GridRow { Text("Memory in use").foregroundStyle(Theme.secondary); Text(range(digest.used)) }
+                    GridRow { Text("Wired").foregroundStyle(Theme.secondary); Text(range(digest.wired)) }
+                    GridRow { Text("Swap").foregroundStyle(Theme.secondary); Text(range(digest.swap)) }
+                    GridRow { Text("Pressure").foregroundStyle(Theme.secondary); Text(shares(digest.pressure)) }
+                    GridRow {
+                        Text("Agents").foregroundStyle(Theme.secondary)
+                        Text("\(digest.agentSessions.min)–\(digest.agentSessions.max) sessions, \(range(digest.agentMemory)); \(shares(digest.agentStates))")
+                    }
+                    GridRow {
+                        Text("Browsers").foregroundStyle(Theme.secondary)
+                        Text(digest.browsers.isEmpty ? "none seen" : digest.browsers.map { "\($0.name) \(range($0.memory))" }.joined(separator: "; ") + "; idle tabs \(range(digest.idleTabMemory))")
+                    }
+                }
+                .font(.system(size: 12)).monospacedDigit().foregroundStyle(Theme.text)
+                ForEach(digest.owners.prefix(6)) { owner in
+                    HStack(spacing: 10) {
+                        Text(owner.name).font(.system(size: 12)).lineLimit(1).frame(width: 220, alignment: .leading)
+                        Text("average \(Bytes.format(owner.memory.average)), peak \(Bytes.format(owner.memory.max))").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
+                        Spacer()
+                        Text(Bytes.formatDelta(owner.change)).font(.system(size: 11)).monospacedDigit().foregroundStyle(owner.change > Bytes.gb ? Theme.amber : Theme.tertiary)
+                    }
+                }
+                Text("\(digest.samples) readings. A reading is taken every five minutes while PEPEL runs: memory, who holds it, every agent session and browser, and what PEPEL did. Names only; no command lines or paths.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text(model.settings.journalEnabled ? "No readings yet. The first is written within five minutes of PEPEL starting." : "The journal is switched off in Settings.")
+                    .font(.system(size: 12)).foregroundStyle(Theme.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .panel()
     }
 
@@ -175,6 +226,10 @@ struct SettingsSection: View {
                 toggle("Pause all monitoring", s.paused) { v in model.updateSettings { $0.paused = v } }
                 toggle("Work less on battery", s.batteryAware) { v in model.updateSettings { $0.batteryAware = v } }
                 toggle("Notifications", s.notificationsEnabled) { v in model.updateSettings { $0.notificationsEnabled = v } }
+                HStack(spacing: 8) {
+                    toggle("Keep a memory journal (a reading every five minutes)", s.journalEnabled) { v in model.updateSettings { $0.journalEnabled = v } }
+                    stepper("for", s.journalRetentionDays, 1...365, suffix: " days") { v in model.updateSettings { $0.journalRetentionDays = v } }
+                }
                 HStack(spacing: 8) {
                     toggle("Send a summary of the last 24 hours every day", s.dailySummary) { v in model.updateSettings { $0.dailySummary = v } }
                     stepper("at", s.dailySummaryHour, 0...23, suffix: ":00") { v in model.updateSettings { $0.dailySummaryHour = v } }

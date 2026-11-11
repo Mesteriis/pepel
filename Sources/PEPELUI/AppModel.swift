@@ -135,6 +135,7 @@ public final class AppModel {
         Task {
             let frontmost = frontmost
             await engine.setFrontmostProvider { frontmost.get() }
+            await engine.setJournaling(true)
             settings = await engine.currentSettings()
             storage = await engine.storage
             refreshSecondary()
@@ -508,6 +509,26 @@ public final class AppModel {
             live = await engine.live
             refreshSecondary()
         }
+    }
+
+    // MARK: Memory journal
+
+    public var journalDigest: JournalDigest?
+    public var journalFiles: (days: Int, bytes: Int64) = (0, 0)
+    public var journalPath: String { engine.journal.directory }
+
+    public func refreshJournal(days: Double = 7) {
+        let engine = engine
+        Task {
+            let result = await Task.detached(priority: .utility) { (engine.journalDigest(days: days), engine.journal.files()) }.value
+            journalDigest = result.0
+            journalFiles = (result.1.count, result.1.reduce(0) { $0 + $1.bytes })
+        }
+    }
+
+    public func revealJournal() {
+        try? FileManager.default.createDirectory(atPath: journalPath, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(URL(fileURLWithPath: journalPath))
     }
 
     // MARK: Daily summary

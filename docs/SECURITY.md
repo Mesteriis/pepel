@@ -186,6 +186,17 @@ that 90% is an estimate of where macOS starts to struggle and is described as su
 disk** is read from `/System/Volumes/VM` (file sizes only). The **daily summary** is built from
 the audit log, so it says what was recorded, and can be sent once a day (`dailySummary`).
 
+### Memory journal
+
+While the PEPEL app runs it writes a reading every five minutes to
+`~/Library/Application Support/PEPEL/journal/YYYY-MM-DD.jsonl` (directory 0700, files 0600):
+memory in use, wired, compressed, cached, free and swap; the 25 largest owners; every agent
+session (agent, project name, state, whether suspended, memory, quiet time); every browser
+(memory, tab processes, idle ones); how many things PEPEL saw that could be acted on; and what
+it did since the previous reading. Names only: no command lines, arguments or paths. Nothing
+leaves the Mac. `journalEnabled` switches it off, `journalRetentionDays` (30) removes older
+days, `pepel journal` and the History section summarise it. One-off commands never add readings.
+
 ### Under memory pressure
 
 With `adaptToMemoryPressure` on (off by default), waiting periods of rules that are already
