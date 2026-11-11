@@ -555,3 +555,42 @@ public struct ToolBackup: Codable, Sendable, Identifiable, Hashable {
         self.kept = kept
     }
 }
+
+/// What tidying Downloads and the Desktop does with what it picks.
+public enum TidyAction: String, Codable, Sendable, CaseIterable {
+    /// Move to the Trash: recoverable until the Trash is emptied.
+    case trash
+    /// Remove for good.
+    case delete
+}
+
+/// A file or folder in Downloads or on the Desktop, as tidying sees it.
+public struct TidyItem: Codable, Sendable, Identifiable, Hashable {
+    public enum Kind: String, Codable, Sendable {
+        /// A screenshot or screen recording macOS made (it marks them itself).
+        case screenshot
+        /// Anything else in Downloads.
+        case download
+        /// A download that never finished.
+        case partial
+    }
+
+    public var path: String
+    public var name: String
+    public var kind: Kind
+    public var bytes: Int64
+    /// The newest of when it arrived, was changed and was last opened.
+    public var lastUse: Date
+    /// Why it stays; nil when tidying would take it.
+    public var keptBecause: String?
+    public var id: String { path }
+
+    public init(path: String, name: String, kind: Kind, bytes: Int64, lastUse: Date, keptBecause: String?) {
+        self.path = path
+        self.name = name
+        self.kind = kind
+        self.bytes = bytes
+        self.lastUse = lastUse
+        self.keptBecause = keptBecause
+    }
+}

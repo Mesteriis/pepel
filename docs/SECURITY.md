@@ -129,6 +129,18 @@ Refused: for agents and the automatic pass; for an application with agent sessio
 or servers running inside it (a terminal, an editor with an agent); for PEPEL and the application
 it runs in; for system components under `/System/Library`.
 
+**Downloads and screenshots** (`pepel disk tidy`; `tidyScreenshots`, `tidyDownloads`, both off by
+default). Screenshots and screen recordings are recognised only by the attributes macOS puts on
+them when it makes them (`kMDItemIsScreenCapture`, `kMDItemIsScreenRecording`,
+`kMDItemScreenCaptureType`), never by name, in the Desktop, Downloads and macOS's screenshot
+folder; they go once older than `screenshotDays` (1) since taken. Nothing else on the Desktop is
+ever looked at. In Downloads, a file or top-level folder goes once nothing in it arrived, changed
+or was opened by the person (macOS's own last-used date, not the file system's access time,
+which backups and indexers update) for `downloadDays` (30); unfinished downloads go after a day.
+Never taken: kinds in `tidyKeepExtensions` (installers, archives, disk images by default),
+anything with a Finder tag, and marked folders. Items go to the Trash unless `tidyAction` is set
+to remove them for good. The owner asked for this on 11.11.2026.
+
 **Applications open without windows.** PEPEL counts each application's normal windows from the
 window list macOS gives without the Screen Recording permission (owner and size only, never
 titles or contents); a minimised, hidden or other-Space window counts as open. Applications

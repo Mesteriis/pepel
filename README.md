@@ -104,6 +104,7 @@ pepel disk emulators [delete …]  Android emulators by size and last use; delet
 pepel disk images [delete …]     Android system images no emulator uses; delete them
 pepel disk backups [clean]       Clausona's backups; keep the newest N of each set, remove the rest after D days
 pepel apps windowless [on|off …] Apps that stay open with no window; quit the chosen ones when they have none
+pepel disk tidy [clean]          Old screenshots and downloads; take them, to the Trash by default
 pepel docker volumes             Named volumes no container mounts, and whether their project is still here
 pepel disk files [--days N]      Large files not opened for N days, and identical copies (a report)
 pepel containers limit [<GiB>]   Show or lower the Docker VM's memory limit

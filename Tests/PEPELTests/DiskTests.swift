@@ -1091,3 +1091,78 @@ struct WindowlessTests {
         #expect(box.quit == [100, 300])
     }
 }
+
+@Suite("Downloads and screenshots")
+struct TidyTests {
+    static func mark(_ path: String, _ attribute: String) { _ = setxattr(path, attribute, "1", 1, 0, 0) }
+
+    static func tag(_ path: String) {
+        let data = try! PropertyListSerialization.data(fromPropertyList: ["Important"], format: .binary, options: 0)
+        _ = data.withUnsafeBytes { setxattr(path, "com.apple.metadata:_kMDItemUserTags", $0.baseAddress, data.count, 0, 0) }
+    }
+
+    @Test("Marked screenshots and old downloads go; renamed recordings, other Desktop files, kept kinds, tagged and recent files stay")
+    func tidy() async throws {
+        let f = Fixture()
+        let desktop = f.dir(f.home + "/Desktop"), downloads = f.dir(f.home + "/Downloads")
+        func old(_ path: String, days: Double) { f.age(path, hours: 24 * days) }
+        // Desktop
+        f.file(desktop + "/Снимок экрана 2026-11-01.png", bytes: 8192); Self.mark(desktop + "/Снимок экрана 2026-11-01.png", "com.apple.metadata:kMDItemIsScreenCapture"); old(desktop + "/Снимок экрана 2026-11-01.png", days: 3)
+        f.file(desktop + "/Запись экрана 2026-11-01.mov", bytes: 8192); Self.mark(desktop + "/Запись экрана 2026-11-01.mov", "com.apple.metadata:kMDItemIsScreenRecording"); old(desktop + "/Запись экрана 2026-11-01.mov", days: 3)
+        f.file(desktop + "/fresh.png", bytes: 8192); Self.mark(desktop + "/fresh.png", "com.apple.metadata:kMDItemIsScreenCapture")
+        f.file(desktop + "/Запись экрана — с музыкой.mp4", bytes: 8192); old(desktop + "/Запись экрана — с музыкой.mp4", days: 30)
+        f.file(desktop + "/passwords.txt", bytes: 100); old(desktop + "/passwords.txt", days: 300)
+        // Downloads
+        f.file(downloads + "/report.pdf", bytes: 8192); old(downloads + "/report.pdf", days: 60)
+        f.file(downloads + "/Installer.dmg", bytes: 8192); old(downloads + "/Installer.dmg", days: 60)
+        f.file(downloads + "/source.tar.gz", bytes: 8192); old(downloads + "/source.tar.gz", days: 60)
+        f.file(downloads + "/tagged.pdf", bytes: 8192); Self.tag(downloads + "/tagged.pdf"); old(downloads + "/tagged.pdf", days: 60)
+        f.file(downloads + "/recent.pdf", bytes: 8192)
+        f.file(downloads + "/movie.mp4.crdownload", bytes: 8192); old(downloads + "/movie.mp4.crdownload", days: 2)
+        f.file(downloads + "/old-folder/a.txt", bytes: 8192); old(downloads + "/old-folder", days: 60)
+        f.file(downloads + "/mixed-folder/a.txt", bytes: 8192); old(downloads + "/mixed-folder", days: 60)
+        f.file(downloads + "/mixed-folder/b.txt", bytes: 8192)
+        f.file(downloads + "/Screenshot in downloads.png", bytes: 8192); Self.mark(downloads + "/Screenshot in downloads.png", "com.apple.metadata:kMDItemScreenCaptureType"); old(downloads + "/Screenshot in downloads.png", days: 3)
+        // A backup reading an old file does not make it recent; the person opening it does.
+        f.file(downloads + "/read-by-backup.pdf", bytes: 8192); old(downloads + "/read-by-backup.pdf", days: 60)
+        var times = [timespec(tv_sec: Int(Date().timeIntervalSince1970), tv_nsec: 0), timespec(tv_sec: Int(Date().timeIntervalSince1970) - 60 * 86_400, tv_nsec: 0)]
+        _ = utimensat(AT_FDCWD, downloads + "/read-by-backup.pdf", &times, 0)
+        f.file(downloads + "/opened-yesterday.pdf", bytes: 8192); old(downloads + "/opened-yesterday.pdf", days: 60)
+        var opened = timespec(tv_sec: Int(Date().timeIntervalSince1970) - 86_400, tv_nsec: 0)
+        _ = withUnsafeBytes(of: &opened) { setxattr(downloads + "/opened-yesterday.pdf", "com.apple.lastuseddate#PS", $0.baseAddress, MemoryLayout<timespec>.size, 0, 0) }
+
+        let tidy = Tidy(home: f.home)
+        let keep: Set<String> = ["dmg", "tar.gz"]
+        let items = tidy.items(screenshotDays: 1, downloadDays: 30, keepExtensions: keep)
+        let going = Set(items.filter { $0.keptBecause == nil }.map(\.name))
+        #expect(going == ["Снимок экрана 2026-11-01.png", "Запись экрана 2026-11-01.mov", "report.pdf", "movie.mp4.crdownload", "old-folder", "Screenshot in downloads.png", "read-by-backup.pdf"])
+        #expect(items.first { $0.name == "opened-yesterday.pdf" }?.keptBecause != nil, "opened by the person a day ago")
+        #expect(!items.contains { $0.name == "passwords.txt" || $0.name == "Запись экрана — с музыкой.mp4" }, "on the Desktop only marked screenshots are looked at")
+        #expect(items.first { $0.name == "Screenshot in downloads.png" }?.kind == .screenshot)
+        #expect(items.first { $0.name == "Installer.dmg" }?.keptBecause?.contains(".dmg") == true)
+        #expect(items.first { $0.name == "source.tar.gz" }?.keptBecause != nil, "a double extension is kept by its full name")
+        #expect(items.first { $0.name == "tagged.pdf" }?.keptBecause?.contains("tag") == true)
+        #expect(items.first { $0.name == "mixed-folder" }?.keptBecause != nil, "one recently used file keeps the folder")
+
+        let store = try PepelStore.inMemory()
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: FakeProcessSource(processes: []), telemetry: { SystemTelemetry() })
+        _ = try await engine.update { $0.tidyKeepExtensions = ["dmg", "tar.gz"] }
+        #expect(await engine.runTidy(screenshots: true, downloads: true, confirmed: true, initiator: .agent).denial != nil)
+        _ = await engine.automaticPass()
+        #expect(PathUtil.exists(downloads + "/report.pdf"), "off by default")
+        // Screenshots only: downloads stay.
+        _ = try await engine.update { $0.tidyScreenshots = true }
+        _ = await engine.automaticPass()
+        #expect(!PathUtil.exists(desktop + "/Снимок экрана 2026-11-01.png") && PathUtil.exists(downloads + "/report.pdf") && PathUtil.exists(desktop + "/fresh.png"))
+        // By hand, everything due, to the (redirected) Trash.
+        let result = await engine.runTidy(screenshots: true, downloads: true, confirmed: true, initiator: .user)
+        #expect(result.removed == 4, "report.pdf, the one only a backup read, the unfinished download and the old folder")
+        let trash = (try? FileManager.default.contentsOfDirectory(atPath: f.home + "/.Trash")) ?? []
+        #expect(trash.count == 7 && trash.contains { $0.hasSuffix("report.pdf") })
+        for name in ["Installer.dmg", "source.tar.gz", "tagged.pdf", "recent.pdf", "mixed-folder"] { #expect(PathUtil.exists(downloads + "/" + name), "\(name) must stay") }
+        #expect(PathUtil.exists(desktop + "/passwords.txt") && PathUtil.exists(desktop + "/Запись экрана — с музыкой.mp4"))
+    }
+}
+

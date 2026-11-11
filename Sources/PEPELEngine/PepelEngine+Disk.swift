@@ -588,3 +588,46 @@ extension PepelEngine {
         _ = await cleanToolBackups(confirmed: false, initiator: .automatic)
     }
 }
+
+/// Downloads and screenshots.
+extension PepelEngine {
+    nonisolated func tidy() -> Tidy { Tidy(home: paths.home, screenshotLocation: paths.isRedirected ? nil : Tidy.systemScreenshotLocation()) }
+
+    public func tidyItems(screenshotDays: Int? = nil, downloadDays: Int? = nil) async -> [TidyItem] {
+        let tidy = tidy(), shots = screenshotDays ?? settings.screenshotDays, days = downloadDays ?? settings.downloadDays, keep = Set(settings.tidyKeepExtensions)
+        return await Task.detached(priority: .utility) { tidy.items(screenshotDays: shots, downloadDays: days, keepExtensions: keep) }.value
+    }
+
+    /// - Parameters:
+    ///   - screenshots, downloads: which part to tidy; the daily rule uses the settings.
+    public func runTidy(screenshots: Bool, downloads: Bool, confirmed: Bool, initiator: Initiator, action: TidyAction? = nil) async -> (denial: String?, bytes: Int64, removed: Int) {
+        var shots = screenshots, files = downloads
+        switch initiator {
+        case .agent: return ("Agents cannot tidy your files.", 0, 0)
+        case .automatic:
+            guard !settings.paused else { return ("PEPEL is paused.", 0, 0) }
+            shots = shots && settings.tidyScreenshots
+            files = files && settings.tidyDownloads
+            if !shots && !files { return ("Tidying is not enabled.", 0, 0) }
+        case .user, .cli: if !confirmed { return ("This needs your confirmation.", 0, 0) }
+        }
+        let tidy = tidy(), chosen = action ?? settings.tidyAction, keep = Set(settings.tidyKeepExtensions)
+        let shotDays = settings.screenshotDays, days = settings.downloadDays
+        let trash: String? = paths.isRedirected ? paths.home + "/.Trash" : nil
+        let result = await Task.detached(priority: .utility) {
+            tidy.clean(screenshotDays: shotDays, downloadDays: days, keepExtensions: keep, includeScreenshots: shots, includeDownloads: files, action: chosen, trashDirectory: trash)
+        }.value
+        if result.removed > 0 {
+            store.appendAudit(
+                AuditEntry(
+                    kind: .cleanup, initiator: initiator.rawValue, subject: "Downloads and screenshots: \(result.removed)", outcome: chosen == .trash ? "trashed" : "removed",
+                    bytes: result.bytes, detail: ["screenshotDays": "\(shotDays)", "downloadDays": "\(days)"]))
+        }
+        return (nil, result.bytes, result.removed)
+    }
+
+    func autoTidy(now: Date = Date()) async {
+        guard settings.tidyScreenshots || settings.tidyDownloads, !settings.paused, dueDaily("tidy.lastAuto", now: now) else { return }
+        _ = await runTidy(screenshots: true, downloads: true, confirmed: false, initiator: .automatic)
+    }
+}

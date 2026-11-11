@@ -193,6 +193,7 @@ struct SettingsSection: View {
     @State private var newKeepApp = ""
     @State private var newKeepCache = ""
     @State private var newKeepEmulator = ""
+    @State private var newKeepExtension = ""
     @State private var budgetKind = ""
     @State private var budgetName = ""
     @State private var budgetGB = 4
@@ -324,6 +325,39 @@ struct SettingsSection: View {
                     .buttonStyle(QuietButtonStyle()).disabled(newKeepEmulator.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
                 Text("A start is read from the device's own files, which the emulator writes every time it runs. A running emulator, one marked with DO_NOT_CLEAN.txt and one on this list are never deleted; each candidate is checked again right before deletion.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+
+            group("Disk: Downloads and screenshots", "Screenshots and screen recordings macOS made, wherever they are saved, and anything in Downloads you have not used for a while.") {
+                toggle("Once a day, take screenshots and screen recordings", s.tidyScreenshots) { v in model.updateSettings { $0.tidyScreenshots = v } }
+                stepper("Older than", s.screenshotDays, 1...90, suffix: " day\(s.screenshotDays == 1 ? "" : "s")") { v in model.updateSettings { $0.screenshotDays = v } }
+                toggle("Once a day, take downloads", s.tidyDownloads) { v in model.updateSettings { $0.tidyDownloads = v } }
+                stepper("Not used for", s.downloadDays, 1...365, suffix: " days") { v in model.updateSettings { $0.downloadDays = v } }
+                picker("What happens to them", selection: s.tidyAction, options: [(.trash, "Move to the Trash"), (.delete, "Remove for good")]) { value in model.updateSettings { $0.tidyAction = value } }
+                Text("Never taken from Downloads (file extensions):").font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                HStack(spacing: 6) {
+                    ForEach(s.tidyKeepExtensions, id: \.self) { ext in
+                        Button {
+                            model.updateSettings { $0.tidyKeepExtensions.removeAll { $0 == ext } }
+                        } label: {
+                            HStack(spacing: 3) {
+                                Text(".\(ext)").font(Theme.mono)
+                                Image(systemName: "xmark").font(.system(size: 7, weight: .bold))
+                            }
+                        }
+                        .buttonStyle(.plain).foregroundStyle(Theme.copper).help("Stop keeping .\(ext) files")
+                    }
+                }
+                HStack(spacing: 8) {
+                    TextField("extension, for example epub", text: $newKeepExtension).textFieldStyle(.roundedBorder).font(.system(size: 12)).frame(maxWidth: 220)
+                    Button("Keep") {
+                        let ext = newKeepExtension.trimmingCharacters(in: CharacterSet(charactersIn: ". ")).lowercased()
+                        model.updateSettings { if !$0.tidyKeepExtensions.contains(ext) { $0.tidyKeepExtensions.append(ext) } }
+                        newKeepExtension = ""
+                    }
+                    .buttonStyle(QuietButtonStyle()).disabled(newKeepExtension.trimmingCharacters(in: CharacterSet(charactersIn: ". ")).isEmpty)
+                }
+                Text("Also never taken: anything with a Finder tag, anything opened within the age above, and a folder marked DO_NOT_CLEAN. Unfinished downloads go after a day. Only screenshots macOS marked as such are touched on the Desktop.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
 

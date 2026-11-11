@@ -801,6 +801,25 @@ public final class AppModel {
         }
     }
 
+    // MARK: Downloads and screenshots
+
+    public var tidyItems: [TidyItem]?
+    public var isTidying = false
+
+    public func measureTidy() {
+        Task { tidyItems = await engine.tidyItems() }
+    }
+
+    public func runTidy() {
+        isTidying = true
+        Task {
+            let result = await engine.runTidy(screenshots: true, downloads: true, confirmed: true, initiator: .user)
+            isTidying = false
+            message = result.denial.map { "Not done: \($0)" } ?? "\(settings.tidyAction == .trash ? "Moved to the Trash" : "Removed"): \(result.removed) items, \(Bytes.format(result.bytes))."
+            measureTidy()
+        }
+    }
+
     // MARK: Applications open without windows
 
     public var windowlessApps: [WindowlessApp] = []

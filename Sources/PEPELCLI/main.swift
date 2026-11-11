@@ -927,6 +927,28 @@ case "disk":
         print("\nPEPEL only reports these. Folders macOS guards are left out unless --guarded is given.")
         break
     }
+    if arguments.positional.first == "tidy" {
+        let shotDays = arguments.options["screenshots"].flatMap { Int($0) } ?? settings.screenshotDays
+        let days = arguments.options["days"].flatMap { Int($0) } ?? settings.downloadDays
+        let items = await engine.tidyItems(screenshotDays: shotDays, downloadDays: days)
+        let going = items.filter { $0.keptBecause == nil }
+        if arguments.positional.dropFirst().first == "clean" {
+            guard !going.isEmpty else { print("Nothing to take."); break }
+            let how = arguments.flags.contains("delete") ? TidyAction.delete : settings.tidyAction
+            print("\(going.count) items, \(Bytes.format(going.reduce(0) { $0 + $1.bytes })) would be \(how == .trash ? "moved to the Trash" : "removed for good").")
+            guard arguments.flags.contains("yes") || Out.confirm("Go ahead?") else { print("Nothing was done."); break }
+            let result = await engine.runTidy(screenshots: true, downloads: true, confirmed: true, initiator: .cli, action: how)
+            print(result.denial.map { "Not done: \($0)" } ?? "\(how == .trash ? "Moved to the Trash" : "Removed"): \(result.removed) items, \(Bytes.format(result.bytes)).")
+            break
+        }
+        if arguments.json { Out.json(items); break }
+        Out.table(
+            ["SIZE", "LAST USED", "WHAT", "", "NAME"],
+            items.prefix(40).map { [Bytes.format($0.bytes), TimeFormat.ago($0.lastUse), $0.kind.rawValue, $0.keptBecause.map { Out.truncate($0, 40) } ?? "would go", Out.truncate($0.name, 50)] })
+        print("\nScreenshots older than \(shotDays) day(s) and downloads unused for \(days) days: \(going.count) items, \(Bytes.format(going.reduce(0) { $0 + $1.bytes })). They go to the \(settings.tidyAction == .trash ? "Trash" : "bin for good").")
+        print("`pepel disk tidy clean` does it (--delete to skip the Trash). Daily: screenshots \(settings.tidyScreenshots ? "on" : "off"), downloads \(settings.tidyDownloads ? "on" : "off") (tidyScreenshots, tidyDownloads). Kept kinds: \(settings.tidyKeepExtensions.joined(separator: ", ")).")
+        break
+    }
     if arguments.positional.first == "backups" {
         let keep = arguments.options["keep"].flatMap { Int($0) } ?? settings.toolBackupsKeep
         let days = arguments.options["days"].flatMap { Int($0) } ?? settings.toolBackupsDays

@@ -18,6 +18,7 @@ struct StorageSection: View {
     @State private var confirmEmulators = false
     @State private var confirmImages = false
     @State private var confirmBackups = false
+    @State private var confirmTidy = false
 
     private func matches(_ item: StorageItem) -> Bool {
         if let filter, item.safety != filter { return false }
@@ -26,6 +27,49 @@ struct StorageSection: View {
         return item.title.lowercased().contains(needle) || item.path.lowercased().contains(needle)
             || item.category.displayName.lowercased().contains(needle)
             || (model.projectName(item.projectID)?.lowercased().contains(needle) ?? false)
+    }
+
+    /// Old screenshots and downloads.
+    @ViewBuilder private var tidy: some View {
+        let s = model.settings
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Caption("Downloads and screenshots")
+                Spacer()
+                if model.isTidying { ProgressView().controlSize(.small) }
+                if let items = model.tidyItems {
+                    let going = items.filter { $0.keptBecause == nil }
+                    Button("\(s.tidyAction == .trash ? "Move to Trash" : "Remove") \(going.count) · \(Bytes.format(going.reduce(0) { $0 + $1.bytes }))…") { confirmTidy = true }
+                        .buttonStyle(CopperButtonStyle(prominent: false)).disabled(going.isEmpty || model.isTidying)
+                }
+            }
+            if let items = model.tidyItems {
+                let going = items.filter { $0.keptBecause == nil }
+                let shots = going.filter { $0.kind == .screenshot }
+                Text("\(shots.count) screenshots and recordings older than \(s.screenshotDays) day\(s.screenshotDays == 1 ? "" : "s") · \(going.count - shots.count) downloads unused for \(s.downloadDays) days or unfinished · \(items.count - going.count) kept")
+                    .font(.system(size: 12)).foregroundStyle(Theme.secondary)
+                ForEach(going.prefix(8)) { item in
+                    HStack(spacing: 10) {
+                        Badge(text: item.kind == .screenshot ? "screenshot" : item.kind == .partial ? "unfinished" : "download", tint: Theme.tertiary)
+                        Text(item.name).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
+                        Spacer()
+                        Text("used \(TimeFormat.ago(item.lastUse))").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
+                        Text(Bytes.format(item.bytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)
+                    }
+                }
+                if going.count > 8 { Text("and \(going.count - 8) more").font(.system(size: 11)).foregroundStyle(Theme.tertiary) }
+            }
+            Text("Screenshots are recognised by the mark macOS puts on them, never by name, and nothing else on the Desktop is touched. Kept in Downloads: \(s.tidyKeepExtensions.joined(separator: ", ")), anything with a Finder tag, and anything opened recently.")
+                .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+        }
+        .panel()
+        .onAppear { if model.tidyItems == nil { model.measureTidy() } }
+        .confirmationDialog("Tidy Downloads and screenshots?", isPresented: $confirmTidy, titleVisibility: .visible) {
+            Button(s.tidyAction == .trash ? "Move to Trash" : "Remove for good", role: s.tidyAction == .delete ? .destructive : nil) { model.runTidy() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(s.tidyAction == .trash ? "They can be taken back from the Trash until it is emptied." : "They are removed for good and cannot be taken back.")
+        }
     }
 
     /// What Docker keeps on disk, and what has been unused long enough to go.
@@ -431,6 +475,7 @@ struct StorageSection: View {
             SectionTitle(
                 title: "Storage",
                 subtitle: "Developer artifacts found on this Mac. Sizes are blocks allocated on disk; where files are hard-linked, cloned or unreadable the figure is an upper bound, marked ≤.")
+            tidy
             docker
             caches
             applicationData

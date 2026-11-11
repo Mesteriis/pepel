@@ -161,6 +161,16 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     /// `windowlessQuitMinutes` while not in front and not busy.
     public var quitWhenWindowless: [String] = []
     public var windowlessQuitMinutes = 2
+    /// Once a day, take screenshots and screen recordings macOS made that are older than `screenshotDays`.
+    public var tidyScreenshots = false
+    public var screenshotDays = 1
+    /// Once a day, take what in Downloads has not been used for `downloadDays`.
+    public var tidyDownloads = false
+    public var downloadDays = 30
+    /// Kinds of file never taken from Downloads, by extension: installers, archives, disk images.
+    public var tidyKeepExtensions: [String] = ["dmg", "pkg", "mpkg", "app", "iso", "img", "xip", "zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar", "tar.gz", "tar.xz"]
+    /// Move to the Trash (default) or remove for good.
+    public var tidyAction: TidyAction = .trash
     public var freezeIdleAgents = false
     public var freezeAfterMinutes = 20
     /// How often a frozen session is woken for a moment to see whether work is waiting.
