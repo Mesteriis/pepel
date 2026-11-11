@@ -29,6 +29,8 @@ public struct LiveState: Codable, Sendable {
     public var agentHelpers: [AgentHelperGroup] = []
     /// Processes still running after the application that started them quit.
     public var leftovers: [AppLeftovers] = []
+    /// Process trees PEPEL has suspended.
+    public var frozen: [FrozenTree] = []
 
     public var abandoned: [ProcessAssessment] { assessments.filter { $0.lifecycle.isAbandonedCandidate } }
 }

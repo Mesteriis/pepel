@@ -81,6 +81,26 @@ and there is no recursive-delete command line anywhere in the project.
   "Flush the file cache" step described below, never as a substitute for stopping what holds
   memory and never automatically.
 
+### Suspending agent sessions
+
+PEPEL can suspend (`SIGSTOP`) an agent session with everything it started instead of ending it.
+Nothing is lost, and a suspended tree gets no CPU, so its memory is never touched again and is
+what macOS compresses and swaps out first. By hand: `pepel freeze <pid>`, the Agents section, or
+the "Suspend quiet agent sessions" step of Free memory. Automatically (`freezeIdleAgents`, off by
+default): after `freezeAfterMinutes` (20) of quiet, and only when PEPEL knows which application
+the session lives in and that application is not in front.
+
+- Never suspended: a working session, one with a build or test running, an agent binary running
+  as a server for an application, the session PEPEL itself runs in, sessions of another user.
+  Agents cannot ask for it.
+- A suspended session is woken (`SIGCONT`): the moment its application comes to the front; when
+  a short periodic peek (`freezePeekMinutes`, 10) finds it using CPU, meaning work arrived;
+  before it is terminated; when PEPEL is paused, quits, or starts again after a crash; with
+  `pepel thaw [<pid>|--all]`. A session that was just woken is left alone for a full quiet period.
+- The list of suspended trees is kept in the store, so it survives PEPEL being killed. If PEPEL
+  is killed and not started again, `pepel thaw --all` wakes everything.
+- While suspended, a session cannot answer: anything talking to it over a socket waits.
+
 ### Free memory
 
 "Free memory" (popover button, `pepel free`) is one pass over what PEPEL can already stop:

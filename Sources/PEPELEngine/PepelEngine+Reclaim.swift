@@ -54,6 +54,23 @@ extension PepelEngine {
                     targets: idle.map(describe), estimatedBytes: idle.reduce(0) { $0 + $1.footprintBytes }, selectedByDefault: false))
         }
 
+        // Suspending keeps everything, so it is offered for every quiet session whose application
+        // is not the one in front.
+        let front = frontmostPID()
+        let processTree = ProcessTree(lastProcesses)
+        let freezable = sessions.filter { session in
+            guard session.state != .working, session.frozenSince == nil, session.activeBuildCount == 0, let root = processTree.process(session.root) else { return false }
+            let owner = Self.ownerApp(of: root, tree: processTree)
+            return owner != nil && owner?.pid != front
+        }
+        if !freezable.isEmpty {
+            steps.append(
+                ReclaimStep(
+                    kind: .freezeAgents, title: "Suspend quiet agent sessions",
+                    detail: "Paused, not ended: nothing is lost, and a session continues when its application comes to the front. macOS can then compress and swap out their memory first.",
+                    targets: freezable.map(describe), estimatedBytes: 0, selectedByDefault: true))
+        }
+
         if let containers = live.containers {
             let unused = containers.groups.filter { $0.projectID != nil && $0.agentSessions == 0 && !$0.stoppable.isEmpty }
             if !unused.isEmpty {
@@ -134,6 +151,15 @@ extension PepelEngine {
                 manualSleepOverride = Dictionary(uniqueKeysWithValues: idle.map { ($0.root, $0.evidence + ["You asked PEPEL to free memory and included idle sessions."]) })
                 results.append(await terminate(idle.map(\.root), kind: step.kind, title: step.title))
                 manualSleepOverride = [:]
+            case .freezeAgents:
+                var done = 0
+                var notes: [String] = []
+                let candidates = (live?.agentSessions ?? []).filter { !$0.isService && $0.state != .working && $0.frozenSince == nil }
+                for session in candidates {
+                    guard let decision = await freeze(session.root, confirmed: true, initiator: initiator) else { continue }
+                    if decision.verdict == .denied { notes.append("\(session.kind.displayName) (PID \(session.root.pid)): \(decision.reasons.first ?? "refused")") } else { done += 1 }
+                }
+                results.append(ReclaimStepResult(kind: step.kind, title: step.title, done: done, attempted: candidates.count, notes: notes))
             case .idleContainers:
                 var done = 0, attempted = 0
                 var notes: [String] = []

@@ -184,11 +184,21 @@ final class FakeProcessSource: ProcessSource, @unchecked Sendable {
         defer { lock.unlock() }
         delivered.append((pid, signal))
         guard table.contains(where: { $0.pid == pid }) else { return false }
+        if signal == SIGSTOP || signal == SIGCONT { return true }
         table.removeAll { $0.pid == pid }
         return true
     }
 
     var signals: [(pid: Int32, signal: Int32)] { lock.lock(); defer { lock.unlock() }; return delivered }
+
+    func clearSignals() { lock.lock(); delivered = []; lock.unlock() }
+
+    /// Changes one process in the table, as if it had run for a while.
+    func mutate(_ pid: Int32, _ change: (inout ProcessSnapshot) -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+        if let index = table.firstIndex(where: { $0.pid == pid }) { change(&table[index]) }
+    }
 }
 
 extension CleanupExecutor {

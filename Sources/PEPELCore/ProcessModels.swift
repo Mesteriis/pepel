@@ -262,6 +262,8 @@ public struct AgentSession: Codable, Sendable, Identifiable, Hashable {
     public var observedFor: TimeInterval = 0
     /// What the state was concluded from.
     public var evidence: [String] = []
+    /// Set while PEPEL has the session suspended.
+    public var frozenSince: Date?
 
     public var id: ProcessIdentity { root }
 

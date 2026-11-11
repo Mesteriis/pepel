@@ -549,6 +549,131 @@ struct EngineTests {
         #expect(empty.steps.isEmpty)
     }
 
+    final class PIDBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: Int32?
+        func set(_ pid: Int32?) { lock.lock(); value = pid; lock.unlock() }
+        var pid: Int32? { lock.lock(); defer { lock.unlock() }; return value }
+    }
+
+    @Test("A quiet session is suspended only behind another application, wakes when its own comes forward or work arrives, and is never left stopped")
+    func freezing() async throws {
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        let alpha = f.gitRepo(f.projects + "/alpha"), beta = f.gitRepo(f.projects + "/beta"), gamma = f.gitRepo(f.projects + "/gamma")
+        let now = Date()
+        let terminal = process(100, name: "Terminal", path: "/Applications/Terminal.app/Contents/MacOS/Terminal")
+        let shell = process(101, parent: 100, name: "zsh", path: "/bin/zsh")
+        var quiet = process(10, parent: 101, name: "claude", path: "/Users/x/.local/bin/claude", cwd: alpha, footprint: 200_000_000)
+        quiet.diskBytesWritten = 4_000_000
+        quiet.cpuTimeNs = 60 * 1_000_000_000
+        let helper = process(11, parent: 10, name: "python3", args: ["python3", "mcp-server"], cwd: alpha, footprint: 100_000_000)
+        var worker = process(20, parent: 101, name: "claude", path: "/Users/x/.local/bin/claude", cwd: beta)
+        worker.diskBytesWritten = 9_000_000
+        worker.cpuTimeNs = 400 * 1_000_000_000
+        // Same quiet history, but inside tmux: no application to come back to.
+        var detached = process(30, name: "claude", path: "/Users/x/.local/bin/claude", cwd: gamma)
+        detached.diskBytesWritten = 4_000_000
+        detached.cpuTimeNs = 60 * 1_000_000_000
+        for session in [quiet, detached] {
+            for (minutesAgo, bytes, cpuSeconds) in [(170.0, 1_000_000, 0), (32, 1_000_000, 0), (30, 4_000_000, 60), (2, 4_000_000, 60)] as [(Double, UInt64, UInt64)] {
+                var copy = session
+                copy.diskBytesWritten = bytes
+                copy.cpuTimeNs = cpuSeconds * 1_000_000_000
+                store.recordObservations([copy], at: now.addingTimeInterval(-minutesAgo * 60))
+            }
+        }
+        for (minutesAgo, bytes) in [(170.0, 1_000_000), (60, 4_000_000), (1, 8_500_000)] as [(Double, UInt64)] {
+            var copy = worker
+            copy.diskBytesWritten = bytes
+            copy.cpuTimeNs = 0
+            store.recordObservations([copy], at: now.addingTimeInterval(-minutesAgo * 60))
+        }
+        let source = FakeProcessSource(processes: [terminal, shell, quiet, helper, worker, detached])
+        var settings = PepelSettings()
+        settings.projectRoots = [f.projects]
+        try store.saveSettings(settings)
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: source, telemetry: { SystemTelemetry() })
+        let front = PIDBox()
+        await engine.setFrontmostProvider { front.pid }
+        func stops() -> [Int32] { source.signals.filter { $0.signal == SIGSTOP }.map(\.pid) }
+        func continues() -> [Int32] { source.signals.filter { $0.signal == SIGCONT }.map(\.pid) }
+
+        let live = await engine.refreshLive()
+        #expect(Dictionary(uniqueKeysWithValues: live.agentSessions.map { ($0.root.pid, $0.state) }) == [10: .idle, 20: .working, 30: .idle])
+
+        // Off by default; and with it on, not while PEPEL cannot see what is in front, nor under Terminal itself.
+        front.set(999)
+        _ = await engine.automaticPass()
+        _ = try await engine.update { $0.freezeIdleAgents = true }
+        front.set(nil)
+        _ = await engine.automaticPass()
+        front.set(100)
+        _ = await engine.automaticPass()
+        #expect(source.signals.isEmpty)
+
+        front.set(999)
+        _ = await engine.automaticPass()
+        #expect(stops() == [11, 10], "the helper first, then the session; neither the working one nor the one inside tmux")
+        #expect(engine.frozenTrees().map(\.root.pid) == [10] && engine.frozenTrees().first?.ownerAppName == "Terminal")
+        #expect(await engine.refreshLive().agentSessions.first { $0.root.pid == 10 }?.frozenSince != nil)
+        #expect(Set(source.snapshot().map(\.pid)) == [100, 101, 10, 11, 20, 30], "nothing was ended")
+
+        // Coming back to Terminal wakes it at once.
+        engine.applicationActivated(pid: 100)
+        #expect(Set(continues()) == [10, 11] && engine.frozenTrees().isEmpty)
+
+        // Just woken: left alone for a full quiet period, then suspended again.
+        source.clearSignals()
+        _ = await engine.automaticPass()
+        #expect(stops().isEmpty)
+        let later = Date().addingTimeInterval(21 * 60)
+        await engine.freezePass(now: later)
+        #expect(stops() == [11, 10])
+
+        // A peek with nothing waiting puts it back; a peek that finds work leaves it awake.
+        source.clearSignals()
+        let peekAt = later.addingTimeInterval(11 * 60)
+        await engine.freezePass(now: peekAt)
+        #expect(Set(continues()) == [10, 11] && engine.frozenTrees().first?.isPeeking == true)
+        await engine.freezePass(now: peekAt.addingTimeInterval(5))
+        #expect(stops().isEmpty, "a peek lasts at least twenty seconds")
+        await engine.freezePass(now: peekAt.addingTimeInterval(25))
+        #expect(stops() == [11, 10] && engine.frozenTrees().first?.isPeeking == false)
+
+        source.clearSignals()
+        let second = peekAt.addingTimeInterval(25 + 11 * 60)
+        await engine.freezePass(now: second)
+        source.mutate(10) { $0.cpuTimeNs += 5 * 1_000_000_000 }
+        await engine.refreshLive()
+        await engine.freezePass(now: second.addingTimeInterval(25))
+        #expect(stops().isEmpty && engine.frozenTrees().isEmpty, "it had work to do, so it stays awake")
+        #expect(store.audit(kinds: [.termination]).contains { $0.outcome == "woken" && ($0.detail["reason"] ?? "").contains("work was waiting") })
+
+        // By hand: an agent cannot, a person can, also without an application to return to; then everything is woken.
+        let asAgent = await engine.freeze(detached.identity, confirmed: true, initiator: .agent)
+        #expect(asAgent?.verdict == .denied)
+        let working = await engine.freeze(worker.identity, confirmed: true, initiator: .user)
+        #expect(working?.verdict == .denied)
+        source.clearSignals()
+        let byHand = await engine.freeze(detached.identity, confirmed: true, initiator: .cli)
+        #expect(byHand?.verdict == .needsConfirmation && stops() == [30])
+        #expect(byHand?.warnings.contains { $0.contains("pepel thaw") } == true)
+
+        _ = await engine.freeze(quiet.identity, confirmed: true, initiator: .user)
+        #expect(engine.thawAll(reason: "PEPEL quit") == 2 && engine.frozenTrees().isEmpty)
+
+        // Ending a suspended session wakes it first, or SIGTERM would never be acted on.
+        _ = await engine.freeze(detached.identity, confirmed: true, initiator: .user)
+        source.clearSignals()
+        _ = await engine.reclaim(["idleAgents"])
+        let order = source.signals.filter { $0.pid == 30 }.map(\.signal)
+        #expect(order.first == SIGCONT && order.contains(SIGTERM))
+        #expect(engine.frozenTrees().isEmpty)
+    }
+
     final class FlushCounter: @unchecked Sendable {
         private let lock = NSLock()
         private var value = 0

@@ -367,6 +367,33 @@ case "agents" where arguments.positional.first == "instructions":
         print(AgentInstructions.block(settings: settings))
     }
 
+case "freeze":
+    guard let pid = arguments.positional.first.flatMap({ Int32($0) }) else { Out.error("usage: pepel freeze <pid of an agent session>"); exit(2) }
+    let live = await engine.refreshLive()
+    guard let session = live.agentSessions.first(where: { $0.root.pid == pid }) else { Out.error("PID \(pid) is not the root of an agent session. See `pepel agents`."); exit(1) }
+    guard let decision = await engine.freeze(session.root, confirmed: true, initiator: .cli) else { Out.error("The session is gone."); exit(1) }
+    for line in decision.warnings { print("Note: \(line)") }
+    if decision.verdict == .denied {
+        print("Not suspended: \(decision.reasons.joined(separator: " "))")
+        exit(1)
+    }
+    print("Suspended \(session.kind.displayName) (PID \(pid)) with its \(session.processCount - 1) helper processes. Wake it with `pepel thaw \(pid)`.")
+
+case "thaw":
+    if arguments.flags.contains("all") {
+        print("Woke \(engine.thawAll(reason: "asked from the command line")) suspended session(s).")
+    } else if let pid = arguments.positional.first.flatMap({ Int32($0) }), let tree = engine.frozenTrees().first(where: { $0.root.pid == pid }) {
+        engine.thaw(tree.root, reason: "asked from the command line")
+        print("Woke \(tree.name) (PID \(pid)).")
+    } else {
+        let trees = engine.frozenTrees()
+        if trees.isEmpty { print("Nothing is suspended.") }
+        for tree in trees {
+            print("\(tree.root.pid)  \(tree.name)  suspended \(TimeFormat.age(Date().timeIntervalSince(tree.frozenAt))) ago, \(tree.members.count) processes, wakes \(tree.ownerAppName.map { "when \($0) comes to the front" } ?? "by hand")")
+        }
+        if !trees.isEmpty { print("\n`pepel thaw <pid>` wakes one, `pepel thaw --all` wakes all.") }
+    }
+
 case "agents":
     let live = await engine.refreshLive()
     if arguments.json { Out.json(live.agentSessions); break }
@@ -376,7 +403,7 @@ case "agents":
         ["PID", "AGENT", "STATE", "QUIET FOR", "MEMORY", "PROCS", "PROJECT", "WHY"],
         live.agentSessions.map {
             [
-                String($0.root.pid), $0.kind.displayName + ($0.isService ? " (server)" : ""), $0.state.rawValue,
+                String($0.root.pid), $0.kind.displayName + ($0.isService ? " (server)" : ""), $0.frozenSince == nil ? $0.state.rawValue : "suspended",
                 $0.quietSince.map { TimeFormat.age(Date().timeIntervalSince($0)) } ?? "—", Bytes.format($0.footprintBytes),
                 String($0.processCount), Out.truncate($0.projectID.map { ($0 as NSString).lastPathComponent } ?? "—", 18),
                 Out.truncate($0.evidence.first ?? "", 90),

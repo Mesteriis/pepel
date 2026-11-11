@@ -207,7 +207,7 @@ public struct ContainerReport: Codable, Sendable, Hashable {
 // MARK: - Free memory
 
 public enum ReclaimStepKind: String, Codable, Sendable, CaseIterable {
-    case abandonedProcesses, appLeftovers, sleepingAgents, idleAgents, idleContainers, containerVM, fileCache
+    case abandonedProcesses, appLeftovers, sleepingAgents, freezeAgents, idleAgents, idleContainers, containerVM, fileCache
 }
 
 /// One thing "Free memory" can do, with what it would act on and what it could give back.
@@ -289,4 +289,46 @@ public struct ReclaimReport: Codable, Sendable {
     /// machine moves this number too.
     public var freedBytes: Int64 { before.memoryUsedBytes - after.memoryUsedBytes }
     public var swapFreedBytes: Int64 { before.swapUsedBytes - after.swapUsedBytes }
+}
+
+// MARK: - Freezing
+
+/// A process tree PEPEL has suspended (SIGSTOP) instead of ending it. Nothing is lost: the
+/// processes keep their state and continue (SIGCONT) when woken.
+public struct FrozenTree: Codable, Sendable, Identifiable, Hashable {
+    public var root: ProcessIdentity
+    public var members: [ProcessIdentity]
+    public var name: String
+    public var frozenAt: Date
+    /// "automatic", "user" or "cli". Trees frozen by hand are not thawed when the rule is switched off.
+    public var initiator: String
+    /// The application whose window the tree lives in; coming back to it wakes the tree.
+    public var ownerAppPID: Int32?
+    public var ownerAppName: String?
+    /// Next time the tree is woken briefly to see whether work is waiting for it.
+    public var nextPeek: Date
+    public var peekStarted: Date?
+    /// CPU time of the whole tree when the current peek began.
+    public var peekCPUNs: UInt64 = 0
+    public var footprintBytes: Int64
+    public var residentBytesAtFreeze: Int64
+
+    public var id: ProcessIdentity { root }
+    public var isPeeking: Bool { peekStarted != nil }
+
+    public init(
+        root: ProcessIdentity, members: [ProcessIdentity], name: String, frozenAt: Date, initiator: String, ownerAppPID: Int32?,
+        ownerAppName: String?, nextPeek: Date, footprintBytes: Int64, residentBytesAtFreeze: Int64
+    ) {
+        self.root = root
+        self.members = members
+        self.name = name
+        self.frozenAt = frozenAt
+        self.initiator = initiator
+        self.ownerAppPID = ownerAppPID
+        self.ownerAppName = ownerAppName
+        self.nextPeek = nextPeek
+        self.footprintBytes = footprintBytes
+        self.residentBytesAtFreeze = residentBytesAtFreeze
+    }
 }

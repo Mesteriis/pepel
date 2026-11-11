@@ -219,6 +219,11 @@ struct SettingsSection: View {
                 stepper("Wait", s.appLeftoverGraceMinutes, 1...240, suffix: " min after the application quit") { v in model.updateSettings { $0.appLeftoverGraceMinutes = v } }
                 Text("Covers helpers and child processes PEPEL saw the application start, or that run from inside its bundle. System-managed components, agent sessions and container runtimes are never included.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+                toggle("Suspend agent sessions that have gone quiet, instead of waiting to end them", s.freezeIdleAgents) { v in model.updateSettings { $0.freezeIdleAgents = v } }
+                stepper("Suspend after", s.freezeAfterMinutes, 5...240, step: 5, suffix: " min of quiet") { v in model.updateSettings { $0.freezeAfterMinutes = v } }
+                stepper("Look for waiting work every", s.freezePeekMinutes, 2...120, suffix: " min") { v in model.updateSettings { $0.freezePeekMinutes = v } }
+                Text("A suspended session keeps everything and continues the moment its application comes to the front. In between PEPEL wakes it briefly to see whether work arrived (a message from another device, a finished task); if so it stays awake. Sessions PEPEL cannot tie to an application, such as ones inside tmux, are never suspended automatically. Quitting or pausing PEPEL wakes everything.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
                 toggle("Terminate agent sessions that are asleep (no disk writes, CPU bursts, new processes or builds)", s.terminateSleepingAgents) { v in model.updateSettings { $0.terminateSleepingAgents = v } }
                 stepper("Call an agent session asleep after", s.agentSleepMinutes, 30...1440, step: 30, suffix: " min of quiet") { v in model.updateSettings { $0.agentSleepMinutes = v } }
                 Text("A session waiting for your reply writes nothing either, so it is treated as asleep. Sessions of Claude Code and Codex can be resumed afterwards; text typed but not sent is lost.")

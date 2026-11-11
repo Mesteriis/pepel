@@ -86,8 +86,52 @@ public final class AppModel {
 
     // MARK: Lifecycle
 
-    public func start() {
+    /// PID of the application in front, kept current from the main thread and read by the engine.
+    private final class Frontmost: @unchecked Sendable {
+        private let lock = NSLock()
+        private var pid: Int32?
+        func set(_ value: Int32?) { lock.lock(); pid = value; lock.unlock() }
+        func get() -> Int32? { lock.lock(); defer { lock.unlock() }; return pid }
+    }
+    private let frontmost = Frontmost()
+    private var activationObserver: NSObjectProtocol?
+
+    /// Keeps the engine informed about which application is in front, and wakes suspended
+    /// sessions the moment their application is activated.
+    private func watchFrontmostApplication() {
+        frontmost.set(NSWorkspace.shared.frontmostApplication?.processIdentifier)
+        let frontmost = frontmost, engine = engine
+        activationObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { note in
+            guard let pid = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier else { return }
+            frontmost.set(pid)
+            engine.applicationActivated(pid: pid)
+        }
+    }
+
+    /// Wakes everything PEPEL suspended; called when the app quits so nothing stays stopped.
+    public func wakeEverything(reason: String) { engine.thawAll(reason: reason) }
+
+    public func freeze(_ session: AgentSession) {
         Task {
+            if let decision = await engine.freeze(session.root, confirmed: true, initiator: .user), decision.verdict == .denied {
+                message = "Not suspended: \(decision.reasons.joined(separator: " "))"
+            }
+            live = await engine.live
+        }
+    }
+
+    public func thaw(_ session: AgentSession) {
+        engine.thaw(session.root, reason: "you asked")
+        Task { live = await engine.refreshLive() }
+    }
+
+    public func start() {
+        // Whatever a previous PEPEL left suspended (a crash, a forced quit) is woken first.
+        engine.thawAll(reason: "PEPEL started")
+        watchFrontmostApplication()
+        Task {
+            let frontmost = frontmost
+            await engine.setFrontmostProvider { frontmost.get() }
             settings = await engine.currentSettings()
             storage = await engine.storage
             refreshSecondary()

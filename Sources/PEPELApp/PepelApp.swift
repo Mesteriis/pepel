@@ -147,6 +147,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    /// Nothing may stay suspended once PEPEL is not there to wake it.
+    func applicationWillTerminate(_ notification: Notification) { model.wakeEverything(reason: "PEPEL quit") }
+
     /// Opening the app again while it runs shows the dashboard. This is the way in when the
     /// menu bar icon is hidden by a menu bar manager.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

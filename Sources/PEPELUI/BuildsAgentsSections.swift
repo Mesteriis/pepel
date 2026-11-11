@@ -120,8 +120,8 @@ struct AgentsSection: View {
                 ForEach(live.agentSessions) { session in
                     HStack(spacing: 10) {
                         Badge(
-                            text: session.state == .working ? "working" : session.state == .sleeping ? "asleep" : "idle",
-                            tint: session.state == .working ? Theme.forest : session.state == .sleeping ? Theme.amber : Theme.tertiary
+                            text: session.frozenSince != nil ? "suspended" : session.state == .working ? "working" : session.state == .sleeping ? "asleep" : "idle",
+                            tint: session.frozenSince != nil ? Theme.copper : session.state == .working ? Theme.forest : session.state == .sleeping ? Theme.amber : Theme.tertiary
                         )
                         .frame(width: 62, alignment: .leading)
                         .help(session.evidence.joined(separator: "\n"))
@@ -139,6 +139,12 @@ struct AgentsSection: View {
                         if let quiet = session.quietSince, session.state != .working {
                             Text("quiet \(TimeFormat.age(Date().timeIntervalSince(quiet)))").font(.system(size: 11)).monospacedDigit()
                                 .foregroundStyle(session.state == .sleeping ? Theme.amber : Theme.secondary)
+                        }
+                        if session.frozenSince != nil {
+                            Button("Wake") { model.thaw(session) }.buttonStyle(QuietButtonStyle()).help("Continue this session now.")
+                        } else if !session.isService, session.state != .working {
+                            Button("Suspend") { model.freeze(session) }.buttonStyle(QuietButtonStyle())
+                                .help("Pause this session without ending it. Nothing is lost; it continues when its application comes to the front or you press Wake.")
                         }
                         Text("\(session.processCount) proc").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
                         Text(Bytes.format(session.footprintBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)

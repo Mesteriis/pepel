@@ -92,6 +92,12 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     /// Under memory pressure, act sooner: shorter sleep and idle thresholds, and the Docker VM may
     /// be restarted outside its night window. Only tightens rules that are already switched on.
     public var adaptToMemoryPressure = false
+    /// Suspend agent sessions that have gone quiet instead of waiting to end them. A suspended
+    /// session keeps everything and continues when its application comes to the front.
+    public var freezeIdleAgents = false
+    public var freezeAfterMinutes = 20
+    /// How often a frozen session is woken for a moment to see whether work is waiting.
+    public var freezePeekMinutes = 10
     /// Local hour (0–23) at which the nightly restart may start; it has two hours to find a quiet moment.
     public var vmRefreshHour = 4
     /// The VM is only restarted when it is charged at least this much more than its containers use.
@@ -170,6 +176,7 @@ extension PepelSettings {
         copy.agentSleepMinutes = max(30, agentSleepMinutes / divisor)
         copy.projectIdleGraceMinutes = max(15, projectIdleGraceMinutes / divisor)
         copy.appLeftoverGraceMinutes = max(2, appLeftoverGraceMinutes / divisor)
+        copy.freezeAfterMinutes = max(5, freezeAfterMinutes / divisor)
         return copy
     }
 }

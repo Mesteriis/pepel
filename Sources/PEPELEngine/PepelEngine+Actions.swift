@@ -81,6 +81,7 @@ extension PepelEngine {
     public func automaticPass() async -> (cleanup: CleanupReport?, terminations: [TerminationReport]) {
         var cleanup: CleanupReport?
         var terminations: [TerminationReport] = []
+        await freezePass()
         guard !settings.paused else { return (nil, []) }
         _ = await stopIdleProjectContainers()
         _ = await nightlyVMRefresh()
@@ -139,6 +140,10 @@ extension PepelEngine {
     /// re-established now; then a graceful signal, a confirmed exit, and before/after measurements.
     public func terminate(_ identity: ProcessIdentity, confirmed: Bool, force: Bool, initiator: Initiator) async -> TerminationResult {
         guard let decision = await terminationDecision(identity, initiator: initiator) else { return .notFound }
+        // A suspended process cannot act on SIGTERM: it stays pending until the process continues.
+        if decision.verdict != .denied, confirmed || decision.verdict == .allowed {
+            for tree in frozenTrees() where tree.root == identity || tree.members.contains(identity) { thaw(tree.root, reason: "it is being terminated") }
+        }
         guard let approved = policy.approveTermination(decision, confirmed: confirmed, force: force, initiator: initiator, settings: settings) else {
             if decision.verdict == .needsConfirmation { return .needsConfirmation(decision) }
             store.appendAudit(

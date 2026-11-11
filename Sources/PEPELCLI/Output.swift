@@ -91,6 +91,8 @@ enum Out {
           pepel memory                     Memory pressure, swap and the largest consumers
           pepel processes [--all]          Developer processes and whether they look abandoned
           pepel agents                     Agent sessions: working, idle or asleep, and why
+          pepel freeze <pid>               Suspend an agent session without ending it; nothing is lost
+          pepel thaw [<pid>|--all]         List suspended sessions, or wake one or all
           pepel leftovers                  Processes still running after their application quit
           pepel containers [--all]         Memory inside the container VM, by compose project
           pepel containers stop <project>  Stop (not remove) the containers of one compose project

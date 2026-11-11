@@ -27,6 +27,7 @@ public actor PepelEngine {
     var manualSleepOverride: [ProcessIdentity: [String]] = [:]
     var containerReport: ContainerReport?
     var fileCacheFlusher: FileCacheFlusher = .unavailable
+    var frontmostPID: @Sendable () -> Int32? = { nil }
     /// Settings as adapted to the memory pressure of the latest sample.
     var effectiveSettings: PepelSettings { settings.adapted(to: live?.telemetry.pressure ?? .normal) }
 
@@ -198,9 +199,13 @@ public actor PepelEngine {
         }
         lastProcesses = processes
 
-        let sessions = AgentDetector.sessions(
+        var sessions = AgentDetector.sessions(
             processes: processes, attributor: projectIndex, history: history, now: now,
             sleepWindow: TimeInterval(effectiveSettings.agentSleepMinutes) * 60, leases: store.leases(now: now))
+        let frozenNow = frozenTrees()
+        for index in sessions.indices {
+            sessions[index].frozenSince = frozenNow.first { $0.root == sessions[index].root }?.frozenAt
+        }
         var context = AssessmentContext(
             processes: processes, history: history, protections: store.protections(), attributor: projectIndex, now: now,
             idleWindow: TimeInterval(settings.idleMinutesBeforeAbandoned) * 60)
@@ -227,6 +232,7 @@ public actor PepelEngine {
         var state = LiveState(
             telemetry: telemetry, assessments: assessments, agentSessions: sessions, memory: advice,
             activeBuildCount: buildRoots.count, userProcessCount: processes.count, sampledAt: now)
+        state.frozen = frozenNow
         // What quit applications left running. Agent sessions keep their own rules.
         let before = appTracker
         appTracker.update(processes: processes, now: now)
