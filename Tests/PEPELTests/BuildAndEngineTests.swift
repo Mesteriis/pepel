@@ -1026,6 +1026,35 @@ struct EngineTests {
         #expect(source.signals.map(\.pid) == [601] && source.snapshot().count == 7)
     }
 
+    @Test("Only system components macOS brings back by itself can be restarted, and only when a person asks")
+    func systemProcesses() async throws {
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        let chronod = process(700, name: "chronod", path: "/System/Library/PrivateFrameworks/ChronoCore.framework/Support/chronod", footprint: 800_000_000)
+        let web = process(701, name: "com.apple.WebKit.WebContent", path: "/System/Library/Frameworks/WebKit.framework/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent", footprint: 900_000_000)
+        let dock = process(702, name: "Dock", path: "/System/Library/CoreServices/Dock.app/Contents/MacOS/Dock", footprint: 80_000_000)
+        let impostor = process(703, name: "Finder", path: "/Users/x/bin/Finder", footprint: 900_000_000)
+        let other = process(704, name: "chronod", path: "/System/Library/PrivateFrameworks/ChronoCore.framework/Support/chronod", footprint: 900_000_000, uid: getuid() + 1)
+        let source = FakeProcessSource(processes: [chronod, web, dock, impostor, other])
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: source, telemetry: { SystemTelemetry() })
+        let live = await engine.refreshLive()
+        #expect(live.systemProcesses.map(\.root.pid) == [700, 701], "restartable first; not the small Dock, a program merely named Finder, or another user's process")
+        #expect(live.restartableSystem.map(\.process.pid) == [700])
+
+        _ = try await engine.update { $0.autoTerminateAbandoned = true }
+        _ = await engine.automaticPass()
+        #expect(source.signals.isEmpty)
+        if case .completed = await engine.terminate(web.identity, confirmed: true, force: false, initiator: .user) { Issue.record("web content is not PEPEL's to end") }
+        if case .denied = await engine.terminate(chronod.identity, confirmed: true, force: false, initiator: .agent) {} else { Issue.record("agents must be denied") }
+        if case .needsConfirmation = await engine.terminate(chronod.identity, confirmed: false, force: false, initiator: .cli) {} else { Issue.record("must ask first") }
+        let plan = await engine.reclaimPlan()
+        #expect(plan.steps.contains { $0.kind == .systemProcesses && !$0.selectedByDefault })
+        if case .completed(let report) = await engine.terminate(chronod.identity, confirmed: true, force: false, initiator: .cli) { #expect(report.exited) } else { Issue.record("a person's confirmed request goes through") }
+        #expect(source.signals.map(\.pid) == [700])
+    }
+
     final class FlushCounter: @unchecked Sendable {
         private let lock = NSLock()
         private var value = 0

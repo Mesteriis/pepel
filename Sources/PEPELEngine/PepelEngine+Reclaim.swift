@@ -119,6 +119,15 @@ extension PepelEngine {
                     estimatedBytes: live.idleTabs.reduce(0) { $0 + $1.subtreeFootprintBytes }, selectedByDefault: false))
         }
 
+        if !live.restartableSystem.isEmpty {
+            steps.append(
+                ReclaimStep(
+                    kind: .systemProcesses, title: "Restart grown system components",
+                    detail: "macOS starts each of them again by itself within a second. " + live.systemProcesses.filter(\.restartable).map { "\($0.name): \($0.note)" }.joined(separator: " "),
+                    targets: live.systemProcesses.filter(\.restartable).map { "\($0.name) (\(Bytes.format($0.footprintBytes)))" },
+                    estimatedBytes: live.restartableSystem.reduce(0) { $0 + $1.subtreeFootprintBytes }, selectedByDefault: false))
+        }
+
         if !live.simulators.isEmpty, simulatorShutdown != nil {
             steps.append(
                 ReclaimStep(
@@ -244,6 +253,8 @@ extension PepelEngine {
                 results.append(await terminate((live?.staleBranches ?? []).map(\.process.identity), kind: step.kind, title: step.title))
             case .browserTabs:
                 results.append(await terminate((live?.idleTabs ?? []).map(\.process.identity), kind: step.kind, title: step.title))
+            case .systemProcesses:
+                results.append(await terminate((live?.restartableSystem ?? []).map(\.process.identity), kind: step.kind, title: step.title))
             case .simulators:
                 var done = 0
                 var notes: [String] = []

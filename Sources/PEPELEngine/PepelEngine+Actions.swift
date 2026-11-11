@@ -132,14 +132,11 @@ extension PepelEngine {
 
     public func terminationDecision(_ identity: ProcessIdentity, initiator: Initiator) async -> TerminationDecision? {
         let liveState = await refreshLive()
-        guard
-            let target = liveState.idleTabs.first(where: { $0.process.identity == identity })
-                ?? liveState.staleBranches.first(where: { $0.process.identity == identity })
-                ?? liveState.orphanedTools.first(where: { $0.process.identity == identity })
-                ?? liveState.dormant.first(where: { $0.process.identity == identity })
-                ?? liveState.assessments.first(where: { $0.process.identity == identity })
-                ?? liveState.leftovers.flatMap(\.processes).first(where: { $0.process.identity == identity })
-        else { return nil }
+        // Lists with rules of their own come first, so a process is judged by the narrowest one.
+        let special: [ProcessAssessment] =
+            liveState.restartableSystem + liveState.idleTabs + liveState.staleBranches + liveState.orphanedTools + liveState.dormant
+        let ordinary: [ProcessAssessment] = liveState.assessments + liveState.leftovers.flatMap(\.processes)
+        guard let target = (special + ordinary).first(where: { $0.process.identity == identity }) else { return nil }
         let tree = ProcessTree(lastProcesses)
         let descendants = tree.descendants(of: target.process)
         let ids = Set(descendants.map(\.identity))

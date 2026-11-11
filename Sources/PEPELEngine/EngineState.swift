@@ -47,6 +47,9 @@ public struct LiveState: Codable, Sendable {
     /// Renderer processes of browsers, idle ones first.
     public var browserTabs: [BrowserTab] = []
     public var idleTabs: [ProcessAssessment] = []
+    /// Large processes inside "macOS services", restartable ones first.
+    public var systemProcesses: [SystemProcess] = []
+    public var restartableSystem: [ProcessAssessment] = []
     /// Process trees PEPEL has suspended.
     public var frozen: [FrozenTree] = []
 

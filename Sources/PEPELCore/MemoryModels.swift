@@ -214,7 +214,7 @@ public struct ContainerReport: Codable, Sendable, Hashable {
 // MARK: - Free memory
 
 public enum ReclaimStepKind: String, Codable, Sendable, CaseIterable {
-    case abandonedProcesses, appLeftovers, sleepingAgents, freezeAgents, idleAgents, grownApps, unusedApps, dormantProcesses, serviceBranches, browserTabs, simulators, idleContainers, containerVM, fileCache
+    case abandonedProcesses, appLeftovers, sleepingAgents, freezeAgents, idleAgents, grownApps, unusedApps, dormantProcesses, serviceBranches, browserTabs, systemProcesses, simulators, idleContainers, containerVM, fileCache
 }
 
 /// One thing "Free memory" can do, with what it would act on and what it could give back.
@@ -585,5 +585,30 @@ public struct BrowserTab: Codable, Sendable, Identifiable, Hashable {
         self.footprintBytes = footprintBytes
         self.residentBytes = residentBytes
         self.idleFor = idleFor
+    }
+}
+
+// MARK: - System processes
+
+/// A large process inside "macOS services".
+public struct SystemProcess: Codable, Sendable, Identifiable, Hashable {
+    public var root: ProcessIdentity
+    public var name: String
+    public var footprintBytes: Int64
+    public var residentBytes: Int64
+    /// macOS starts a fresh copy by itself when this one ends.
+    public var restartable: Bool
+    /// What restarting it looks like, or why PEPEL leaves it alone.
+    public var note: String
+
+    public var id: ProcessIdentity { root }
+
+    public init(root: ProcessIdentity, name: String, footprintBytes: Int64, residentBytes: Int64, restartable: Bool, note: String) {
+        self.root = root
+        self.name = name
+        self.footprintBytes = footprintBytes
+        self.residentBytes = residentBytes
+        self.restartable = restartable
+        self.note = note
     }
 }

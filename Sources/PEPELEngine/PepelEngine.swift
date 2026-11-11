@@ -310,6 +310,20 @@ public actor PepelEngine {
             excluded.insert(own.identity)
             excluded.formUnion(processTree.ancestors(of: own).map(\.identity))
         }
+        state.systemProcesses = SystemProcesses.find(processes: processes, excluded: excluded, currentUID: getuid())
+        state.restartableSystem = state.systemProcesses.filter(\.restartable).compactMap { item -> ProcessAssessment? in
+            guard let process = processTree.process(item.root) else { return nil }
+            var assessment = ProcessAssessment(
+                process: process, role: .system, lifecycle: .abandonedSubprocess, confidence: .verified, projectID: nil, projectConfidence: .unknown,
+                evidence: [
+                    "\(item.name) is a macOS component that the system starts again by itself, within about a second.",
+                    "It holds \(Bytes.format(item.footprintBytes)); a fresh copy starts small.",
+                    item.note,
+                ],
+                eligibility: .approvalRequired(warning: item.note), descendantCount: 0, subtreeFootprintBytes: item.footprintBytes)
+            assessment.restartableSystem = true
+            return assessment
+        }
         state.browserTabs = BrowserTabs.find(processes: processes, history: history, idleAfter: TimeInterval(settings.tabIdleMinutes) * 60, now: now)
         state.idleTabs = state.browserTabs.filter { $0.idleFor != nil }.compactMap { tab -> ProcessAssessment? in
             guard let renderer = processTree.process(tab.root) else { return nil }

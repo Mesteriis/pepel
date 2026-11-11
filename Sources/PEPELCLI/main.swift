@@ -220,6 +220,31 @@ case "simulators":
         live.simulators.map { [Bytes.format($0.footprintBytes), String($0.processCount), TimeFormat.ago($0.bootedAt), $0.name, $0.udid, $0.inUse ?? "nothing suggests it"] })
     print("\n`pepel simulators shutdown <udid or name>` (or --all) shuts one down; devices and their data stay.")
 
+case "memory" where arguments.positional.first == "system":
+    let live = await engine.refreshLive()
+    if arguments.positional.dropFirst().first == "restart" {
+        let wanted = arguments.positional.dropFirst(2).first?.lowercased()
+        let targets = live.restartableSystem.filter { wanted == nil ? arguments.flags.contains("all") : $0.process.name.lowercased() == wanted }
+        guard !targets.isEmpty else { Out.error("usage: pepel memory system restart <name>|--all (only components listed as restartable)"); exit(2) }
+        for target in targets {
+            print("\(target.process.name) (\(Bytes.format(target.subtreeFootprintBytes))): \(target.evidence.last ?? "")")
+            guard arguments.flags.contains("yes") || Out.confirm("Restart \(target.process.name)?") else { continue }
+            if case .completed(let report) = await engine.terminate(target.process.identity, confirmed: true, force: false, initiator: .cli) {
+                let again = await engine.refreshLive().systemProcesses.first { $0.name == target.process.name }
+                print(report.exited ? "Restarted. It holds \(again.map { Bytes.format($0.footprintBytes) } ?? "under 300 MB") now." : "It did not exit.")
+            } else {
+                print("PEPEL will not restart it.")
+            }
+        }
+        break
+    }
+    if arguments.json { Out.json(live.systemProcesses); break }
+    if live.systemProcesses.isEmpty { print("No system process of yours holds 300 MB or more."); break }
+    Out.table(
+        ["PID", "CHARGED", "IN RAM", "", "PROCESS", "NOTE"],
+        live.systemProcesses.map { [String($0.root.pid), Bytes.format($0.footprintBytes), Bytes.format($0.residentBytes), $0.restartable ? "restartable" : "", $0.name, Out.truncate($0.note, 80)] })
+    print("\n`pepel memory system restart <name>` restarts a restartable one; macOS starts it again by itself.")
+
 case "memory" where arguments.positional.first == "swapped":
     let live = await engine.refreshLive()
     if arguments.json { Out.json(live.dormant); break }

@@ -76,6 +76,15 @@ and there is no recursive-delete command line anywhere in the project.
   core over what PEPEL has watched) are listed, excluding application bundles, system paths,
   agent sessions and the virtual machine. PEPEL does not know what such a process is for, so it
   is ended only on a confirmed request from a person, never automatically.
+- **Old copies inside agent servers**: PEPEL cannot see conversations, so inside an agent's
+  long-lived server it marks only an older copy of a program the server has since started
+  again, idle for `serviceBranchIdleMinutes`. Ended only on a person's request.
+- **Browser tabs**: renderer processes of known Chromium-based browsers (never Electron
+  applications, extension hosts or GPU processes) idle for `tabIdleMinutes` can be ended on
+  request, which unloads the tabs; they reload when opened, losing unsent form input.
+- **System components**: Dock, Finder, SystemUIServer, ControlCenter, NotificationCenter,
+  chronod and Spotlight are kept alive by launchd, so ending one restarts it. PEPEL offers that
+  for a component holding 300 MB or more, on request only, and touches nothing else under `/System`.
 - Identity (PID + start time) is verified right before each signal.
 - `SIGTERM` first; PEPEL waits for the exit. `SIGKILL` only when you ticked the box for that
   specific request; never automatically.

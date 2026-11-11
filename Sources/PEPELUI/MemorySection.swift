@@ -18,6 +18,7 @@ struct MemorySection: View {
                 growth(live)
                 unused(live)
                 tabs(live)
+                system(live)
                 dormant(live)
                 simulators(live)
                 containers(live)
@@ -75,6 +76,30 @@ struct MemorySection: View {
             } message: {
                 Text("The tabs stay and load again when opened. Unsent form input and scroll positions are lost.")
             }
+        }
+    }
+
+    /// Large macOS components; the ones the system restarts by itself get a button.
+    @ViewBuilder private func system(_ live: LiveState) -> some View {
+        if !live.systemProcesses.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Caption("Inside macOS services")
+                ForEach(live.systemProcesses.prefix(8)) { item in
+                    HStack(spacing: 10) {
+                        Text(item.name).font(.system(size: 12, weight: .semibold)).lineLimit(1).truncationMode(.middle).frame(maxWidth: 260, alignment: .leading)
+                        Text(item.note).font(.system(size: 11)).foregroundStyle(Theme.secondary).lineLimit(1)
+                        Spacer()
+                        Text(Bytes.format(item.footprintBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit()
+                        if let assessment = live.restartableSystem.first(where: { $0.process.identity == item.root }) {
+                            Button("Restart…") { model.requestTermination(assessment) }.buttonStyle(QuietButtonStyle())
+                        }
+                    }
+                    .help(item.note)
+                }
+                Text("macOS starts a restartable component again by itself within a second; a fresh copy starts small. The rest is shown so the group is not a black box.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+            .panel()
         }
     }
 
