@@ -170,6 +170,10 @@ struct SettingsSection: View {
 
             group("Process guardian", "Automatic termination is off unless you enable it, and even then covers only verified, idle, orphaned build and test processes while memory pressure is elevated.") {
                 toggle("Terminate verified abandoned build/test processes automatically under memory pressure", s.autoTerminateAbandoned) { v in model.updateSettings { $0.autoTerminateAbandoned = v } }
+                toggle("Terminate what an application leaves running after it quits", s.terminateAppLeftovers) { v in model.updateSettings { $0.terminateAppLeftovers = v } }
+                stepper("Wait", s.appLeftoverGraceMinutes, 1...240, suffix: " min after the application quit") { v in model.updateSettings { $0.appLeftoverGraceMinutes = v } }
+                Text("Covers helpers and child processes PEPEL saw the application start, or that run from inside its bundle. System-managed components, agent sessions and container runtimes are never included.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
                 toggle("Terminate agent sessions that are asleep (no disk writes, CPU bursts, new processes or builds)", s.terminateSleepingAgents) { v in model.updateSettings { $0.terminateSleepingAgents = v } }
                 stepper("Call an agent session asleep after", s.agentSleepMinutes, 30...1440, step: 30, suffix: " min of quiet") { v in model.updateSettings { $0.agentSleepMinutes = v } }
                 Text("A session waiting for your reply writes nothing either, so it is treated as asleep. Sessions of Claude Code and Codex can be resumed afterwards; text typed but not sent is lost.")

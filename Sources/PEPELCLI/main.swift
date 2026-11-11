@@ -194,6 +194,30 @@ case "processes":
         print("\nProcesses marked unknown have not been observed long enough to judge. Keep PEPEL running, or check again later.")
     }
 
+case "leftovers":
+    let live = await engine.refreshLive()
+    if arguments.json { Out.json(live.leftovers); break }
+    let settings = await engine.currentSettings()
+    if live.leftovers.isEmpty {
+        print("Nothing is left running by applications that have quit (PEPEL only knows about quits it observed).")
+    }
+    for group in live.leftovers {
+        print("\n\(group.appName) quit \(TimeFormat.ago(group.quitAt)) and left \(group.processes.count) process\(group.processes.count == 1 ? "" : "es") holding \(Bytes.format(group.footprintBytes)):")
+        Out.table(
+            ["PID", "MEMORY", "CHILDREN", "CAN TERMINATE", "COMMAND"],
+            group.processes.map {
+                let can: String
+                switch $0.eligibility {
+                case .never: can = "no"
+                case .approvalRequired: can = "with approval"
+                case .automaticEligible: can = settings.terminateAppLeftovers ? "automatically" : "yes"
+                }
+                return [String($0.process.pid), Bytes.format($0.subtreeFootprintBytes), String($0.descendantCount), can, Out.truncate($0.process.shortCommand, 80)]
+            })
+    }
+    print("\nLeftovers are \(settings.terminateAppLeftovers ? "terminated automatically \(settings.appLeftoverGraceMinutes) minutes after the application quit" : "only reported; use `pepel terminate <pid>`, or enable terminateAppLeftovers").")
+    print("macOS frees a quit application's own memory by itself; only what keeps running holds any.")
+
 case "agents":
     let live = await engine.refreshLive()
     if arguments.json { Out.json(live.agentSessions); break }
@@ -251,7 +275,7 @@ case "cleanup":
 case "terminate":
     guard let pid = arguments.positional.first.flatMap(Int32.init) else { Out.error("usage: pepel terminate <pid> [--force] [--yes]"); exit(2) }
     let live = await engine.refreshLive()
-    guard let target = live.assessments.first(where: { $0.process.pid == pid }) else {
+    guard let target = live.assessments.first(where: { $0.process.pid == pid }) ?? live.leftovers.flatMap(\.processes).first(where: { $0.process.pid == pid }) else {
         Out.error("PID \(pid) is not a developer process PEPEL manages (or does not exist)")
         exit(1)
     }

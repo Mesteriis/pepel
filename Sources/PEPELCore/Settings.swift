@@ -80,6 +80,11 @@ public struct PepelSettings: Codable, Sendable, Equatable {
 
     /// Opt-in. Limited to verified, idle, orphaned build/test processes with resolved ownership.
     public var autoTerminateAbandoned = false
+    /// Opt-in. Terminates processes an application left running after it quit, once
+    /// `appLeftoverGraceMinutes` have passed. System-managed components, agent sessions and
+    /// container runtimes are never part of this.
+    public var terminateAppLeftovers = false
+    public var appLeftoverGraceMinutes = 10
     /// Opt-in. Terminates agent sessions that have been asleep for `agentSleepMinutes`: no disk
     /// writes, no CPU bursts, no new processes and no build in that whole time. A session waiting
     /// for the user's reply is indistinguishable from a sleeping one and is terminated too.

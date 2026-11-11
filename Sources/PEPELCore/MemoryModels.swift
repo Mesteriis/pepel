@@ -71,3 +71,21 @@ public struct MemoryOwner: Codable, Sendable, Hashable, Identifiable {
     /// An estimate, summed per process as footprint minus resident size; shared pages blur it.
     public var notInRAMBytes: Int64 = 0
 }
+
+/// Processes still running after the application that started them has quit.
+public struct AppLeftovers: Codable, Sendable, Hashable, Identifiable {
+    /// The application's bundle path.
+    public var id: String
+    public var appName: String
+    public var quitAt: Date
+    public var processes: [ProcessAssessment]
+
+    public init(id: String, appName: String, quitAt: Date, processes: [ProcessAssessment]) {
+        self.id = id
+        self.appName = appName
+        self.quitAt = quitAt
+        self.processes = processes
+    }
+
+    public var footprintBytes: Int64 { processes.reduce(0) { $0 + $1.subtreeFootprintBytes } }
+}

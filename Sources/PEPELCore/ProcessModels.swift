@@ -175,6 +175,8 @@ public struct ProcessAssessment: Codable, Sendable, Identifiable, Hashable {
     public var agentAncestor: ProcessIdentity?
     public var descendantCount: Int
     public var subtreeFootprintBytes: Int64
+    /// Set when this process was left behind by an application that has quit: the application's name.
+    public var leftoverOf: String?
 
     public var id: ProcessIdentity { process.identity }
 

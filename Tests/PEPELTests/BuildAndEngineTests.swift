@@ -478,6 +478,47 @@ struct EngineTests {
         #expect(store.audit(kinds: [.termination]).first?.initiator == "automatic")
     }
 
+    @Test("The engine notices an application quitting, reports what it left, and terminates it only when enabled")
+    func engineHandlesLeftovers() async throws {
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        let app = "/Applications/Editor.app"
+        let main = process(100, name: "Editor", path: app + "/Contents/MacOS/Editor")
+        let helper = process(101, parent: 100, name: "Editor Helper", path: app + "/Contents/Frameworks/Editor Helper.app/Contents/MacOS/Editor Helper", start: 1_000_100, footprint: 500_000_000)
+        var settings = PepelSettings()
+        settings.projectRoots = [f.projects]
+        settings.gracefulTerminationSeconds = 2
+        settings.appLeftoverGraceMinutes = 10
+        try store.saveSettings(settings)
+        let paths = AppPaths(home: f.home, supportDirectory: f.root + "/support")
+        let now = Date()
+
+        // The application is seen running, then the engine stops (as if PEPEL was restarted).
+        var first: PepelEngine? = try PepelEngine(paths: paths, store: store, tools: .disabled, analyzers: [], processSource: FakeProcessSource(processes: [main, helper]), telemetry: { SystemTelemetry() })
+        _ = await first!.refreshLive(now: now.addingTimeInterval(-1800))
+        first = nil
+
+        // A new engine starts after the application quit; the helper is still there.
+        var orphan = helper
+        orphan.parentPID = 1
+        let source = FakeProcessSource(processes: [orphan])
+        let engine = try PepelEngine(paths: paths, store: store, tools: .disabled, analyzers: [], processSource: source, telemetry: { SystemTelemetry() })
+        _ = await engine.refreshLive(now: now.addingTimeInterval(-900))  // the quit is noticed here
+        let live = await engine.refreshLive(now: now)
+        #expect(live.leftovers.map(\.appName) == ["Editor"] && live.leftovers.first?.processes.map(\.process.pid) == [101])
+        #expect(live.leftovers.first?.processes.first?.eligibility == .automaticEligible, "15 minutes after the quit, past the 10-minute grace")
+
+        let off = await engine.automaticPass()
+        #expect(off.terminations.isEmpty && source.signals.isEmpty, "off by default")
+        if case .needsConfirmation = await engine.terminate(orphan.identity, confirmed: false, force: false, initiator: .user) {} else { Issue.record("manual termination must ask first") }
+
+        _ = try await engine.update { $0.terminateAppLeftovers = true }
+        let on = await engine.automaticPass()
+        #expect(on.terminations.map(\.target.pid) == [101] && source.signals.map(\.pid) == [101])
+        let after = await engine.refreshLive()
+        #expect(after.leftovers.isEmpty)
+    }
+
     @Test("Alerts warn about low disk space and budgets without claiming to prevent growth")
     func alerts() {
         let live = LiveState(

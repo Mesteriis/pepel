@@ -65,6 +65,13 @@ and there is no recursive-delete command line anywhere in the project.
 - PEPEL only signals processes of the current user that it classified as developer workloads.
 - Agent sessions, active builds and tests, container runtimes, protected services, applications
   and system processes are refused, also when asked explicitly.
+- Two opt-in automatic rules exist beyond abandoned builds and tests. **Sleeping agent sessions**
+  (`terminateSleepingAgents`): a session with no disk writes, CPU bursts, new processes or builds
+  for the whole sleep window; agent binaries running as servers for an application are excluded.
+  **Leftovers of quit applications** (`terminateAppLeftovers`): processes PEPEL saw an application
+  start, or that run from inside its bundle, still alive after the application quit and a grace
+  period; system-managed components (XPC services, extensions, login items), agent sessions and
+  container runtimes are excluded. Both are off by default.
 - Identity (PID + start time) is verified right before each signal.
 - `SIGTERM` first; PEPEL waits for the exit. `SIGKILL` only when you ticked the box for that
   specific request; never automatically.

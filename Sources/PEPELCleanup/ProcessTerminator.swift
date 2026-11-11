@@ -43,7 +43,9 @@ extension CleanupPolicyEngine {
         if p.pid <= 1 { denials.append("System process.") }
         if p.pid == ownPID || descendants.contains(where: { $0.pid == ownPID }) { denials.append("PEPEL does not terminate itself or its own ancestors.") }
         if p.uid != currentUID { denials.append("The process belongs to another user.") }
-        if !target.role.isDeveloperWorkload { denials.append("Not a developer workload; PEPEL leaves applications and system processes alone.") }
+        // Two things PEPEL acts on: developer workloads, and whatever a quit application left behind.
+        let leftover = target.leftoverOf != nil
+        if !target.role.isDeveloperWorkload && !leftover { denials.append("Not a developer workload; PEPEL leaves applications and system processes alone.") }
 
         switch target.eligibility {
         case .never(let reason):
@@ -61,7 +63,7 @@ extension CleanupPolicyEngine {
                 denials.append("Its descendant \(child.process.name) (PID \(child.process.pid)) must not be terminated: \(reason)")
             }
         }
-        if target.projectConfidence == .unknown { warnings.append("PEPEL could not establish which project this process belongs to.") }
+        if target.projectConfidence == .unknown, !leftover { warnings.append("PEPEL could not establish which project this process belongs to.") }
         if !descendants.isEmpty { warnings.append("\(descendants.count) child process\(descendants.count == 1 ? "" : "es") will be terminated with it.") }
         if !p.listeningPorts.isEmpty { warnings.append("Clients connected to port \(p.listeningPorts.map(String.init).joined(separator: ", ")) will be disconnected.") }
 
@@ -71,6 +73,9 @@ extension CleanupPolicyEngine {
         case .automatic:
             if sleepingAgent {
                 if !settings.terminateSleepingAgents { denials.append("Terminating sleeping agent sessions is not enabled.") }
+            } else if leftover {
+                if !settings.terminateAppLeftovers { denials.append("Terminating what quit applications leave behind is not enabled.") }
+                if target.eligibility != .automaticEligible { denials.append("This leftover needs your decision.") }
             } else {
                 if !settings.autoTerminateAbandoned { denials.append("Automatic termination is not enabled.") }
                 if target.eligibility != .automaticEligible || target.lifecycle != .abandonedSubprocess || target.confidence != .verified {

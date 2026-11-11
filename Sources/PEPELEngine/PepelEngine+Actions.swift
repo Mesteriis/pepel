@@ -91,6 +91,13 @@ extension PepelEngine {
                 }
             }
         }
+        if settings.terminateAppLeftovers, let live {
+            for leftover in live.leftovers.flatMap(\.processes) where leftover.eligibility == .automaticEligible {
+                if case .completed(let report) = await terminate(leftover.process.identity, confirmed: false, force: false, initiator: .automatic) {
+                    terminations.append(report)
+                }
+            }
+        }
         if settings.terminateSleepingAgents, let live {
             // Independent of memory pressure: a session nobody has touched for hours is the user's
             // stated wish to clean up, not an emergency measure.
@@ -114,7 +121,10 @@ extension PepelEngine {
 
     public func terminationDecision(_ identity: ProcessIdentity, initiator: Initiator) async -> TerminationDecision? {
         let liveState = await refreshLive()
-        guard let target = liveState.assessments.first(where: { $0.process.identity == identity }) else { return nil }
+        guard
+            let target = liveState.assessments.first(where: { $0.process.identity == identity })
+                ?? liveState.leftovers.flatMap(\.processes).first(where: { $0.process.identity == identity })
+        else { return nil }
         let tree = ProcessTree(lastProcesses)
         let descendants = tree.descendants(of: target.process)
         let ids = Set(descendants.map(\.identity))

@@ -14,6 +14,7 @@ struct MemorySection: View {
                 composition(live.telemetry, developer: live.memory.developerFootprintBytes)
                 owners(live)
                 if let report = model.terminationReport { terminationResult(report) }
+                leftovers(live)
                 candidates(live)
                 HStack(alignment: .top, spacing: 10) {
                     consumers(live)
@@ -116,6 +117,52 @@ struct MemorySection: View {
             }
         }
         .panel()
+    }
+
+    /// What applications that have quit left running.
+    @ViewBuilder private func leftovers(_ live: LiveState) -> some View {
+        if !live.leftovers.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Caption("Left running by applications that quit")
+                    Spacer()
+                    Text(model.settings.terminateAppLeftovers ? "terminated automatically after \(model.settings.appLeftoverGraceMinutes) min" : "reported only")
+                        .font(.system(size: 10)).foregroundStyle(model.settings.terminateAppLeftovers ? Theme.amber : Theme.tertiary)
+                }
+                ForEach(live.leftovers) { group in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Text(group.appName).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                            Text("quit \(TimeFormat.ago(group.quitAt))").font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                            Spacer()
+                            Text(Bytes.format(group.footprintBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().foregroundStyle(Theme.text)
+                        }
+                        ForEach(group.processes) { leftover in
+                            HStack(spacing: 8) {
+                                Text(Bytes.format(leftover.subtreeFootprintBytes)).font(.system(size: 11, weight: .medium)).monospacedDigit().frame(width: 62, alignment: .trailing)
+                                VStack(alignment: .leading, spacing: 0) {
+                                    Text(leftover.process.shortCommand).font(Theme.mono).foregroundStyle(Theme.text).lineLimit(1)
+                                    Text("PID \(leftover.process.pid)\(leftover.descendantCount > 0 ? " · \(leftover.descendantCount) child processes" : "") · \(leftover.evidence.dropFirst().first ?? "")")
+                                        .font(.system(size: 10)).foregroundStyle(Theme.tertiary).lineLimit(1)
+                                }
+                                Spacer(minLength: 0)
+                                if leftover.eligibility.isNever {
+                                    Image(systemName: "lock.fill").font(.system(size: 9)).foregroundStyle(Theme.tertiary)
+                                        .help({ if case .never(let reason) = leftover.eligibility { return reason } else { return "" } }())
+                                } else {
+                                    Button("Review & terminate…") { model.requestTermination(leftover) }.buttonStyle(CopperButtonStyle(prominent: false))
+                                }
+                            }
+                            .foregroundStyle(Theme.text)
+                            .help(leftover.evidence.joined(separator: "\n"))
+                        }
+                    }
+                }
+                Text("macOS frees a quit application's own memory by itself. Only what keeps running holds any, and only stopping it gives that memory back.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+            .panel()
+        }
     }
 
     private func ownerLabel(_ kind: MemoryOwnerKind) -> String {

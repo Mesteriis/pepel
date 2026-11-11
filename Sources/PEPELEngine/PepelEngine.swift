@@ -19,6 +19,8 @@ public actor PepelEngine {
     var lastObservationWrite = Date.distantPast
     var lastTelemetryWrite = Date.distantPast
     var lastProcesses: [ProcessSnapshot] = []
+    var appTracker = AppExitTracker()
+    var lastTrackerWrite = Date.distantPast
     public private(set) var live: LiveState?
     public private(set) var storage: StorageState?
     public private(set) var scanning = false
@@ -53,6 +55,7 @@ public actor PepelEngine {
         }
         self.projects = known
         self.projectIndex = ProjectIndex(known)
+        self.appTracker = self.store.loadCodable(AppExitTracker.self, key: "apps.tracker") ?? AppExitTracker()
     }
 
     // MARK: Settings and rules
@@ -157,6 +160,19 @@ public actor PepelEngine {
         var state = LiveState(
             telemetry: telemetry, assessments: assessments, agentSessions: sessions, memory: advice,
             activeBuildCount: buildRoots.count, userProcessCount: processes.count, sampledAt: now)
+        // What quit applications left running. Agent sessions keep their own rules.
+        let before = appTracker
+        appTracker.update(processes: processes, now: now)
+        // Saved so a quit is still known after PEPEL restarts and to the command-line tool:
+        // at once when an application quits or returns, otherwise at most every 30 seconds.
+        func quit(_ tracker: AppExitTracker) -> Set<String> { Set(tracker.apps.values.filter { $0.quitAt != nil }.map(\.bundlePath)) }
+        if appTracker != before, quit(appTracker) != quit(before) || now.timeIntervalSince(lastTrackerWrite) >= 30 {
+            lastTrackerWrite = now
+            try? store.saveCodable(appTracker, key: "apps.tracker")
+        }
+        state.leftovers = appTracker.leftovers(
+            processes: processes, assessments: assessments, protectedRoots: Set(sessions.map(\.root)), attributor: projectIndex, now: now,
+            automaticAfter: TimeInterval(settings.appLeftoverGraceMinutes) * 60)
         state.memoryOwners = owners
         state.memoryExplanation = MemoryAttributor.explanation(owners: owners, telemetry: telemetry)
         live = state

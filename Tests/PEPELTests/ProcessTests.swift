@@ -388,6 +388,103 @@ struct ProcessTests {
         #expect(sessions.first { $0.kind == .openCode }?.projectID == nil)
     }
 
+    // MARK: Leftovers of quit applications
+
+    private func appProcess(_ pid: Int32, _ parent: Int32, _ path: String, start: UInt64 = 1_000_000, footprint: Int64 = 100_000_000, args: [String]? = nil) -> ProcessSnapshot {
+        process(pid, parent: parent, name: (path as NSString).lastPathComponent, path: path, args: args, start: start, footprint: footprint)
+    }
+
+    @Test("When an application quits, what it started and what runs from its bundle is reported; system components and agents are not")
+    func appLeftovers() {
+        let now = Date()
+        let app = "/Applications/Editor.app"
+        let main = appProcess(100, 1, app + "/Contents/MacOS/Editor")
+        let helper = appProcess(101, 100, app + "/Contents/Frameworks/Editor Helper.app/Contents/MacOS/Editor Helper", start: 1_000_100, footprint: 400_000_000)
+        let tool = appProcess(102, 100, "/usr/local/bin/lang-server", start: 1_000_200, footprint: 300_000_000)
+        let toolChild = appProcess(103, 102, "/usr/local/bin/lang-worker", start: 1_000_300, footprint: 50_000_000)
+        let xpc = appProcess(104, 1, app + "/Contents/XPCServices/Thumbs.xpc/Contents/MacOS/Thumbs", start: 1_000_100)
+        let agent = appProcess(105, 100, "/Users/x/.local/bin/claude", start: 1_000_400)
+        let agentTool = appProcess(106, 105, "/usr/bin/python3", start: 1_000_500, args: ["python3", "mcp"])
+        let unrelated = appProcess(200, 1, "/Applications/Other.app/Contents/MacOS/Other")
+        let running = [main, helper, tool, toolChild, xpc, agent, agentTool, unrelated]
+
+        var tracker = AppExitTracker()
+        tracker.update(processes: running, now: now.addingTimeInterval(-600))
+        func leftovers(_ processes: [ProcessSnapshot], at date: Date, automaticAfter: TimeInterval = 600) -> [AppLeftovers] {
+            tracker.leftovers(processes: processes, assessments: [], protectedRoots: [agent.identity], attributor: nil, now: date, automaticAfter: automaticAfter, ownPID: 1)
+        }
+        #expect(leftovers(running, at: now).isEmpty, "nothing is a leftover while the application runs")
+
+        // The application quits; its helper, the tool it launched, an XPC service and an agent survive.
+        let survivors = [helper, tool, toolChild, xpc, agent, agentTool, unrelated].map { p -> ProcessSnapshot in
+            var orphan = p
+            if p.parentPID == 100 { orphan.parentPID = 1 }
+            return orphan
+        }
+        let quitAt = now.addingTimeInterval(-300)
+        tracker.update(processes: survivors, now: quitAt)
+        #expect(leftovers(survivors, at: quitAt.addingTimeInterval(20)).isEmpty, "applications get a minute to shut their helpers down")
+
+        let groups = leftovers(survivors, at: now)
+        #expect(groups.map(\.appName) == ["Editor"])
+        let found = groups[0].processes
+        #expect(found.map(\.process.pid) == [101, 102], "largest first; the tool's child is listed with its parent")
+        #expect(found.allSatisfy { $0.leftoverOf == "Editor" && $0.lifecycle == .abandonedSubprocess && $0.confidence == .verified })
+        #expect(found[1].descendantCount == 1 && found[1].subtreeFootprintBytes == 350_000_000)
+        #expect(found[0].evidence.contains { $0.contains("inside Editor.app") } && found[1].evidence.contains { $0.contains("child of Editor") })
+        #expect(groups[0].footprintBytes == 750_000_000)
+        // Five minutes after the quit, with a ten-minute grace period: approval only.
+        #expect(found.allSatisfy { if case .approvalRequired = $0.eligibility { return true } else { return false } })
+        // Past the grace period they become eligible for the automatic rule.
+        #expect(leftovers(survivors, at: now.addingTimeInterval(600)).first?.processes.allSatisfy { $0.eligibility == .automaticEligible } == true)
+
+        // The application is started again: the old note no longer applies.
+        let relaunched = appProcess(300, 1, app + "/Contents/MacOS/Editor", start: 9_000_000)
+        tracker.update(processes: survivors + [relaunched], now: now)
+        #expect(leftovers(survivors + [relaunched], at: now.addingTimeInterval(3600)).isEmpty)
+    }
+
+    @Test("A PID reused by another program after the application quit is not mistaken for its leftover")
+    func leftoverPIDReuse() {
+        let now = Date()
+        let main = appProcess(100, 1, "/Applications/Editor.app/Contents/MacOS/Editor")
+        let tool = appProcess(102, 100, "/usr/local/bin/lang-server", start: 1_000_200)
+        var tracker = AppExitTracker()
+        tracker.update(processes: [main, tool], now: now.addingTimeInterval(-900))
+        // Both exit; later an unrelated program gets PID 102.
+        let stranger = appProcess(102, 1, "/usr/bin/vim", start: 5_000_000)
+        tracker.update(processes: [stranger], now: now.addingTimeInterval(-600))
+        let groups = tracker.leftovers(processes: [stranger], assessments: [], protectedRoots: [], attributor: nil, now: now, automaticAfter: 60, ownPID: 1)
+        #expect(groups.isEmpty)
+    }
+
+    @Test("Leftovers are terminated automatically only when enabled and past the grace period; containers never")
+    func leftoverPolicy() {
+        let engine = CleanupPolicyEngine()
+        var settings = PepelSettings()
+        func leftover(_ eligibility: TerminationEligibility, role: ProcessRole = .userApp) -> ProcessAssessment {
+            var a = ProcessAssessment(process: process(700, name: "Editor Helper"), role: role, lifecycle: .abandonedSubprocess, confidence: .verified, eligibility: eligibility)
+            a.leftoverOf = "Editor"
+            return a
+        }
+        func verdict(_ a: ProcessAssessment, _ initiator: Initiator) -> CleanupVerdict {
+            engine.evaluateTermination(a, descendants: [], descendantAssessments: [], initiator: initiator, settings: settings, ownPID: 1).verdict
+        }
+        // A helper is not a developer workload, but as a leftover the user may terminate it.
+        #expect(verdict(leftover(.automaticEligible), .user) == .needsConfirmation)
+        #expect(verdict(leftover(.automaticEligible), .automatic) == .denied, "off by default")
+        settings.terminateAppLeftovers = true
+        #expect(verdict(leftover(.automaticEligible), .automatic) == .allowed)
+        #expect(verdict(leftover(.approvalRequired(warning: "grace")), .automatic) == .denied, "still inside the grace period")
+        #expect(verdict(leftover(.never(reason: "container"), role: .container), .automatic) == .denied)
+        #expect(verdict(leftover(.never(reason: "container"), role: .container), .user) == .denied)
+        #expect(verdict(leftover(.automaticEligible), .agent) == .denied)
+        // The same helper without the leftover evidence stays off limits.
+        var plain = leftover(.automaticEligible)
+        plain.leftoverOf = nil
+        #expect(verdict(plain, .user) == .denied)
+    }
+
     // MARK: Sleeping agent sessions
 
     /// A history with one point every five minutes; `writes` and `cpu` give cumulative values per point.

@@ -68,7 +68,11 @@ public struct DashboardView: View {
 
     private func badge(for section: DashboardSection) -> String? {
         switch section {
-        case .memory: return model.live.flatMap { $0.abandoned.isEmpty ? nil : "\($0.abandoned.count)" }
+        case .memory:
+            return model.live.flatMap { live in
+                let count = live.abandoned.count + live.leftovers.reduce(0) { $0 + $1.processes.count }
+                return count == 0 ? nil : "\(count)"
+            }
         case .builds: return model.live.flatMap { $0.activeBuildCount == 0 ? nil : "\($0.activeBuildCount)" }
         case .agents: return model.live.flatMap { $0.agentSessions.isEmpty ? nil : "\($0.agentSessions.count)" }
         case .cleanup: return model.storage.flatMap { $0.reclaimableBytes > 0 ? Bytes.format($0.reclaimableBytes) : nil }
