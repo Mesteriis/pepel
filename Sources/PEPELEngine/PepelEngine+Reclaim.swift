@@ -71,6 +71,16 @@ extension PepelEngine {
                     targets: freezable.map(describe), estimatedBytes: 0, selectedByDefault: true))
         }
 
+        let grown = live.growth.filter { $0.kind == .application }
+        if !grown.isEmpty, applicationControl.isAvailable {
+            steps.append(
+                ReclaimStep(
+                    kind: .grownApps, title: "Restart applications that have grown",
+                    detail: "Asked to quit normally and opened again. An application may ask about unsaved changes; one that does not quit is left running.",
+                    targets: grown.map { "\($0.name): \(Bytes.format($0.baselineBytes)) → \(Bytes.format($0.currentBytes)) since \(TimeFormat.ago($0.since))" },
+                    estimatedBytes: grown.reduce(0) { $0 + $1.grownBytes }, selectedByDefault: false))
+        }
+
         if let containers = live.containers {
             let unused = containers.groups.filter { $0.projectID != nil && $0.agentSessions == 0 && !$0.stoppable.isEmpty }
             if !unused.isEmpty {
@@ -160,6 +170,16 @@ extension PepelEngine {
                     if decision.verdict == .denied { notes.append("\(session.kind.displayName) (PID \(session.root.pid)): \(decision.reasons.first ?? "refused")") } else { done += 1 }
                 }
                 results.append(ReclaimStepResult(kind: step.kind, title: step.title, done: done, attempted: candidates.count, notes: notes))
+            case .grownApps:
+                var done = 0
+                var notes: [String] = []
+                let grown = (live?.growth ?? []).filter { $0.kind == .application }
+                for growth in grown {
+                    guard let report = await performApplication(.restart, bundlePath: String(growth.id.dropFirst(4)), confirmed: true, initiator: initiator) else { continue }
+                    if report.quit { done += 1 }
+                    notes.append(report.quit ? "\(growth.name): \(Bytes.format(report.footprintBefore)) → \(Bytes.format(report.footprintAfter))." : report.note)
+                }
+                results.append(ReclaimStepResult(kind: step.kind, title: step.title, done: done, attempted: grown.count, notes: notes))
             case .idleContainers:
                 var done = 0, attempted = 0
                 var notes: [String] = []

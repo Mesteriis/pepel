@@ -129,6 +129,21 @@ extension PepelStore {
         return result
     }
 
+    /// Every reading of one scope since `date`, per key, oldest first.
+    public func usageSeries(scope: String, since date: Date) -> [String: (name: String, samples: [MemorySample])] {
+        let rows = (try? db.query(
+            "SELECT ts, key, name, bytes FROM usage WHERE scope = ? AND ts >= ? ORDER BY ts", [.text(scope), .double(date.timeIntervalSince1970)])) ?? []
+        var result: [String: (name: String, samples: [MemorySample])] = [:]
+        for row in rows {
+            let key = row[1].text ?? ""
+            var entry = result[key] ?? (row[2].text ?? "", [])
+            entry.name = row[2].text ?? entry.name
+            entry.samples.append(MemorySample(at: Date(timeIntervalSince1970: row[0].double), bytes: row[3].int))
+            result[key] = entry
+        }
+        return result
+    }
+
     // MARK: Process observations
 
     public func recordObservations(_ processes: [ProcessSnapshot], at timestamp: Date = Date()) {
@@ -166,6 +181,8 @@ extension PepelStore {
             try db.execute("DELETE FROM observations WHERE ts < ?", [.double(now.timeIntervalSince1970 - 2 * day)])
             try db.execute("DELETE FROM telemetry WHERE ts < ?", [.double(now.timeIntervalSince1970 - 90 * day)])
             try db.execute("DELETE FROM usage WHERE ts < ?", [.double(now.timeIntervalSince1970 - 90 * day)])
+            // Memory readings are taken every few minutes; a week of them is enough to see growth.
+            try db.execute("DELETE FROM usage WHERE scope = 'memory' AND ts < ?", [.double(now.timeIntervalSince1970 - 7 * day)])
         }
     }
 }

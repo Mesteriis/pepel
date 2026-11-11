@@ -28,6 +28,12 @@ public actor PepelEngine {
     var containerReport: ContainerReport?
     var fileCacheFlusher: FileCacheFlusher = .unavailable
     var containerPeaks: [Int: Int64]?
+    var applicationControl: ApplicationControl = .unavailable
+    var lastMemoryWrite = Date.distantPast
+    var growthCache: [MemoryGrowth] = []
+
+    /// Replaces how applications are asked to quit and opened; tests use a fake.
+    public func setApplicationControl(_ control: ApplicationControl) { applicationControl = control }
     var frontmostPID: @Sendable () -> Int32? = { nil }
     /// Settings as adapted to the memory pressure of the latest sample.
     var effectiveSettings: PepelSettings { settings.adapted(to: live?.telemetry.pressure ?? .normal) }
@@ -61,6 +67,7 @@ public actor PepelEngine {
         let home = paths.home
         self.readTelemetry = telemetry ?? { TelemetryReader().read(volumePath: home) }
         self.fileCacheFlusher = paths.isRedirected ? .unavailable : .system(tools: self.tools)
+        self.applicationControl = paths.isRedirected ? .unavailable : .system
         self.settings = self.store.loadSettings(home: paths.home)
         let saved = self.store.loadCodable(StorageState.self, key: "storage.state")
         self.storage = saved
@@ -275,6 +282,8 @@ public actor PepelEngine {
         }
         state.agentHelpers = AgentDetector.helperGroups(processes: processes, sessions: sessions)
         state.memoryOwners = owners
+        recordMemory(owners: owners, now: now)
+        state.growth = growthCache
         state.memoryExplanation = MemoryAttributor.explanation(owners: owners, telemetry: telemetry)
         live = state
         return state

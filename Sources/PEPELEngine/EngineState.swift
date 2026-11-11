@@ -29,6 +29,8 @@ public struct LiveState: Codable, Sendable {
     public var agentHelpers: [AgentHelperGroup] = []
     /// Processes still running after the application that started them quit.
     public var leftovers: [AppLeftovers] = []
+    /// Owners whose memory has kept growing while PEPEL watched.
+    public var growth: [MemoryGrowth] = []
     /// Process trees PEPEL has suspended.
     public var frozen: [FrozenTree] = []
 

@@ -101,6 +101,21 @@ the session lives in and that application is not in front.
   is killed and not started again, `pepel thaw --all` wakes everything.
 - While suspended, a session cannot answer: anything talking to it over a socket waits.
 
+### Applications
+
+PEPEL records what each application, agent session and tool holds every five minutes (kept for a
+week) and reports **steady growth**: at least two hours of readings in which the typical level
+rose by 1 GiB and by half without dipping. A spike or a merely large application is not growth;
+a restart starts the count over.
+
+It can ask an application to **quit, or quit and open again** (`pepel apps restart|quit <name>`,
+the Memory section, a Free memory step that is never preselected). The request is the ordinary
+one an application gets from the Dock, never a signal: an application with unsaved changes asks
+about them, and one that is still running after 30 seconds is left running and not reopened.
+Refused: for agents and the automatic pass; for an application with agent sessions, builds, tests
+or servers running inside it (a terminal, an editor with an agent); for PEPEL and the application
+it runs in; for system components under `/System/Library`.
+
 ### Free memory
 
 "Free memory" (popover button, `pepel free`) is one pass over what PEPEL can already stop:

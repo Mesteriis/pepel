@@ -14,6 +14,7 @@ struct MemorySection: View {
                 SectionTitle(title: "Memory", subtitle: live.memory.headline + ". " + live.memory.detail)
                 composition(live.telemetry, developer: live.memory.developerFootprintBytes)
                 owners(live)
+                growth(live)
                 containers(live)
                 if let report = model.terminationReport { terminationResult(report) }
                 leftovers(live)
@@ -25,6 +26,39 @@ struct MemorySection: View {
             } else {
                 SectionTitle(title: "Memory")
                 EmptyState(symbol: "memorychip", title: "Sampling…", message: "Waiting for the first memory and process sample.")
+            }
+        }
+    }
+
+    /// Owners whose memory kept rising while PEPEL watched, with a restart for applications.
+    @ViewBuilder private func growth(_ live: LiveState) -> some View {
+        if !live.growth.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Caption("Kept growing")
+                ForEach(live.growth) { item in
+                    HStack(spacing: 10) {
+                        Text(item.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                        Text("\(Bytes.format(item.baselineBytes)) → \(Bytes.format(item.currentBytes)) over \(TimeFormat.age(Date().timeIntervalSince(item.since)))")
+                            .font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
+                        Spacer()
+                        Text("+\(Bytes.format(item.perHourBytes))/h").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.amber)
+                        if item.kind == .application {
+                            Button("Restart…") { model.requestApplication(.restart, bundlePath: String(item.id.dropFirst(4))) }.buttonStyle(QuietButtonStyle())
+                        }
+                    }
+                }
+                Text("Steady growth over at least two hours usually means a leak or an application that has been open for a long time. Restarting it returns what it accumulated.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+            .panel()
+            .confirmationDialog(
+                model.pendingApplication.map { "\($0.action == .restart ? "Restart" : "Quit") \($0.name)?" } ?? "",
+                isPresented: Binding(get: { model.pendingApplication != nil }, set: { if !$0 { model.pendingApplication = nil } }), titleVisibility: .visible
+            ) {
+                if model.pendingApplication?.verdict != .denied { Button(model.pendingApplication?.action == .quit ? "Quit" : "Restart") { model.confirmApplication() } }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(((model.pendingApplication?.reasons ?? []) + (model.pendingApplication?.warnings ?? [])).joined(separator: "\n"))
             }
         }
     }

@@ -674,6 +674,94 @@ struct EngineTests {
         #expect(engine.frozenTrees().isEmpty)
     }
 
+    @Test("Growth is steady rise over hours, not a spike or a high level, and starts over after a restart")
+    func memoryGrowthDetection() {
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        func samples(_ gib: [Double], everyMinutes: Double = 30) -> [MemorySample] {
+            gib.enumerated().map { MemorySample(at: start.addingTimeInterval(Double($0.offset) * everyMinutes * 60), bytes: Int64($0.element * Double(1 << 30))) }
+        }
+        func growth(_ gib: [Double], everyMinutes: Double = 30) -> MemoryGrowth? {
+            MemoryGrowthAnalyzer.growth(id: "app:/Applications/X.app", kind: .application, name: "X", samples: samples(gib, everyMinutes: everyMinutes))
+        }
+        let rising = growth([1.0, 1.1, 1.3, 1.8, 2.2, 2.6, 3.0, 3.2, 3.4])
+        #expect(rising?.baselineBytes == Int64(1.1 * Double(1 << 30)) && rising?.currentBytes == Int64(3.2 * Double(1 << 30)))
+        #expect(rising.map { $0.perHourBytes > 0 && $0.grownBytes > 2 << 30 } == true)
+        #expect(growth([6, 6.1, 6, 6.2, 6.1, 6, 6.1, 6.2, 6.1]) == nil, "large but level")
+        #expect(growth([1, 1, 1, 1, 5, 1, 1, 1, 1]) == nil, "one spike")
+        #expect(growth([1, 1.2, 1.5, 2, 2.4, 2.8, 3.2, 3.4, 3.6], everyMinutes: 5) == nil, "forty minutes are not enough")
+        #expect(growth([1, 2, 3, 4, 5, 6, 1, 1.05, 1.1, 1.1, 1.05, 1.1]) == nil, "it was restarted; the new run is level")
+        #expect(growth([1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.6, 1.7, 1.7]) == nil, "less than 1 GiB of growth")
+    }
+
+    @Test("An application is asked to quit normally, only by a person, never when sessions live inside it, and never forced")
+    func applicationRestart() async throws {
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        let alpha = f.gitRepo(f.projects + "/alpha")
+        let browser = process(200, name: "Browser", path: "/Applications/Browser.app/Contents/MacOS/Browser", footprint: 3_000_000_000)
+        let renderer = process(201, parent: 200, name: "Browser Helper", path: "/Applications/Browser.app/Contents/Frameworks/Helper.app/Contents/MacOS/Browser Helper", footprint: 2_000_000_000)
+        let terminal = process(100, name: "Terminal", path: "/Applications/Terminal.app/Contents/MacOS/Terminal")
+        let session = process(10, parent: 100, name: "claude", path: "/Users/x/.local/bin/claude", cwd: alpha)
+        let source = FakeProcessSource(processes: [browser, renderer, terminal, session])
+        var settings = PepelSettings()
+        settings.projectRoots = [f.projects]
+        try store.saveSettings(settings)
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: source, telemetry: { SystemTelemetry() })
+        let launched = PIDBox()
+        let obedient = ApplicationControl(
+            isAvailable: true, quit: { pid in _ = source.send(SIGTERM, to: pid); _ = source.send(SIGTERM, to: 201); return true },
+            launch: { _ in launched.set(1); return true })
+
+        // A redirected engine cannot touch real applications at all.
+        let inert = await engine.performApplication(.restart, bundlePath: "/Applications/Browser.app", confirmed: true, initiator: .user, waitSeconds: 0.05)
+        #expect(inert?.quit == false && source.snapshot().count == 4)
+
+        await engine.setApplicationControl(obedient)
+        let terminalDecision = await engine.applicationDecision(.restart, bundlePath: "/Applications/Terminal.app", initiator: .user)
+        #expect(terminalDecision?.verdict == .denied && terminalDecision?.reasons.first?.contains("agent session") == true)
+        for initiator in [Initiator.agent, .automatic] {
+            let refused = await engine.performApplication(.restart, bundlePath: "/Applications/Browser.app", confirmed: true, initiator: initiator, waitSeconds: 0.05)
+            #expect(refused?.quit == false)
+        }
+        let unconfirmed = await engine.performApplication(.restart, bundlePath: "/Applications/Browser.app", confirmed: false, initiator: .user, waitSeconds: 0.05)
+        #expect(unconfirmed?.quit == false && source.snapshot().count == 4 && launched.pid == nil)
+
+        // An application that keeps running (unsaved changes) is left alone and not reopened.
+        await engine.setApplicationControl(ApplicationControl(isAvailable: true, quit: { _ in true }, launch: { _ in launched.set(1); return true }))
+        let stubborn = await engine.performApplication(.restart, bundlePath: "/Applications/Browser.app", confirmed: true, initiator: .user, waitSeconds: 0.05)
+        #expect(stubborn?.quit == false && stubborn?.note.contains("did not force") == true && launched.pid == nil)
+        #expect(source.signals.isEmpty, "PEPEL itself never signals an application")
+
+        await engine.setApplicationControl(obedient)
+        let done = await engine.performApplication(.restart, bundlePath: "/Applications/Browser.app", confirmed: true, initiator: .user, waitSeconds: 0.05)
+        #expect(done?.quit == true && done?.reopened == true && launched.pid == 1)
+        #expect(done?.footprintBefore == 5_000_000_000 && done?.footprintAfter == 0)
+        #expect(store.audit(kinds: [.termination]).contains { $0.subject == "Browser" && $0.outcome == "restarted" })
+    }
+
+    @Test("Memory is recorded per owner every five minutes and growth is reported only for what still runs")
+    func memoryHistory() async throws {
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        let browser = process(200, name: "Browser", path: "/Applications/Browser.app/Contents/MacOS/Browser", footprint: 4 << 30)
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: FakeProcessSource(processes: [browser]), telemetry: { SystemTelemetry() })
+        let now = Date()
+        for (hoursAgo, gib) in [(8.0, 1.0), (7, 1.1), (6, 1.4), (5, 1.9), (4, 2.4), (3, 2.9), (2, 3.3), (1, 3.7)] {
+            let at = now.addingTimeInterval(-hoursAgo * 3600)
+            store.recordUsage(scope: "memory", entries: [("app:/Applications/Browser.app", "Browser", Int64(gib * Double(1 << 30))), ("app:/Applications/Gone.app", "Gone", Int64(gib * Double(1 << 30)))], at: at)
+        }
+        let live = await engine.refreshLive()
+        #expect(live.growth.map(\.name) == ["Browser"], "Gone grew the same way but is not running")
+        #expect(store.usageSeries(scope: "memory", since: now.addingTimeInterval(-60))["app:/Applications/Browser.app"]?.samples.count == 1, "this sample was recorded")
+        await engine.setApplicationControl(ApplicationControl(isAvailable: true, quit: { _ in true }, launch: { _ in true }))
+        let plan = await engine.reclaimPlan()
+        #expect(plan.steps.map(\.kind) == [.grownApps] && plan.defaultSelection.isEmpty, "offered, never preselected")
+    }
+
     final class FlushCounter: @unchecked Sendable {
         private let lock = NSLock()
         private var value = 0

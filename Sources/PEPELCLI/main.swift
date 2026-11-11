@@ -146,6 +146,43 @@ case "builds":
     }
     print("\nAll build outputs: \(Bytes.format(state.buildTotalBytes)) of a \(Bytes.format(state.globalBuildBudgetBytes)) global budget.")
 
+case "apps":
+    let live = await engine.refreshLive()
+    let apps = live.memoryOwners.filter { $0.kind == .application }
+    guard let verb = arguments.positional.first, ["restart", "quit"].contains(verb) else {
+        Out.table(["CHARGED", "IN RAM", "PROCS", "APPLICATION"], apps.map { [Bytes.format($0.footprintBytes), Bytes.format($0.residentBytes), String($0.processCount), $0.name] })
+        print("\n`pepel apps restart <name>` asks an application to quit and opens it again; `pepel apps quit <name>` only asks it to quit.")
+        break
+    }
+    let wanted = arguments.positional.dropFirst().joined(separator: " ").lowercased()
+    guard let app = apps.first(where: { $0.name.lowercased() == wanted }) ?? apps.first(where: { $0.name.lowercased().hasPrefix(wanted) && !wanted.isEmpty }) else {
+        Out.error("no running application named '\(wanted)'; see `pepel apps`"); exit(1)
+    }
+    let action: ApplicationAction = verb == "restart" ? .restart : .quit
+    let bundle = String(app.id.dropFirst(4))
+    guard let decision = await engine.applicationDecision(action, bundlePath: bundle, initiator: .cli) else { Out.error("\(app.name) is not running any more"); exit(1) }
+    print("\(app.name): \(Bytes.format(app.footprintBytes)) charged, \(app.processCount) processes")
+    for line in decision.reasons + decision.warnings { print("  ! \(line)") }
+    guard decision.verdict != .denied else { print("PEPEL will not \(verb) \(app.name)."); exit(3) }
+    guard arguments.flags.contains("yes") || Out.confirm("\(verb.capitalized) \(app.name)?") else { print("Nothing was done."); break }
+    if let report = await engine.performApplication(action, bundlePath: bundle, confirmed: true, initiator: .cli) {
+        print(report.note)
+        if report.quit { print("Charged: \(Bytes.format(report.footprintBefore)) before, \(Bytes.format(report.footprintAfter)) after.") }
+    }
+
+case "memory" where arguments.positional.first == "growth":
+    let live = await engine.refreshLive()
+    let growth = await engine.memoryGrowth(owners: live.memoryOwners)
+    if arguments.json { Out.json(growth); break }
+    if growth.isEmpty {
+        print("Nothing has grown steadily. PEPEL records what each application, agent session and tool holds every five minutes and needs at least two hours of readings.")
+        break
+    }
+    Out.table(
+        ["WAS", "NOW", "GREW", "PER HOUR", "WATCHED FOR", "KIND", "OWNER"],
+        growth.map { [Bytes.format($0.baselineBytes), Bytes.format($0.currentBytes), Bytes.format($0.grownBytes), Bytes.format($0.perHourBytes), TimeFormat.age(Date().timeIntervalSince($0.since)), $0.kind.rawValue, $0.name] })
+    print("\nAn application can be restarted with `pepel apps restart <name>`.")
+
 case "memory":
     let live = await engine.refreshLive()
     if arguments.json {

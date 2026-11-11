@@ -444,6 +444,26 @@ public final class AppModel {
         }
     }
 
+    // MARK: Applications
+
+    public var pendingApplication: ApplicationDecision?
+
+    public func requestApplication(_ action: ApplicationAction, bundlePath: String) {
+        Task { pendingApplication = await engine.applicationDecision(action, bundlePath: bundlePath, initiator: .user) }
+    }
+
+    public func confirmApplication() {
+        guard let pending = pendingApplication else { return }
+        pendingApplication = nil
+        Task {
+            message = await engine.performApplication(pending.action, bundlePath: pending.bundlePath, confirmed: true, initiator: .user).map {
+                $0.quit ? "\($0.note) Charged \(Bytes.format($0.footprintBefore)) before, \(Bytes.format($0.footprintAfter)) after." : $0.note
+            }
+            live = await engine.live
+            refreshSecondary()
+        }
+    }
+
     // MARK: Containers
 
     public var pendingVMRefresh: VMRefreshDecision?

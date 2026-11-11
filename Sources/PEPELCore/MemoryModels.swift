@@ -214,7 +214,7 @@ public struct ContainerReport: Codable, Sendable, Hashable {
 // MARK: - Free memory
 
 public enum ReclaimStepKind: String, Codable, Sendable, CaseIterable {
-    case abandonedProcesses, appLeftovers, sleepingAgents, freezeAgents, idleAgents, idleContainers, containerVM, fileCache
+    case abandonedProcesses, appLeftovers, sleepingAgents, freezeAgents, idleAgents, grownApps, idleContainers, containerVM, fileCache
 }
 
 /// One thing "Free memory" can do, with what it would act on and what it could give back.
@@ -337,5 +337,77 @@ public struct FrozenTree: Codable, Sendable, Identifiable, Hashable {
         self.nextPeek = nextPeek
         self.footprintBytes = footprintBytes
         self.residentBytesAtFreeze = residentBytesAtFreeze
+    }
+}
+
+// MARK: - Growth over time
+
+/// An owner whose memory has kept growing while PEPEL watched: the usual sign of a leak, or of
+/// an application that has not been restarted for a long time.
+public struct MemoryGrowth: Codable, Sendable, Identifiable, Hashable {
+    /// The memory owner's id (`app:<bundle path>`, `agent:…`, `exe:<name>`).
+    public var id: String
+    public var kind: MemoryOwnerKind
+    public var name: String
+    /// Typical level at the start of the observed stretch.
+    public var baselineBytes: Int64
+    public var currentBytes: Int64
+    public var since: Date
+    public var perHourBytes: Int64
+
+    public var grownBytes: Int64 { currentBytes - baselineBytes }
+
+    public init(id: String, kind: MemoryOwnerKind, name: String, baselineBytes: Int64, currentBytes: Int64, since: Date, perHourBytes: Int64) {
+        self.id = id
+        self.kind = kind
+        self.name = name
+        self.baselineBytes = baselineBytes
+        self.currentBytes = currentBytes
+        self.since = since
+        self.perHourBytes = perHourBytes
+    }
+}
+
+public struct MemorySample: Codable, Sendable, Hashable {
+    public var at: Date
+    public var bytes: Int64
+    public init(at: Date, bytes: Int64) {
+        self.at = at
+        self.bytes = bytes
+    }
+}
+
+public enum MemoryGrowthAnalyzer {
+    static func median(_ values: [Int64]) -> Int64 {
+        let sorted = values.sorted()
+        return sorted.isEmpty ? 0 : sorted[sorted.count / 2]
+    }
+
+    /// Samples since the owner last started over: a fall of 40% or more between two readings is
+    /// a restart, and what came before it says nothing about the current run.
+    static func currentRun(_ samples: [MemorySample]) -> [MemorySample] {
+        var start = 0
+        for index in samples.indices.dropFirst() where samples[index].bytes * 10 <= samples[index - 1].bytes * 6 { start = index }
+        return Array(samples[start...])
+    }
+
+    /// Sustained growth only: at least two hours of readings, a typical level that rose by 1 GiB
+    /// and by half, and no dip in between. A single spike, or a level that is merely high, is not growth.
+    public static func growth(
+        id: String, kind: MemoryOwnerKind, name: String, samples: [MemorySample], minimumSpan: TimeInterval = 2 * 3600,
+        minimumGrowthBytes: Int64 = 1 << 30
+    ) -> MemoryGrowth? {
+        let run = currentRun(samples.sorted { $0.at < $1.at })
+        guard run.count >= 6, let first = run.first, let last = run.last else { return nil }
+        let span = last.at.timeIntervalSince(first.at)
+        guard span >= minimumSpan else { return nil }
+        let third = run.count / 3
+        let baseline = median(run[..<third].map(\.bytes))
+        let middle = median(run[third..<(run.count - third)].map(\.bytes))
+        let current = median(run[(run.count - third)...].map(\.bytes))
+        guard current - baseline >= minimumGrowthBytes, current * 2 >= baseline * 3, middle >= baseline, current >= middle else { return nil }
+        return MemoryGrowth(
+            id: id, kind: kind, name: name, baselineBytes: baseline, currentBytes: current, since: first.at,
+            perHourBytes: Int64(Double(current - baseline) / (span / 3600)))
     }
 }
