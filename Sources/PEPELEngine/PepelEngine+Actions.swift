@@ -82,6 +82,7 @@ extension PepelEngine {
         var cleanup: CleanupReport?
         var terminations: [TerminationReport] = []
         await freezePass()
+        await resumeContainersOfActiveProjects()
         guard !settings.paused else { return (nil, []) }
         _ = await stopIdleProjectContainers()
         _ = await nightlyVMRefresh()
@@ -175,13 +176,52 @@ extension PepelEngine {
     }
 
     /// Stops the running containers of one compose project, if policy allows it.
-    public func stopContainers(groupID: String, confirmed: Bool, initiator: Initiator) async -> (decision: ContainerStopDecision, report: ContainerStopReport?)? {
+    public func stopContainers(
+        groupID: String, confirmed: Bool, initiator: Initiator, action: IdleContainerAction = .stop
+    ) async -> (decision: ContainerStopDecision, report: ContainerStopReport?)? {
         guard let decision = await containerStopDecision(groupID: groupID, initiator: initiator) else { return nil }
         guard let approved = policy.approveContainerStop(decision, confirmed: confirmed, initiator: initiator) else { return (decision, nil) }
-        let tools = tools, store = store
-        let report = await Task.detached(priority: .utility) { ContainerStopper(tools: tools, store: store).stop(approved) }.value
+        let stopper = containerStopper()
+        let report = await Task.detached(priority: .utility) { action == .pause ? stopper.pause(approved) : stopper.stop(approved) }.value
+        if action == .pause {
+            // Remembered, so that only what PEPEL paused is ever resumed by PEPEL.
+            try? store.saveCodable(Array(Set(pausedByPepel() + report.stopped)).sorted(), key: Self.pausedKey)
+        }
         containerRefreshStarted = .distantPast  // read the runtime again on the next sample
         return (decision, report)
+    }
+
+    static let pausedKey = "containers.pausedByPepel"
+    public nonisolated func pausedByPepel() -> [String] { store.loadCodable([String].self, key: Self.pausedKey) ?? [] }
+
+    nonisolated func containerStopper() -> ContainerStopper {
+        if let run = containerRunner { return ContainerStopper(store: store, run: run) }
+        return ContainerStopper(tools: tools, store: store)
+    }
+
+    /// Lets the paused containers of one compose project continue.
+    @discardableResult
+    public func resumeContainers(groupID: String, reason: String, onlyPausedByPepel: Bool = false) async -> [String] {
+        guard let group = (containerReport ?? live?.containers)?.groups.first(where: { $0.id == groupID }) else { return [] }
+        let mine = Set(pausedByPepel())
+        let names = group.paused.map(\.name).filter { !onlyPausedByPepel || mine.contains($0) }
+        let stopper = containerStopper()
+        let resumed = await Task.detached(priority: .utility) { stopper.unpause(names, group: group.name, reason: reason) }.value
+        try? store.saveCodable(pausedByPepel().filter { !resumed.contains($0) }, key: Self.pausedKey)
+        containerRefreshStarted = .distantPast
+        return resumed
+    }
+
+    /// An agent came back to a project whose containers PEPEL paused: let them continue at once.
+    func resumeContainersOfActiveProjects() async {
+        let mine = Set(pausedByPepel())
+        guard !mine.isEmpty, let groups = live?.containers?.groups else { return }
+        // Containers that are gone, or that someone resumed by hand, are forgotten.
+        let stillPaused = Set(groups.flatMap(\.paused).map(\.name))
+        if !mine.isSubset(of: stillPaused), containerReport != nil { try? store.saveCodable(mine.intersection(stillPaused).sorted(), key: Self.pausedKey) }
+        for group in groups where group.agentSessions > 0 && group.paused.contains(where: { mine.contains($0.name) }) {
+            await resumeContainers(groupID: group.id, reason: "an agent session is running in the project again", onlyPausedByPepel: true)
+        }
     }
 
     public nonisolated func lastVMRefresh() -> Date? {
@@ -275,7 +315,9 @@ extension PepelEngine {
             let quick = policy.evaluateContainerStop(group, initiator: .automatic, settings: effectiveSettings, protections: store.protections(), leases: store.leases())
             guard quick.verdict == .allowed else { continue }
             // Decided again on a fresh reading of the runtime before anything is stopped.
-            if let result = await stopContainers(groupID: group.id, confirmed: false, initiator: .automatic), let report = result.report {
+            // Pausing again what is already paused would do nothing.
+            if settings.idleContainerAction == .pause, group.pausable.isEmpty { continue }
+            if let result = await stopContainers(groupID: group.id, confirmed: false, initiator: .automatic, action: settings.idleContainerAction), let report = result.report {
                 reports.append(report)
             }
         }

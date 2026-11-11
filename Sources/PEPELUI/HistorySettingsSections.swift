@@ -338,6 +338,9 @@ struct SettingsSection: View {
 
             group("Containers", "Containers are stopped, never removed; volumes are never touched.") {
                 toggle("Stop a project's containers when no agent session has worked in it", s.stopContainersOfIdleProjects) { v in model.updateSettings { $0.stopContainersOfIdleProjects = v } }
+                picker("When a project is idle", selection: s.idleContainerAction, options: [(.stop, "Stop its containers"), (.pause, "Pause them (continue when an agent returns)")]) { value in model.updateSettings { $0.idleContainerAction = value } }
+                Text("Stopping releases their memory inside the VM. Pausing keeps everything and resumes by itself the moment an agent session starts in the project, but the memory stays.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
                 stepper("A project is idle after", s.projectIdleGraceMinutes, 5...720, step: 5, suffix: " min without an agent session") { v in model.updateSettings { $0.projectIdleGraceMinutes = v } }
                 toggle("Restart the Docker VM once a day to return its memory", s.refreshContainerVMNightly) { v in model.updateSettings { $0.refreshContainerVMNightly = v } }
                 stepper("Start looking for a quiet moment at", s.vmRefreshHour, 0...23, suffix: ":00") { v in model.updateSettings { $0.vmRefreshHour = v } }

@@ -29,6 +29,13 @@ public actor PepelEngine {
     var fileCacheFlusher: FileCacheFlusher = .unavailable
     var containerPeaks: [Int: Int64]?
     var applicationControl: ApplicationControl = .unavailable
+    /// Replaces the `docker` command line; tests use a scripted one.
+    nonisolated(unsafe) var containerRunner: ContainerStopper.Runner?
+
+    public func setContainerRunner(_ runner: ContainerStopper.Runner?, report: ContainerReport? = nil) {
+        containerRunner = runner
+        if let report { containerReport = report }
+    }
     /// Shuts one simulator down by UDID; nil when `simctl` is not available.
     var simulatorShutdown: (@Sendable (String) -> Bool)?
 

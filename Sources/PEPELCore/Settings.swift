@@ -84,6 +84,8 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     /// running in that project for `projectIdleGraceMinutes`. For workstations where containers
     /// exist only to serve development done through agents.
     public var stopContainersOfIdleProjects = false
+    /// Whether those containers are stopped or only paused.
+    public var idleContainerAction: IdleContainerAction = .stop
     public var projectIdleGraceMinutes = 60
     /// Opt-in. Restarts the container VM once a day at `vmRefreshHour` to return the memory it
     /// holds beyond what its containers use, then starts the same containers again. Skipped while

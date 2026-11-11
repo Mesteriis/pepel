@@ -606,6 +606,24 @@ public final class AppModel {
         }
     }
 
+    public func pauseContainers(_ group: ContainerGroup) {
+        Task {
+            if let result = await engine.stopContainers(groupID: group.id, confirmed: true, initiator: .user, action: .pause) {
+                message = result.report.map { "Paused \($0.stopped.count) container\($0.stopped.count == 1 ? "" : "s") of \($0.groupName). They continue when an agent session starts in the project, or with Resume." }
+                    ?? "Not paused: \(result.decision.reasons.joined(separator: " "))"
+            }
+            live = await engine.refreshLive()
+        }
+    }
+
+    public func resumeContainers(_ group: ContainerGroup) {
+        Task {
+            let resumed = await engine.resumeContainers(groupID: group.id, reason: "you asked")
+            message = "Resumed \(resumed.count) container\(resumed.count == 1 ? "" : "s") of \(group.name)."
+            live = await engine.refreshLive()
+        }
+    }
+
     public func stopContainers(_ group: ContainerGroup) {
         Task {
             if let result = await engine.stopContainers(groupID: group.id, confirmed: true, initiator: .user) {

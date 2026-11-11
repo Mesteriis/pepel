@@ -376,6 +376,25 @@ case "containers":
         }
         break
     }
+    if arguments.positional.first == "pause" || arguments.positional.first == "unpause" {
+        guard arguments.positional.count > 1 else { Out.error("usage: pepel containers pause|unpause <compose project> [--yes]"); exit(2) }
+        let name = arguments.positional[1]
+        if arguments.positional.first == "unpause" {
+            _ = await engine.inspectContainers()
+            let resumed = await engine.resumeContainers(groupID: name, reason: "asked from the command line")
+            print(resumed.isEmpty ? "Nothing in '\(name)' was paused." : "Resumed \(resumed.count) container\(resumed.count == 1 ? "" : "s"): \(resumed.joined(separator: ", ")).")
+            break
+        }
+        guard let decision = await engine.containerStopDecision(groupID: name, initiator: .cli) else { Out.error("no running compose project named '\(name)'"); exit(1) }
+        print("\(decision.group.name): \(decision.group.pausable.count) containers to pause")
+        for line in decision.reasons + decision.warnings { print("  ! \(line)") }
+        guard decision.verdict != .denied else { print("PEPEL will not pause these containers."); exit(3) }
+        guard arguments.flags.contains("yes") || Out.confirm("Pause them?") else { print("Nothing was paused."); break }
+        if let report = await engine.stopContainers(groupID: name, confirmed: true, initiator: .cli, action: .pause)?.report {
+            print("Paused \(report.stopped.count) container\(report.stopped.count == 1 ? "" : "s")\(report.failed.isEmpty ? "" : "; failed: " + report.failed.joined(separator: ", ")). They keep their memory inside the VM and continue with `pepel containers unpause \(name)`, or by themselves when an agent session starts in the project.")
+        }
+        break
+    }
     if arguments.positional.first == "stop" {
         guard arguments.positional.count > 1 else { Out.error("usage: pepel containers stop <compose project> [--yes]"); exit(2) }
         let name = arguments.positional[1]
@@ -398,6 +417,8 @@ case "containers":
             let status: String
             if !group.containers.isEmpty, group.stoppable.isEmpty {
                 status = "kept running (keep list or pepel.keep label)"
+            } else if !group.paused.isEmpty {
+                status = "\(group.paused.count) paused; resume when an agent returns"
             } else if group.projectID == nil {
                 status = "not tied to a project; left alone"
             } else if group.agentSessions > 0 {

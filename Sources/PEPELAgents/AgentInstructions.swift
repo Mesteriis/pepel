@@ -41,7 +41,7 @@ public enum AgentInstructions {
 
         This Mac runs PEPEL. It gives back memory and disk that development is no longer using. What that means for you:
 
-        - **Containers can stop.** The containers of a compose project are stopped (never removed) once no agent session has been running in that project for \(settings.projectIdleGraceMinutes) minutes. The Docker VM may also be restarted to return memory, after which the same containers are started again.
+        - **Containers can stop.** The containers of a compose project are stopped (never removed) once no agent session has been running in that project for \(settings.projectIdleGraceMinutes) minutes\(settings.idleContainerAction == .pause ? " (they are paused rather than stopped, and continue by themselves when a session starts in the project; `docker compose unpause` does it by hand)" : ""). The Docker VM may also be restarted to return memory, after which the same containers are started again.
         - **If a container you need is not running, start it and carry on** (`docker compose start`, or `docker compose up -d`). Data in volumes is kept. This is expected behaviour, not a failure, and not something to investigate.
         - **For unattended work that must outlive your session**, take a lease on the project directory: `\(cli) agent lease.acquire owner=<your name> path=<project dir> seconds=<up to 86400>`. Release it when done: `\(cli) agent task.complete owner=<your name>`.
         - **Do not protect containers yourself.** Do not add the `pepel.keep` label and do not change PEPEL's settings. Which services stay up permanently is the user's decision.

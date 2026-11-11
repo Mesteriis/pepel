@@ -110,6 +110,38 @@ public struct ContainerStopper: Sendable {
         self.store = store
     }
 
+    /// Freezes the containers in place. Nothing is lost; they continue with `unpause`.
+    public func pause(_ approved: ApprovedContainerStop) -> ContainerStopReport {
+        let names = approved.group.pausable.map(\.name)
+        var report = ContainerStopReport(groupName: approved.group.name, stopped: [], failed: [], memoryBytes: approved.group.pausable.reduce(0) { $0 + $1.memoryBytes })
+        guard !names.isEmpty else { return report }
+        if let result = run(["pause"] + names, 60) {
+            let printed = Set(result.output.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) })
+            report.stopped = names.filter { printed.contains($0) }
+            report.failed = names.filter { !printed.contains($0) }
+        } else {
+            report.failed = names
+        }
+        store?.appendAudit(
+            AuditEntry(
+                kind: .container, initiator: approved.initiator.rawValue, subject: "\(approved.group.name) (\(names.count) containers)",
+                outcome: report.failed.isEmpty ? "paused" : "paused \(report.stopped.count) of \(names.count)",
+                detail: ["containers": names.joined(separator: ", "), "project": approved.group.projectID ?? "", "failed": report.failed.joined(separator: ", ")]))
+        return report
+    }
+
+    /// Lets paused containers continue. Returns the names that did.
+    public func unpause(_ names: [String], group: String, reason: String) -> [String] {
+        guard !names.isEmpty, let result = run(["unpause"] + names, 60) else { return [] }
+        let printed = Set(result.output.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) })
+        let resumed = names.filter { printed.contains($0) }
+        store?.appendAudit(
+            AuditEntry(
+                kind: .container, initiator: "engine", subject: "\(group) (\(names.count) containers)", outcome: resumed.count == names.count ? "resumed" : "resumed \(resumed.count) of \(names.count)",
+                detail: ["containers": names.joined(separator: ", "), "reason": reason]))
+        return resumed
+    }
+
     public func stop(_ approved: ApprovedContainerStop) -> ContainerStopReport {
         // Containers on the keep list are never part of a stop, whoever asked.
         let names = approved.group.stoppable.map(\.name)

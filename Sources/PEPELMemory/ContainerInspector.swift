@@ -46,15 +46,15 @@ public struct ContainerInspector: Sendable {
         guard fields.count >= 5, let limit = Int64(fields[0]) else { return nil }
 
         // Compose project and its directory come from labels Docker Compose itself sets.
-        var labels: [String: (project: String?, directory: String?, keep: Bool)] = [:]
-        if let ps = run(["ps", "--format", "{{.Names}}\t{{.Label \"com.docker.compose.project\"}}\t{{.Label \"com.docker.compose.project.working_dir\"}}\t{{.Label \"pepel.keep\"}}"], 6) {
+        var labels: [String: (project: String?, directory: String?, keep: Bool, paused: Bool)] = [:]
+        if let ps = run(["ps", "--format", "{{.Names}}\t{{.Label \"com.docker.compose.project\"}}\t{{.Label \"com.docker.compose.project.working_dir\"}}\t{{.Label \"pepel.keep\"}}\t{{.Status}}"], 6) {
             for line in ps.split(separator: "\n", omittingEmptySubsequences: true) {
                 let parts = line.components(separatedBy: "\t")
                 guard let name = parts.first, !name.isEmpty else { continue }
                 let keepLabel = parts.count > 3 ? parts[3].trimmingCharacters(in: .whitespaces).lowercased() : ""
                 labels[name] = (
                     parts.count > 1 && !parts[1].isEmpty ? parts[1] : nil, parts.count > 2 && !parts[2].isEmpty ? parts[2] : nil,
-                    ["true", "1", "yes"].contains(keepLabel)
+                    ["true", "1", "yes"].contains(keepLabel), parts.count > 4 && parts[4].contains("(Paused)")
                 )
             }
         }
@@ -69,6 +69,7 @@ public struct ContainerInspector: Sendable {
                 var container = ContainerMemory(
                     name: parts[0], composeProject: label?.project, workingDirectory: label?.directory, memoryBytes: used,
                     cpuPercent: Double(parts[2].replacingOccurrences(of: "%", with: "")) ?? 0)
+                container.isPaused = label?.paused ?? false
                 if label?.keep == true {
                     container.keepReason = "It carries the label pepel.keep."
                 } else if keepList.contains(parts[0]) {

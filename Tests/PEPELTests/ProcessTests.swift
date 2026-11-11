@@ -561,6 +561,42 @@ struct ProcessTests {
         #expect(!failing.restarted && failing.steps.last?.contains("failed") == true)
     }
 
+    @Test("Paused containers are recognised, pausing skips kept and already paused ones, and resuming reports what continued")
+    func pausingContainers() throws {
+        let inspector = ContainerInspector { arguments, _ in
+            switch arguments.first {
+            case "info": return "34359738368\t8\t3\t3\tDocker Desktop\n"
+            case "ps": return "app-db-1\tapp\t/p/app\t\tUp 2 hours (Paused)\napp-api-1\tapp\t/p/app\t\tUp 2 hours\nvault\tapp\t/p/app\ttrue\tUp 3 days\n"
+            case "stats": return "app-db-1\t1GiB / 32GiB\t0.00%\napp-api-1\t512MiB / 32GiB\t1.50%\nvault\t100MiB / 32GiB\t0.10%\n"
+            default: return nil
+            }
+        }
+        let report = try #require(inspector.inspect(attributor: nil, keep: []))
+        let group = try #require(report.groups.first { $0.name == "app" })
+        #expect(group.paused.map(\.name) == ["app-db-1"])
+        #expect(group.pausable.map(\.name) == ["app-api-1"], "not the paused one, not the kept one")
+
+        let engine = CleanupPolicyEngine()
+        var idle = group
+        idle.projectID = "/p/app"
+        let decision = engine.evaluateContainerStop(idle, initiator: .user, settings: PepelSettings(), protections: [], leases: [])
+        let approved = try #require(engine.approveContainerStop(decision, confirmed: true, initiator: .user))
+        let store = try PepelStore.inMemory()
+        let calls = RefreshScript()
+        let stopper = ContainerStopper(store: store) { arguments, _ in
+            _ = calls.answer(arguments)
+            return (0, arguments.dropFirst().joined(separator: "\n") + "\n")
+        }
+        let paused = stopper.pause(approved)
+        #expect(paused.stopped == ["app-api-1"] && paused.failed.isEmpty)
+        #expect(calls.calls.last == ["pause", "app-api-1"])
+        #expect(stopper.unpause(["app-db-1", "app-api-1"], group: "app", reason: "an agent returned") == ["app-db-1", "app-api-1"])
+        #expect(calls.calls.last == ["unpause", "app-db-1", "app-api-1"])
+        #expect(stopper.unpause([], group: "app", reason: "nothing") == [])
+        #expect(store.audit(kinds: [.container]).map(\.outcome).contains("paused") && store.audit(kinds: [.container]).map(\.outcome).contains("resumed"))
+        #expect(!calls.calls.joined().contains { ["rm", "down", "kill", "prune"].contains($0) })
+    }
+
     @Test("The VM memory limit is changed only by a person, never below what containers have used, and written while Docker is stopped")
     func vmMemoryLimit() async throws {
         let f = Fixture()

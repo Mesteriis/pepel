@@ -99,6 +99,8 @@ public struct ContainerMemory: Codable, Sendable, Hashable, Identifiable {
     public var cpuPercent: Double
     /// Why PEPEL leaves this container running, when it does: the `pepel.keep` label or the keep list.
     public var keepReason: String?
+    /// Frozen with `docker pause`: it keeps its memory and state but gets no CPU.
+    public var isPaused = false
 
     public var id: String { name }
     public var isKept: Bool { keepReason != nil }
@@ -136,6 +138,18 @@ public struct ContainerGroup: Codable, Sendable, Hashable, Identifiable {
     public var cpuPercent: Double { containers.reduce(0) { $0 + $1.cpuPercent } }
     /// Containers PEPEL may stop: everything not on the keep list.
     public var stoppable: [ContainerMemory] { containers.filter { !$0.isKept } }
+    /// Containers PEPEL may pause: the stoppable ones that are not paused already.
+    public var pausable: [ContainerMemory] { stoppable.filter { !$0.isPaused } }
+    public var paused: [ContainerMemory] { containers.filter(\.isPaused) }
+}
+
+/// What PEPEL does with the containers of a project no agent is working in.
+public enum IdleContainerAction: String, Codable, Sendable, CaseIterable {
+    /// `docker stop`: memory inside the VM is released; the agent starts them again when needed.
+    case stop
+    /// `docker pause`: nothing is lost and they continue the moment an agent returns, but their
+    /// memory inside the VM stays.
+    case pause
 }
 
 /// What the container runtime reports about memory inside its virtual machine, next to what

@@ -368,6 +368,13 @@ struct MemorySection: View {
                         }
                         Spacer(minLength: 0)
                         Text(String(format: "%.1f%% CPU", group.cpuPercent)).font(.system(size: 10)).monospacedDigit().foregroundStyle(Theme.secondary)
+                        if !group.paused.isEmpty {
+                            Badge(text: "\(group.paused.count) paused", tint: Theme.copper)
+                            Button("Resume") { model.resumeContainers(group) }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Theme.forest)
+                        } else if !group.pausable.isEmpty {
+                            Button("Pause") { model.pauseContainers(group) }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                                .help("Freeze these containers in place. Nothing is lost; they continue when an agent session starts in the project.")
+                        }
                         if !group.stoppable.isEmpty {
                             Button("Stop") { stopping = group }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Theme.copper)
                         }
