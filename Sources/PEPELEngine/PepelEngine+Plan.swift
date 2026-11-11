@@ -20,32 +20,32 @@ extension PepelEngine {
     public func actionPlan(now: Date = Date()) async -> ActionPlan {
         let s = settings, skip = leftAlone
         var actions: [RuleAction] = [], notes: [String] = []
-        if s.paused { return ActionPlan(madeAt: now, actions: [], notes: ["PEPEL is paused: no rule runs until it is resumed."]) }
-        func add(_ id: String, _ rule: RuleAction.Rule, _ title: String, _ path: String?, _ bytes: Int64, _ key: String, _ verb: String = "remove") {
+        if s.paused { return ActionPlan(madeAt: now, actions: [], notes: [L("PEPEL is paused: no rule runs until it is resumed.")]) }
+        func add(_ id: String, _ rule: RuleAction.Rule, _ title: String, _ path: String?, _ bytes: Int64, _ key: String, _ verb: String = L("remove")) {
             guard !skip.contains(id) else { return }
             actions.append(RuleAction(id: id, rule: rule, title: title, path: path, bytes: bytes, due: nextRun(key, now: now), verb: verb))
         }
         if s.dockerAutoClean {
             if let (_, plan) = await dockerCleanupPlan() {
                 if plan.reproducibleBytes < Bytes.gb {
-                    notes.append("Docker: less than 1 GB to remove, so the rule will not run.")
+                    notes.append(L("Docker: less than 1 GB to remove, so the rule will not run."))
                 } else {
-                    for container in plan.containers { add("container:" + container.name, .docker, "Container " + container.name, nil, container.sizeBytes, "docker.lastAutoClean") }
-                    if !plan.images.isEmpty { add("docker:images", .docker, "\(plan.images.count) image\(plan.images.count == 1 ? "" : "s") no container uses", nil, plan.bytes(.images), "docker.lastAutoClean") }
-                    if plan.buildCacheBytes > 0 { add("docker:buildCache", .docker, "Build cache, \(plan.buildCacheEntries) entries", nil, plan.buildCacheBytes, "docker.lastAutoClean") }
+                    for container in plan.containers { add("container:" + container.name, .docker, L("Container \(container.name)"), nil, container.sizeBytes, "docker.lastAutoClean") }
+                    if !plan.images.isEmpty { add("docker:images", .docker, L("\(plan.images.count) images no container uses"), nil, plan.bytes(.images), "docker.lastAutoClean") }
+                    if plan.buildCacheBytes > 0 { add("docker:buildCache", .docker, L("Build cache, \(plan.buildCacheEntries) entries"), nil, plan.buildCacheBytes, "docker.lastAutoClean") }
                 }
             } else {
-                notes.append("Docker did not answer; its rule is skipped while it is not running.")
+                notes.append(L("Docker did not answer; its rule is skipped while it is not running."))
             }
         }
         if s.cleanStaleProjects {
             for project in staleProjects(now: now) {
-                add(RuleAction.pathKey(project.id), .staleProjects, project.name + ": environments and build output", project.id, project.bytes, "stale.lastAutoClean")
+                add(RuleAction.pathKey(project.id), .staleProjects, L("\(project.name): environments and build output"), project.id, project.bytes, "stale.lastAutoClean")
             }
         }
         if s.trimCaches {
             for cache in await managedCaches(days: s.cacheUnusedDays) where cache.staleBytes > 0 {
-                add("cache:" + cache.id, .toolCaches, "\(cache.title): \(cache.staleCount) unused entries", cache.path, cache.staleBytes, "caches.lastAutoTrim")
+                add("cache:" + cache.id, .toolCaches, L("\(cache.title): \(cache.staleCount) unused entries"), cache.path, cache.staleBytes, "caches.lastAutoTrim")
             }
         }
         if s.cleanAppCaches {
@@ -83,7 +83,7 @@ extension PepelEngine {
             }
         }
         if s.tidyScreenshots || s.tidyDownloads {
-            let verb = s.tidyAction == .trash ? "move to the Trash" : "remove"
+            let verb = s.tidyAction == .trash ? L("move to the Trash") : L("remove")
             for item in await tidyItems() where item.keptBecause == nil {
                 let screenshot = item.kind == .screenshot
                 guard screenshot ? s.tidyScreenshots : s.tidyDownloads else { continue }
@@ -121,8 +121,8 @@ extension PepelEngine {
 
     /// Puts one trashed item back where it was.
     public nonisolated func restoreTrashed(id: Int64) -> String? {
-        guard let record = store.trashed(since: .distantPast).first(where: { $0.id == id }) else { return "No such item." }
-        if record.restoredAt != nil { return "It was already put back." }
+        guard let record = store.trashed(since: .distantPast).first(where: { $0.id == id }) else { return L("No such item.") }
+        if record.restoredAt != nil { return L("It was already put back.") }
         if let problem = restore(trashedPath: record.trashedPath, originalPath: record.originalPath) { return problem }
         store.markRestored(id: id)
         return nil

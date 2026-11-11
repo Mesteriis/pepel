@@ -133,17 +133,16 @@ public enum AlertEvaluator {
             alerts.append(
                 PepelAlert(
                     id: "disk-low", severity: t.diskAvailableBytes < settings.lowDiskThresholdBytes / 4 ? .critical : .warning,
-                    title: "Disk space is low",
-                    message: "\(Bytes.format(t.diskAvailableBytes)) available. "
-                        + (reclaimable > 0
-                            ? "Up to \(Bytes.format(reclaimable)) of developer artifacts can be reviewed for cleanup."
-                            : "No reclaimable developer artifacts are known; run a scan to diagnose.")))
+                    title: L("Disk space is low"),
+                    message: reclaimable > 0
+                        ? L("\(Bytes.format(t.diskAvailableBytes)) available. Up to \(Bytes.format(reclaimable)) of developer artifacts can be reviewed for cleanup.")
+                        : L("\(Bytes.format(t.diskAvailableBytes)) available. No reclaimable developer artifacts are known; run a scan to diagnose.")))
         }
         if let forecast = diskForecast, forecast.fullAt.timeIntervalSince(Date()) <= 14 * 86_400 {
             alerts.append(
                 PepelAlert(
-                    id: "disk-forecast-\(Int(Date().timeIntervalSince1970 / 86_400))", severity: .warning, title: "The disk will be full soon",
-                    message: forecast.sentence() + " Review what can be cleaned."))
+                    id: "disk-forecast-\(Int(Date().timeIntervalSince1970 / 86_400))", severity: .warning, title: L("The disk will be full soon"),
+                    message: forecast.sentence() + " " + L("Review what can be cleaned.")))
         }
         if let live, live.telemetry.pressure != .normal {
             alerts.append(
@@ -157,35 +156,35 @@ public enum AlertEvaluator {
             // One alert per hour of the day, so it is said once and again only if it persists.
             alerts.append(
                 PepelAlert(
-                    id: "memory-forecast-\(Int(live.sampledAt.timeIntervalSince1970 / 3600))", severity: .warning, title: "Memory will run short soon",
-                    message: forecast.sentence(now: live.sampledAt) + " Free memory now to stay ahead of it."))
+                    id: "memory-forecast-\(Int(live.sampledAt.timeIntervalSince1970 / 3600))", severity: .warning, title: L("Memory will run short soon"),
+                    message: forecast.sentence(now: live.sampledAt) + " " + L("Free memory now to stay ahead of it.")))
         }
         for item in live?.overBudget ?? [] {
             alerts.append(
                 PepelAlert(
-                    id: "memory-budget-\(item.ownerID)", severity: .warning, title: "\(item.name) is over its memory budget",
-                    message: "It holds \(Bytes.format(item.footprintBytes)); the budget is \(Bytes.format(item.budgetBytes)). PEPEL only reports this: restart, suspend or end it yourself."))
+                    id: "memory-budget-\(item.ownerID)", severity: .warning, title: L("\(item.name) is over its memory budget"),
+                    message: L("It holds \(Bytes.format(item.footprintBytes)); the budget is \(Bytes.format(item.budgetBytes)). PEPEL only reports this: restart, suspend or end it yourself.")))
         }
         if let storage {
             for summary in storage.builds where summary.attributed && summary.nearBudget {
                 alerts.append(
                     PepelAlert(
                         id: "budget-\(summary.id)-\(summary.overBudget ? "over" : "near")", severity: summary.overBudget ? .warning : .info,
-                        title: summary.overBudget ? "\(summary.name) is over its build budget" : "\(summary.name) is near its build budget",
+                        title: summary.overBudget ? L("\(summary.name) is over its build budget") : L("\(summary.name) is near its build budget"),
                         message: summary.narrative))
             }
             if storage.buildTotalBytes > storage.globalBuildBudgetBytes {
                 alerts.append(
                     PepelAlert(
-                        id: "budget-global", severity: .warning, title: "Build artifacts exceed the global budget",
-                        message: "Build outputs use \(Bytes.format(storage.buildTotalBytes)) of the \(Bytes.format(storage.globalBuildBudgetBytes)) budget."))
+                        id: "budget-global", severity: .warning, title: L("Build artifacts exceed the global budget"),
+                        message: L("Build outputs use \(Bytes.format(storage.buildTotalBytes)) of the \(Bytes.format(storage.globalBuildBudgetBytes)) budget.")))
             }
         }
         if let spike = growth?.spikes.last, Date().timeIntervalSince(spike.at) < 3600 {
             alerts.append(
                 PepelAlert(
-                    id: "spike-\(Int(spike.at.timeIntervalSince1970))", severity: .info, title: "Sudden storage growth",
-                    message: "Disk usage grew by \(Bytes.format(spike.deltaBytes)) within minutes at \(spike.at.formatted(date: .omitted, time: .shortened)). Run a scan to see where."))
+                    id: "spike-\(Int(spike.at.timeIntervalSince1970))", severity: .info, title: L("Sudden storage growth"),
+                    message: L("Disk usage grew by \(Bytes.format(spike.deltaBytes)) within minutes at \(spike.at.formatted(date: .omitted, time: .shortened)). Run a scan to see where.")))
         }
         return alerts
     }
@@ -195,8 +194,8 @@ public enum AlertEvaluator {
 /// listed for review; an agent's word does not make anything safe.
 public struct AgentDisposableAnalyzer: StorageAnalyzer {
     public let id = "agent-registered"
-    public let displayName = "Agent-registered temporary files"
-    public let detection = "Paths an agent marked disposable through the local API, inside a workspace the same agent registered."
+    public let displayName = L("Agent-registered temporary files")
+    public let detection = L("Paths an agent marked disposable through the local API, inside a workspace the same agent registered.")
     let store: PepelStore
 
     public init(store: PepelStore) { self.store = store }
@@ -209,8 +208,8 @@ public struct AgentDisposableAnalyzer: StorageAnalyzer {
             output.items.append(
                 item(
                     context, category: .temporary, path: mark.path, title: (mark.path as NSString).lastPathComponent,
-                    explanation: "Marked disposable by \(mark.owner) on \(mark.markedAt.formatted(date: .abbreviated, time: .shortened)).",
-                    safety: .review, reason: "Declared disposable by an agent; needs your confirmation.", reproducible: false))
+                    explanation: L("Marked disposable by \(mark.owner) on \(mark.markedAt.formatted(date: .abbreviated, time: .shortened))."),
+                    safety: .review, reason: L("Declared disposable by an agent; needs your confirmation."), reproducible: false))
         }
         return output
     }

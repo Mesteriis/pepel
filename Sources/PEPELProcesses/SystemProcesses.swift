@@ -9,13 +9,13 @@ import PEPELCore
 public enum SystemProcesses {
     /// Component → what the user notices when it restarts.
     public static let restartable: [String: String] = [
-        "Dock": "The Dock and Mission Control disappear for a second; minimised windows stay.",
-        "Finder": "Finder windows close and the desktop icons redraw; file operations in progress are interrupted.",
-        "SystemUIServer": "Menu bar extras redraw.",
-        "ControlCenter": "Control Centre and its menu bar items redraw.",
-        "NotificationCenter": "Notification Centre and widgets reload.",
-        "chronod": "Widgets reload their content.",
-        "Spotlight": "The Spotlight window closes if it is open.",
+        "Dock": L("The Dock and Mission Control disappear for a second; minimised windows stay."),
+        "Finder": L("Finder windows close and the desktop icons redraw; file operations in progress are interrupted."),
+        "SystemUIServer": L("Menu bar extras redraw."),
+        "ControlCenter": L("Control Centre and its menu bar items redraw."),
+        "NotificationCenter": L("Notification Centre and widgets reload."),
+        "chronod": L("Widgets reload their content."),
+        "Spotlight": L("The Spotlight window closes if it is open."),
     ]
 
     /// - Parameter excluded: processes that belong to another owner with rules of its own (the virtual machine).
@@ -29,8 +29,8 @@ public enum SystemProcesses {
             let canRestart = note != nil
             if note == nil {
                 note = p.name.hasPrefix("com.apple.WebKit.WebContent")
-                    ? "Web content shown inside an application. PEPEL cannot tell which one."
-                    : "Part of macOS; PEPEL does not restart it."
+                    ? L("Web content shown inside an application. PEPEL cannot tell which one.")
+                    : L("Part of macOS; PEPEL does not restart it.")
             }
             return SystemProcess(root: p.identity, name: p.name, footprintBytes: p.footprintBytes, residentBytes: p.residentBytes, restartable: canRestart, note: note ?? "")
         }

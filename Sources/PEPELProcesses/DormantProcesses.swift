@@ -35,13 +35,18 @@ public enum DormantProcesses {
             let descendants = tree.descendants(of: p)
             let known = assessed[p.identity]
             var evidence = [
-                "\(Bytes.format(p.footprintBytes)) is charged to it and \(Bytes.format(p.residentBytes)) of that is in RAM; the rest is compressed or in swap.",
-                "Started \(TimeFormat.ago(p.identity.startDate)).",
+                L("\(Bytes.format(p.footprintBytes)) is charged to it and \(Bytes.format(p.residentBytes)) of that is in RAM; the rest is compressed or in swap."),
+                L("Started \(TimeFormat.ago(p.identity.startDate))."),
             ]
-            evidence.append(percent.map { String(format: "Used %.2f%% of a core over the %@ PEPEL has watched it.", $0, TimeFormat.age(now.timeIntervalSince(history[p.identity]!.first!.timestamp))) } ?? "PEPEL has not watched it long enough to say how busy it is.")
-            if !p.listeningPorts.isEmpty { evidence.append("It listens on port \(p.listeningPorts.map(String.init).joined(separator: ", ")); something may still connect to it.") }
+            evidence.append(
+                percent.map {
+                    let share = String(format: "%.2f%%", $0)
+                    let watched = TimeFormat.age(now.timeIntervalSince(history[p.identity]!.first!.timestamp))
+                    return L("Used \(share) of a core over the \(watched) PEPEL has watched it.")
+                } ?? L("PEPEL has not watched it long enough to say how busy it is."))
+            if !p.listeningPorts.isEmpty { evidence.append(L("It listens on port \(p.listeningPorts.map(String.init).joined(separator: ", ")); something may still connect to it.")) }
             // A protection or another "never" established elsewhere stands.
-            var eligibility = TerminationEligibility.approvalRequired(warning: "PEPEL does not know what this process is for; it only sees that nothing has touched it.")
+            var eligibility = TerminationEligibility.approvalRequired(warning: L("PEPEL does not know what this process is for; it only sees that nothing has touched it."))
             if let known, case .never = known.eligibility { eligibility = known.eligibility }
             let attribution = p.workingDirectory.flatMap { attributor?.attribute(path: $0) }
             var assessment = ProcessAssessment(

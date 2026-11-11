@@ -72,7 +72,7 @@ public struct CleanupExecutor: Sendable {
         for action in approved {
             var outcome = CleanupOutcome(
                 itemID: action.item.id, title: action.item.title, path: action.item.path, action: action.action,
-                status: .skipped(reason: "Cancelled."), estimatedBytes: action.item.reclaimableBytes)
+                status: .skipped(reason: L("Cancelled.")), estimatedBytes: action.item.reclaimableBytes)
             if !Task.isCancelled {
                 let context = await freshContext(action.item)
                 outcome.status = perform(action, context: context, dryRun: dryRun, validate: validate)
@@ -91,25 +91,25 @@ public struct CleanupExecutor: Sendable {
         let item = approved.item
         // Time-of-check/time-of-use: everything is decided again against the state of this instant.
         if let denial = engine.stillPermitted(approved, context: context) {
-            return .skipped(reason: denial.reasons.first ?? "No longer permitted.")
+            return .skipped(reason: denial.reasons.first ?? L("No longer permitted."))
         }
         if let problem = validate(item) { return .skipped(reason: problem) }
 
         switch approved.action {
         case .none:
-            return .skipped(reason: "No cleanup method.")
+            return .skipped(reason: L("No cleanup method."))
         case .tool(let tool):
             if dryRun { return .wouldApply }
             return runTool(tool)
         case .trash, .removePermanently:
-            guard let expected = item.identity else { return .skipped(reason: "The item was scanned without a file identity.") }
-            guard let current = PathUtil.identity(item.path) else { return .skipped(reason: "The path no longer exists.") }
+            guard let expected = item.identity else { return .skipped(reason: L("The item was scanned without a file identity.")) }
+            guard let current = PathUtil.identity(item.path) else { return .skipped(reason: L("The path no longer exists.")) }
             guard current.sameObject(as: expected), !current.isSymlink else {
-                return .skipped(reason: "The path was replaced after it was scanned.")
+                return .skipped(reason: L("The path was replaced after it was scanned."))
             }
             let window = TimeInterval(context.settings.recentWriteProtectionMinutes) * 60
             if Self.hasRecentWrites(item.path, within: window, now: Date()) {
-                return .skipped(reason: "Files in it were modified in the last \(context.settings.recentWriteProtectionMinutes) minutes.")
+                return .skipped(reason: L("Files in it were modified in the last \(context.settings.recentWriteProtectionMinutes) minutes."))
             }
             if dryRun { return .wouldApply }
             return approved.action == .trash ? trash(item.path) : remove(item.path, expected: expected)
@@ -140,7 +140,7 @@ public struct CleanupExecutor: Sendable {
             try FileManager.default.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: &resulting)
             return .trashed(to: resulting?.path ?? "")
         } catch {
-            return .failed(reason: "Could not move to Trash: \(error.localizedDescription)")
+            return .failed(reason: L("Could not move to Trash: \(error.localizedDescription)"))
         }
     }
 
@@ -150,18 +150,18 @@ public struct CleanupExecutor: Sendable {
         let parent = (path as NSString).deletingLastPathComponent
         let aside = parent + "/.pepel-removing-" + UUID().uuidString
         guard rename(path, aside) == 0 else {
-            return .failed(reason: "Could not take the directory aside: \(String(cString: strerror(errno)))")
+            return .failed(reason: L("Could not take the directory aside: \(String(cString: strerror(errno)))"))
         }
         guard let moved = PathUtil.identity(aside), moved.sameObject(as: expected), !moved.isSymlink else {
             // Not what was validated: put it back untouched.
             _ = rename(aside, path)
-            return .skipped(reason: "The path was replaced while cleanup was starting.")
+            return .skipped(reason: L("The path was replaced while cleanup was starting."))
         }
         do {
             try FileManager.default.removeItem(atPath: aside)
             return .removed
         } catch {
-            return .failed(reason: "Removal stopped part-way (\(error.localizedDescription)). The remainder is at \(aside).")
+            return .failed(reason: L("Removal stopped part-way (\(error.localizedDescription)). The remainder is at \(aside)."))
         }
     }
 
@@ -178,13 +178,13 @@ public struct CleanupExecutor: Sendable {
             case .pnpmStorePrune: ("pnpm", ["store", "prune"])
             }
         guard let result = tools.run(name, arguments, timeout: 600) else {
-            return .failed(reason: "`\(tool.commandDescription)` could not be run or timed out.")
+            return .failed(reason: L("`\(tool.commandDescription)` could not be run or timed out."))
         }
-        return result.status == 0 ? .toolRan : .failed(reason: "`\(tool.commandDescription)` exited with status \(result.status).")
+        return result.status == 0 ? .toolRan : .failed(reason: L("`\(tool.commandDescription)` exited with status \(result.status)."))
     }
 
     private func record(_ outcome: CleanupOutcome, initiator: Initiator, dryRun: Bool) {
-        var detail = ["action": outcome.action.summary, "path": outcome.path]
+        var detail = ["action": outcome.action.auditSummary, "path": outcome.path]
         let text: String
         switch outcome.status {
         case .removed: text = "removed"
@@ -209,8 +209,8 @@ public struct CleanupExecutor: Sendable {
     /// Puts a trashed item back. Only possible while it is still in the Trash and its original
     /// location is free; permanent removals and tool cleanups cannot be undone.
     public func restore(trashedPath: String, originalPath: String) -> String? {
-        guard PathUtil.exists(trashedPath) else { return "The item is no longer in the Trash." }
-        guard !PathUtil.exists(originalPath) else { return "Something else now exists at the original location." }
+        guard PathUtil.exists(trashedPath) else { return L("The item is no longer in the Trash.") }
+        guard !PathUtil.exists(originalPath) else { return L("Something else now exists at the original location.") }
         do {
             try FileManager.default.moveItem(atPath: trashedPath, toPath: originalPath)
             store?.appendAudit(AuditEntry(kind: .cleanup, initiator: Initiator.user.rawValue, subject: (originalPath as NSString).lastPathComponent, outcome: "restored", detail: ["path": originalPath]))

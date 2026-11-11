@@ -17,15 +17,15 @@ public enum UsageInspector {
         for item in items where !item.hasPseudoPath {
             let root = item.path
             if let p = processes.first(where: { $0.executablePath.map { PathUtil.isInside($0, root: root) } ?? false }) {
-                result[item.id] = "\(p.name) (PID \(p.pid)) is running from it."
+                result[item.id] = L("\(p.name) (PID \(p.pid)) is running from it.")
                 continue
             }
             if let p = processes.first(where: { $0.workingDirectory.map { PathUtil.isInside($0, root: root) } ?? false }) {
-                result[item.id] = "It is the working directory of \(p.name) (PID \(p.pid))."
+                result[item.id] = L("It is the working directory of \(p.name) (PID \(p.pid)).")
                 continue
             }
             if let a = working.first(where: { a in a.process.arguments.contains { $0.contains(root) } }) {
-                result[item.id] = "Referenced by running \(a.process.name) (PID \(a.process.pid))."
+                result[item.id] = L("Referenced by running \(a.process.name) (PID \(a.process.pid)).")
                 continue
             }
             if let projectID = item.projectID {
@@ -35,17 +35,17 @@ public enum UsageInspector {
                     // agent's helper in the project does not need them, only a running build or test.
                     let blockers = item.category == .toolCache ? builders : working
                     if let a = blockers.first(where: { $0.projectID == projectID && $0.role != .agent }) {
-                        result[item.id] = "\(a.process.name) (PID \(a.process.pid)) is running in this project."
+                        result[item.id] = L("\(a.process.name) (PID \(a.process.pid)) is running in this project.")
                         continue
                     }
                     if let record = runningWrappedBuilds.first(where: { $0.projectID == projectID }) {
-                        result[item.id] = "A wrapped build is running in this project: \(record.command)"
+                        result[item.id] = L("A wrapped build is running in this project: \(record.command)")
                         continue
                     }
                 }
             } else if item.category == .toolCache || item.category == .dependencyCache, let a = builders.first {
                 // Shared caches cannot be tied to one build; while anything builds they are left alone.
-                result[item.id] = "Builds are running (\(a.process.name), PID \(a.process.pid)); shared caches may be in use."
+                result[item.id] = L("Builds are running (\(a.process.name), PID \(a.process.pid)); shared caches may be in use.")
             }
         }
         return result

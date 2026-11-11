@@ -61,7 +61,7 @@ extension PepelEngine {
                 await self?.policyContext(for: [item], refresh: false) ?? context
             },
             validate: { item in
-                guard let analyzer = coordinator.analyzer(id: item.analyzerID) else { return "Its analyzer is no longer available." }
+                guard let analyzer = coordinator.analyzer(id: item.analyzerID) else { return L("Its analyzer is no longer available.") }
                 return analyzer.validate(item)
             },
             diskAvailable: { telemetry().diskAvailableBytes })
@@ -263,9 +263,9 @@ extension PepelEngine {
                     try dockerSettings.setMemoryLimit(limit, backupDirectory: backups)
                     return nil
                 } catch DockerDesktopSettings.Failure.unreadable {
-                    return "Docker's settings file could not be read."
+                    return L("Docker's settings file could not be read.")
                 } catch {
-                    return "Docker's settings file could not be written."
+                    return L("Docker's settings file could not be written.")
                 }
             }
         }
@@ -350,7 +350,7 @@ extension PepelEngine {
                     Row(
                         path: decision.item.path, title: decision.item.title, safety: decision.item.safety.rawValue,
                         bytes: decision.item.reclaimableBytes,
-                        inUseOrBlocked: decision.reasons.filter { !$0.hasPrefix("Agents can preview") })
+                        inUseOrBlocked: decision.reasons.filter { $0 != L("Agents can preview cleanup but cannot run it.") })
                 }
                 return (try? JSONEncoder().encode(rows)) ?? Data("[]".utf8)
             },

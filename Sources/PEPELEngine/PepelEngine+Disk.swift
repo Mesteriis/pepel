@@ -38,7 +38,7 @@ extension PepelEngine {
             return DockerCleanResult(denial: denial)
         }
         // Decided again from a reading taken now, not from the one that was shown.
-        guard let (_, plan) = await dockerCleanupPlan(days: days) else { return DockerCleanResult(denial: "Docker did not answer.") }
+        guard let (_, plan) = await dockerCleanupPlan(days: days) else { return DockerCleanResult(denial: L("Docker did not answer.")) }
         let disk = dockerDisk()
         let report = await Task.detached(priority: .utility) { disk.clean(plan, kinds: kinds, compact: compact) }.value
         let freed = max(report.freedOnDisk, 0)
@@ -97,7 +97,7 @@ extension PepelEngine {
                 result[index].projectLastActivity = last
                 guard stale, settings.cleanStaleProjects, result[index].safety == .review, !leftAlone.contains(RuleAction.pathKey(projectID)) else { continue }
                 result[index].safety = .safe
-                result[index].safetyReason = "Its project has not been touched for \(TimeFormat.age(now.timeIntervalSince(last))); installing or building again recreates this."
+                result[index].safetyReason = L("Its project has not been touched for \(TimeFormat.age(now.timeIntervalSince(last))); installing or building again recreates this.")
             }
         }
         return result
@@ -308,9 +308,9 @@ extension PepelEngine {
 
     public func removeOldLogs(days: Int? = nil, confirmed: Bool, initiator: Initiator) async -> (denial: String?, bytes: Int64, removed: Int) {
         switch initiator {
-        case .agent: return ("Agents cannot have logs removed.", 0, 0)
-        case .automatic: if !settings.cleanOldLogs || settings.paused { return ("Automatic removal of old logs is not enabled.", 0, 0) }
-        case .user, .cli: if !confirmed { return ("This needs your confirmation.", 0, 0) }
+        case .agent: return (L("Agents cannot have logs removed."), 0, 0)
+        case .automatic: if !settings.cleanOldLogs || settings.paused { return (L("Automatic removal of old logs is not enabled."), 0, 0) }
+        case .user, .cli: if !confirmed { return (L("This needs your confirmation."), 0, 0) }
         }
         let places = OtherPlaces(home: paths.home), age = days ?? settings.logDays, skip = leftAlone
         let result = await Task.detached(priority: .utility) { places.removeOldLogs(days: age, skip: skip) }.value
@@ -367,9 +367,9 @@ extension PepelEngine {
 
     public func cleanTemp(days: Int? = nil, confirmed: Bool, initiator: Initiator) async -> (denial: String?, bytes: Int64, removed: Int) {
         switch initiator {
-        case .agent: return ("Agents cannot have temporary files removed.", 0, 0)
-        case .automatic: if !settings.cleanTempFiles || settings.paused { return ("Automatic cleaning of the temporary folder is not enabled.", 0, 0) }
-        case .user, .cli: if !confirmed { return ("This needs your confirmation.", 0, 0) }
+        case .agent: return (L("Agents cannot have temporary files removed."), 0, 0)
+        case .automatic: if !settings.cleanTempFiles || settings.paused { return (L("Automatic cleaning of the temporary folder is not enabled."), 0, 0) }
+        case .user, .cli: if !confirmed { return (L("This needs your confirmation."), 0, 0) }
         }
         let cleaner = TempCleaner(directory: paths.temporaryDirectory), running = runningPrograms(), age = days ?? settings.tempDays
         // What was chosen to be left alone counts as in use.
@@ -438,27 +438,27 @@ extension PepelEngine {
     /// Moves one such folder to the Trash after checking it again. In a redirected PEPEL (tests,
     /// `PEPEL_HOME`) the "Trash" is the redirected home's, never the real one.
     public func trashIgnoredFolder(_ path: String, confirmed: Bool, initiator: Initiator) async -> String? {
-        guard initiator == .user || initiator == .cli else { return "Only you can have this moved to the Trash." }
-        guard confirmed else { return "This needs your confirmation." }
+        guard initiator == .user || initiator == .cli else { return L("Only you can have this moved to the Trash.") }
+        guard confirmed else { return L("This needs your confirmation.") }
         var info = stat()
-        guard lstat(path, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR else { return "It is not a folder any more." }
-        guard projects.contains(where: { path.hasPrefix($0.id + "/") }) else { return "It is not inside a known project." }
+        guard lstat(path, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR else { return L("It is not a folder any more.") }
+        guard projects.contains(where: { path.hasPrefix($0.id + "/") }) else { return L("It is not inside a known project.") }
         let context = await policyContext(for: [])
         if let violation = policy.pathViolation(path, context: context) { return violation }
-        if let lease = context.leases.first(where: { $0.isActive(at: Date()) && $0.covers(path) }) { return "Leased by \(lease.owner)." }
-        if lastProcesses.contains(where: { ($0.workingDirectory ?? "") == path || ($0.workingDirectory ?? "").hasPrefix(path + "/") }) { return "A running program works in it." }
+        if let lease = context.leases.first(where: { $0.isActive(at: Date()) && $0.covers(path) }) { return L("Leased by \(lease.owner).") }
+        if lastProcesses.contains(where: { ($0.workingDirectory ?? "") == path || ($0.workingDirectory ?? "").hasPrefix(path + "/") }) { return L("A running program works in it.") }
         let window = TimeInterval(settings.recentWriteProtectionMinutes) * 60
-        if CleanupExecutor.hasRecentWrites(path, within: window, now: Date()) { return "Something was written in it in the last \(settings.recentWriteProtectionMinutes) minutes." }
+        if CleanupExecutor.hasRecentWrites(path, within: window, now: Date()) { return L("Something was written in it in the last \(settings.recentWriteProtectionMinutes) minutes.") }
         let bytes = ApplicationDataScanner.measure(path).bytes
         let destination: String
         if paths.isRedirected {
             let trash = paths.home + "/.Trash"
             try? FileManager.default.createDirectory(atPath: trash, withIntermediateDirectories: true)
             destination = trash + "/" + (path as NSString).lastPathComponent + "-" + UUID().uuidString.prefix(6)
-            guard (try? FileManager.default.moveItem(atPath: path, toPath: destination)) != nil else { return "It could not be moved." }
+            guard (try? FileManager.default.moveItem(atPath: path, toPath: destination)) != nil else { return L("It could not be moved.") }
         } else {
             var resulting: NSURL?
-            guard (try? FileManager.default.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: &resulting)) != nil else { return "It could not be moved to the Trash." }
+            guard (try? FileManager.default.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: &resulting)) != nil else { return L("It could not be moved to the Trash.") }
             destination = resulting?.path ?? ""
         }
         if !destination.isEmpty { store.recordTrashed(TrashRecord(source: "Ignored folder", originalPath: path, trashedPath: destination, bytes: bytes)) }
@@ -476,13 +476,13 @@ extension PepelEngine {
 
     /// Why the daily rule would leave this emulator alone, or nil when it would delete it.
     func emulatorRuleRefusal(_ emulator: AndroidEmulator, now: Date = Date()) -> String? {
-        if emulator.running { return "It is running." }
-        if settings.keepEmulators.contains(where: { $0.caseInsensitiveCompare(emulator.name) == .orderedSame }) { return "It is on the keep list." }
-        if leftAlone.contains(RuleAction.pathKey(emulator.path)) { return "It is on the leave-alone list." }
-        guard let last = emulator.lastUse else { return "PEPEL cannot tell when it was last started." }
+        if emulator.running { return L("It is running.") }
+        if settings.keepEmulators.contains(where: { $0.caseInsensitiveCompare(emulator.name) == .orderedSame }) { return L("It is on the keep list.") }
+        if leftAlone.contains(RuleAction.pathKey(emulator.path)) { return L("It is on the leave-alone list.") }
+        guard let last = emulator.lastUse else { return L("PEPEL cannot tell when it was last started.") }
         let unused = now.timeIntervalSince(last)
         if unused < Double(settings.emulatorUnusedDays) * 86_400 {
-            return "Started \(TimeFormat.age(unused)) ago; the rule waits \(settings.emulatorUnusedDays) days."
+            return L("Started \(TimeFormat.age(unused)) ago; the rule waits \(settings.emulatorUnusedDays) days.")
         }
         return nil
     }
@@ -491,14 +491,14 @@ extension PepelEngine {
     /// rule only for one it is switched on for, unused long enough and not kept.
     public func deleteAndroidEmulator(_ name: String, confirmed: Bool, initiator: Initiator) async -> String? {
         switch initiator {
-        case .agent: return "Agents cannot delete emulators."
+        case .agent: return L("Agents cannot delete emulators.")
         case .automatic:
-            guard settings.cleanAndroidEmulators, !settings.paused else { return "Deleting unused emulators is not enabled." }
+            guard settings.cleanAndroidEmulators, !settings.paused else { return L("Deleting unused emulators is not enabled.") }
             // Decided again on a fresh reading, right before deleting.
-            guard let emulator = await androidEmulators().first(where: { $0.name == name }) else { return "No such emulator." }
+            guard let emulator = await androidEmulators().first(where: { $0.name == name }) else { return L("No such emulator.") }
             if let refusal = emulatorRuleRefusal(emulator) { return refusal }
         case .user, .cli:
-            guard confirmed else { return "This needs your confirmation." }
+            guard confirmed else { return L("This needs your confirmation.") }
         }
         let emulators = AndroidEmulators(home: paths.home), running = AndroidEmulators.runningNames(processSource.snapshot())
         let bytes = emulators.folder(of: name).map { DirectorySizer().measure($0).allocatedBytes } ?? 0
@@ -543,9 +543,9 @@ extension PepelEngine {
 
     public func deleteSystemImage(_ id: String, confirmed: Bool, initiator: Initiator) async -> String? {
         switch initiator {
-        case .agent: return "Agents cannot delete system images."
-        case .automatic: guard settings.cleanUnusedSystemImages, !settings.paused else { return "Deleting unused system images is not enabled." }
-        case .user, .cli: guard confirmed else { return "This needs your confirmation." }
+        case .agent: return L("Agents cannot delete system images.")
+        case .automatic: guard settings.cleanUnusedSystemImages, !settings.paused else { return L("Deleting unused system images is not enabled.") }
+        case .user, .cli: guard confirmed else { return L("This needs your confirmation.") }
         }
         let images = AndroidSystemImages(home: paths.home, sdkRoots: androidSDKRoots)
         let bytes = images.list().first { $0.id == id }?.bytes ?? 0
@@ -582,9 +582,9 @@ extension PepelEngine {
 
     public func cleanToolBackups(keep: Int? = nil, days: Int? = nil, confirmed: Bool, initiator: Initiator) async -> (denial: String?, bytes: Int64, removed: Int, skipped: [String]) {
         switch initiator {
-        case .agent: return ("Agents cannot remove backups.", 0, 0, [])
-        case .automatic: if !settings.cleanToolBackups || settings.paused { return ("Retention for tool backups is not enabled.", 0, 0, []) }
-        case .user, .cli: if !confirmed { return ("This needs your confirmation.", 0, 0, []) }
+        case .agent: return (L("Agents cannot remove backups."), 0, 0, [])
+        case .automatic: if !settings.cleanToolBackups || settings.paused { return (L("Retention for tool backups is not enabled."), 0, 0, []) }
+        case .user, .cli: if !confirmed { return (L("This needs your confirmation."), 0, 0, []) }
         }
         let backups = ToolBackups(home: paths.home), count = max(0, keep ?? settings.toolBackupsKeep), age = max(0, days ?? settings.toolBackupsDays)
         let read = readTelemetry
@@ -623,13 +623,13 @@ extension PepelEngine {
     public func runTidy(screenshots: Bool, downloads: Bool, confirmed: Bool, initiator: Initiator, action: TidyAction? = nil) async -> (denial: String?, bytes: Int64, removed: Int) {
         var shots = screenshots, files = downloads
         switch initiator {
-        case .agent: return ("Agents cannot tidy your files.", 0, 0)
+        case .agent: return (L("Agents cannot tidy your files."), 0, 0)
         case .automatic:
-            guard !settings.paused else { return ("PEPEL is paused.", 0, 0) }
+            guard !settings.paused else { return (L("PEPEL is paused."), 0, 0) }
             shots = shots && settings.tidyScreenshots
             files = files && settings.tidyDownloads
-            if !shots && !files { return ("Tidying is not enabled.", 0, 0) }
-        case .user, .cli: if !confirmed { return ("This needs your confirmation.", 0, 0) }
+            if !shots && !files { return (L("Tidying is not enabled."), 0, 0) }
+        case .user, .cli: if !confirmed { return (L("This needs your confirmation."), 0, 0) }
         }
         let tidy = tidy(), chosen = action ?? settings.tidyAction, keep = Set(settings.tidyKeepExtensions)
         let shotDays = settings.screenshotDays, days = settings.downloadDays

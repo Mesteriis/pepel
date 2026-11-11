@@ -41,21 +41,21 @@ extension CleanupPolicyEngine {
     ) -> ApplicationDecision {
         var denials: [String] = []
         var warnings: [String] = []
-        if initiator == .agent || initiator == .automatic { denials.append("Only you can have an application quit.") }
-        if pid == ownPID || ownAncestors.contains(pid) { denials.append("PEPEL does not quit itself or the application it runs in.") }
+        if initiator == .agent || initiator == .automatic { denials.append(L("Only you can have an application quit.")) }
+        if pid == ownPID || ownAncestors.contains(pid) { denials.append(L("PEPEL does not quit itself or the application it runs in.")) }
         // Finder, the Dock and the like. Applications Apple ships (/System/Applications) are ordinary applications.
-        if bundlePath.hasPrefix("/System/Library/") { denials.append("This is part of macOS.") }
+        if bundlePath.hasPrefix("/System/Library/") { denials.append(L("This is part of macOS.")) }
         if agentSessions > 0 {
-            denials.append("\(agentSessions) agent session\(agentSessions == 1 ? " runs" : "s run") inside \(name) and would end with it.")
+            denials.append(L("\(agentSessions) agent sessions run inside \(name) and would end with it."))
         }
         if developerProcesses > 0 {
-            denials.append("\(developerProcesses) build, test or server process\(developerProcesses == 1 ? " runs" : "es run") inside \(name).")
+            denials.append(L("\(developerProcesses) build, test or server processes run inside \(name)."))
         }
-        if isFrontmost { warnings.append("\(name) is the application in front.") }
+        if isFrontmost { warnings.append(L("\(name) is the application in front.")) }
         let verdict: CleanupVerdict = denials.isEmpty ? .needsConfirmation : .denied
         let ask = action == .restart
-            ? "\(name) is asked to quit normally and is opened again. It may ask about unsaved changes; if it does not quit, it is left running."
-            : "\(name) is asked to quit normally. It may ask about unsaved changes; if it does not quit, it is left running."
+            ? L("\(name) is asked to quit normally and is opened again. It may ask about unsaved changes; if it does not quit, it is left running.")
+            : L("\(name) is asked to quit normally. It may ask about unsaved changes; if it does not quit, it is left running.")
         return ApplicationDecision(
             action: action, bundlePath: bundlePath, name: name, pid: pid, footprintBytes: footprintBytes, verdict: verdict,
             reasons: denials.isEmpty ? [ask] : denials, warnings: warnings)

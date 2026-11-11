@@ -24,6 +24,7 @@ public struct MonitorCadence: Sendable, Equatable {
     public var lightInterval: TimeInterval
     /// True when a full storage scan should start now.
     public var runFullScan: Bool
+    /// Shown to the person: short phrases joined with ", ".
     public var reason: String
 }
 
@@ -35,26 +36,26 @@ public enum CadencePolicy {
 
     public static func cadence(for c: MonitorConditions) -> MonitorCadence {
         if c.paused {
-            return MonitorCadence(lightInterval: 60, runFullScan: false, reason: "paused")
+            return MonitorCadence(lightInterval: 60, runFullScan: false, reason: L("paused"))
         }
         var light: TimeInterval = 10
-        var why = "normal"
+        var why = L("normal")
         if c.pressure == .critical {
             light = 4
-            why = "critical memory pressure"
+            why = L("critical memory pressure")
         } else if c.pressure == .elevated {
             light = 6
-            why = "elevated memory pressure"
+            why = L("elevated memory pressure")
         } else if c.onBattery && c.batteryAware {
             light = 30
-            why = "on battery"
+            why = L("on battery")
         } else if c.userIdleSeconds > 600 && c.activeBuilds == 0 {
             light = 45
-            why = "workstation idle"
+            why = L("workstation idle")
         }
 
         guard c.mode != .manual else {
-            return MonitorCadence(lightInterval: light, runFullScan: false, reason: why + ", manual mode")
+            return MonitorCadence(lightInterval: light, runFullScan: false, reason: why + ", " + L("manual mode"))
         }
 
         var interval = fullScanInterval
@@ -63,17 +64,17 @@ public enum CadencePolicy {
         if c.diskLow { interval = min(interval, 10 * 60) }
 
         guard let since = c.sinceLastFullScan else {
-            return MonitorCadence(lightInterval: light, runFullScan: true, reason: why + ", first scan")
+            return MonitorCadence(lightInterval: light, runFullScan: true, reason: why + ", " + L("first scan"))
         }
         guard since >= interval else {
             return MonitorCadence(lightInterval: light, runFullScan: false, reason: why)
         }
         if !c.changesPending && !c.diskLow {
-            return MonitorCadence(lightInterval: light, runFullScan: false, reason: why + ", no filesystem changes")
+            return MonitorCadence(lightInterval: light, runFullScan: false, reason: why + ", " + L("no filesystem changes"))
         }
         if c.activeBuilds > 0 && since < maxDeferral && !c.diskLow {
-            return MonitorCadence(lightInterval: light, runFullScan: false, reason: why + ", scan deferred during active builds")
+            return MonitorCadence(lightInterval: light, runFullScan: false, reason: why + ", " + L("scan deferred during active builds"))
         }
-        return MonitorCadence(lightInterval: light, runFullScan: true, reason: why + ", scan due")
+        return MonitorCadence(lightInterval: light, runFullScan: true, reason: why + ", " + L("scan due"))
     }
 }

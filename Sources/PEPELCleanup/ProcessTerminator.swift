@@ -40,15 +40,15 @@ extension CleanupPolicyEngine {
         var warnings: [String] = []
         let p = target.process
 
-        if p.pid <= 1 { denials.append("System process.") }
-        if p.pid == ownPID || descendants.contains(where: { $0.pid == ownPID }) { denials.append("PEPEL does not terminate itself or its own ancestors.") }
-        if p.uid != currentUID { denials.append("The process belongs to another user.") }
+        if p.pid <= 1 { denials.append(L("System process.")) }
+        if p.pid == ownPID || descendants.contains(where: { $0.pid == ownPID }) { denials.append(L("PEPEL does not terminate itself or its own ancestors.")) }
+        if p.uid != currentUID { denials.append(L("The process belongs to another user.")) }
         // Two things PEPEL acts on: developer workloads, and whatever a quit application left behind.
         let leftover = target.leftoverOf != nil
         // …and, only when a person asks, a process that lives in swap and does nothing.
         let dormant = target.dormant
         // …and a language server whose editor is gone.
-        if !target.role.isDeveloperWorkload && !leftover && !dormant && !target.orphanedTool && !target.staleServiceBranch && !target.idleBrowserTab && !target.restartableSystem { denials.append("Not a developer workload; PEPEL leaves applications and system processes alone.") }
+        if !target.role.isDeveloperWorkload && !leftover && !dormant && !target.orphanedTool && !target.staleServiceBranch && !target.idleBrowserTab && !target.restartableSystem { denials.append(L("Not a developer workload; PEPEL leaves applications and system processes alone.")) }
 
         switch target.eligibility {
         case .never(let reason):
@@ -64,38 +64,38 @@ extension CleanupPolicyEngine {
         // The same holds for an old copy inside an agent's server: it goes with what it started.
         for child in descendantAssessments where !sleepingAgent && !target.staleServiceBranch {
             if case .never(let reason) = child.eligibility {
-                denials.append("Its descendant \(child.process.name) (PID \(child.process.pid)) must not be terminated: \(reason)")
+                denials.append(L("Its descendant \(child.process.name) (PID \(child.process.pid)) must not be terminated: \(reason)"))
             }
         }
-        if target.projectConfidence == .unknown, !leftover { warnings.append("PEPEL could not establish which project this process belongs to.") }
-        if !descendants.isEmpty { warnings.append("\(descendants.count) child process\(descendants.count == 1 ? "" : "es") will be terminated with it.") }
-        if !p.listeningPorts.isEmpty { warnings.append("Clients connected to port \(p.listeningPorts.map(String.init).joined(separator: ", ")) will be disconnected.") }
+        if target.projectConfidence == .unknown, !leftover { warnings.append(L("PEPEL could not establish which project this process belongs to.")) }
+        if !descendants.isEmpty { warnings.append(L("\(descendants.count) child processes will be terminated with it.")) }
+        if !p.listeningPorts.isEmpty { warnings.append(L("Clients connected to port \(p.listeningPorts.map(String.init).joined(separator: ", ")) will be disconnected.")) }
 
         switch initiator {
         case .agent:
-            denials.append("Agents cannot request process termination.")
+            denials.append(L("Agents cannot request process termination."))
         case .automatic:
             if target.restartableSystem {
-                denials.append("A system component is only restarted when you ask.")
+                denials.append(L("A system component is only restarted when you ask."))
             } else if target.idleBrowserTab {
-                denials.append("Browser tabs are only unloaded when you ask.")
+                denials.append(L("Browser tabs are only unloaded when you ask."))
             } else if target.staleServiceBranch {
-                denials.append("What an agent's server started is only ended when you ask: PEPEL infers that it is left behind, it cannot know.")
+                denials.append(L("What an agent's server started is only ended when you ask: PEPEL infers that it is left behind, it cannot know."))
             } else if dormant, !sleepingAgent, !leftover {
-                denials.append("A process living in swap is only ended when you ask: being untouched does not prove it is unwanted.")
+                denials.append(L("A process living in swap is only ended when you ask: being untouched does not prove it is unwanted."))
             } else if sleepingAgent {
-                if !settings.terminateSleepingAgents { denials.append("Terminating sleeping agent sessions is not enabled.") }
+                if !settings.terminateSleepingAgents { denials.append(L("Terminating sleeping agent sessions is not enabled.")) }
             } else if leftover {
-                if !settings.terminateAppLeftovers { denials.append("Terminating what quit applications leave behind is not enabled.") }
-                if target.eligibility != .automaticEligible { denials.append("This leftover needs your decision.") }
+                if !settings.terminateAppLeftovers { denials.append(L("Terminating what quit applications leave behind is not enabled.")) }
+                if target.eligibility != .automaticEligible { denials.append(L("This leftover needs your decision.")) }
             } else {
-                if !settings.autoTerminateAbandoned { denials.append("Automatic termination is not enabled.") }
+                if !settings.autoTerminateAbandoned { denials.append(L("Automatic termination is not enabled.")) }
                 if target.eligibility != .automaticEligible || target.lifecycle != .abandonedSubprocess || target.confidence != .verified {
-                    denials.append("Only verified abandoned build and test processes are terminated automatically.")
+                    denials.append(L("Only verified abandoned build and test processes are terminated automatically."))
                 }
             }
         case .user, .cli:
-            if target.eligibility == .automaticEligible { confirmations.append("Termination always needs your confirmation when requested manually.") }
+            if target.eligibility == .automaticEligible { confirmations.append(L("Termination always needs your confirmation when requested manually.")) }
         }
 
         let verdict: CleanupVerdict = !denials.isEmpty ? .denied : !confirmations.isEmpty ? .needsConfirmation : .allowed

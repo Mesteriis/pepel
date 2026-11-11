@@ -25,6 +25,9 @@ public enum MemoryAttributor {
         return nil
     }
 
+    /// Stands in for the product in the owner's id when no container product could be matched.
+    static let unidentifiedVM = "Virtual machine (owner not identified)"
+
     public static func attribute(
         processes: [ProcessSnapshot], assessments: [ProcessAssessment], sessions: [AgentSession],
         projectName: (String) -> String?
@@ -40,7 +43,7 @@ public enum MemoryAttributor {
             let near = runtimes.min { abs(Int64(bitPattern: $0.start &- vm.identity.startTime)) < abs(Int64(bitPattern: $1.start &- vm.identity.startTime)) }
             if let near, abs(Int64(bitPattern: near.start &- vm.identity.startTime)) < 30_000_000 { return (near.product, .probable) }
             if let only = Set(runtimes.map(\.product)).first, Set(runtimes.map(\.product)).count == 1 { return (only, .probable) }
-            return ("Virtual machine (owner not identified)", .unknown)
+            return (unidentifiedVM, .unknown)
         }
 
         struct Bucket {
@@ -62,7 +65,7 @@ public enum MemoryAttributor {
                     MemoryOwner(
                         id: "agent:\(session.root)", kind: .agentSession,
                         name: session.kind.displayName + (project.map { " · \($0)" } ?? ""),
-                        detail: "Session started \(TimeFormat.ago(session.startedAt)), with the tools and servers it launched.",
+                        detail: L("Session started \(TimeFormat.ago(session.startedAt)), with the tools and servers it launched."),
                         projectID: session.projectID)
                 }
                 continue
@@ -72,8 +75,8 @@ public enum MemoryAttributor {
                 let (product, confidence) = containerProduct(p).map { ($0, Confidence.verified) } ?? vmOwner(p)
                 add(p, id: "vm:\(product)") {
                     MemoryOwner(
-                        id: "vm:\(product)", kind: .virtualMachine, name: product,
-                        detail: "The virtual machine holds everything its containers use, up to its configured memory limit.",
+                        id: "vm:\(product)", kind: .virtualMachine, name: product == unidentifiedVM ? L("Virtual machine (owner not identified)") : product,
+                        detail: L("The virtual machine holds everything its containers use, up to its configured memory limit."),
                         confidence: confidence)
                 }
                 if virtualMachineNames.contains(p.name), confidence < (buckets["vm:\(product)"]?.owner.confidence ?? .verified) {
@@ -84,7 +87,7 @@ public enum MemoryAttributor {
 
             if let app = applicationBundle(of: path) {
                 add(p, id: "app:\(app.path)") {
-                    MemoryOwner(id: "app:\(app.path)", kind: .application, name: app.name, detail: "The application and its helper processes.")
+                    MemoryOwner(id: "app:\(app.path)", kind: .application, name: app.name, detail: L("The application and its helper processes."))
                 }
                 continue
             }
@@ -93,7 +96,7 @@ public enum MemoryAttributor {
                 add(p, id: "project:\(projectID)") {
                     MemoryOwner(
                         id: "project:\(projectID)", kind: .project, name: projectName(projectID) ?? (projectID as NSString).lastPathComponent,
-                        detail: "Builds, tests and servers running in this project outside an agent session.",
+                        detail: L("Builds, tests and servers running in this project outside an agent session."),
                         confidence: assessment.projectConfidence, projectID: projectID)
                 }
                 continue
@@ -101,7 +104,7 @@ public enum MemoryAttributor {
 
             if path.hasPrefix("/System/") || path.hasPrefix("/usr/libexec/") || path.hasPrefix("/usr/sbin/") || path.hasPrefix("/Library/Apple/") {
                 add(p, id: "system") {
-                    MemoryOwner(id: "system", kind: .system, name: "macOS services", detail: "System services running under your account.")
+                    MemoryOwner(id: "system", kind: .system, name: L("macOS services"), detail: L("System services running under your account."))
                 }
                 continue
             }
@@ -112,7 +115,7 @@ public enum MemoryAttributor {
             add(p, id: "exe:\(name)") {
                 MemoryOwner(
                     id: "exe:\(name)", kind: isTool ? .developerTool : .other, name: name,
-                    detail: isTool ? "Developer processes not tied to a project or session." : "Started outside any application bundle.")
+                    detail: isTool ? L("Developer processes not tied to a project or session.") : L("Started outside any application bundle."))
             }
         }
 
@@ -133,20 +136,22 @@ public enum MemoryAttributor {
     /// One or two sentences on why memory is tight, from measurements only.
     public static func explanation(owners: [MemoryOwner], telemetry: SystemTelemetry) -> String {
         let squeezed = telemetry.compressedBytes + telemetry.swapUsedBytes
-        guard let top = owners.first, top.footprintBytes > 0 else { return "No process data yet." }
-        var parts: [String] = []
+        guard let top = owners.first, top.footprintBytes > 0 else { return L("No process data yet.") }
+        var sentences: [String] = []
         let share = telemetry.memoryTotalBytes > 0 ? Int(Double(top.footprintBytes) / Double(telemetry.memoryTotalBytes) * 100) : 0
-        parts.append("\(top.name) is charged \(Bytes.format(top.footprintBytes)) (\(share)% of physical memory)")
+        let percent = "\(share)%"
         if squeezed > Bytes.gb, top.notInRAMBytes > squeezed / 4 {
-            parts[0] += ", of which about \(Bytes.format(top.notInRAMBytes)) is not in RAM: macOS has compressed or swapped it. That is most of the \(Bytes.format(squeezed)) compressed and swapped system-wide"
+            sentences.append(
+                L("\(top.name) is charged \(Bytes.format(top.footprintBytes)) (\(percent) of physical memory), of which about \(Bytes.format(top.notInRAMBytes)) is not in RAM: macOS has compressed or swapped it. That is most of the \(Bytes.format(squeezed)) compressed and swapped system-wide."))
+        } else {
+            sentences.append(L("\(top.name) is charged \(Bytes.format(top.footprintBytes)) (\(percent) of physical memory)."))
         }
         let agents = owners.filter { $0.kind == .agentSession }
         if agents.count > 1 {
             let total = agents.reduce(Int64(0)) { $0 + $1.footprintBytes }
-            parts.append("\(agents.count) agent sessions hold \(Bytes.format(total)) together")
+            sentences.append(L("\(agents.count) agent sessions hold \(Bytes.format(total)) together."))
         }
-        var text = parts.joined(separator: ". ") + "."
-        if squeezed > Bytes.gb { text += " The split between RAM and compressed memory is an estimate per process." }
-        return text
+        if squeezed > Bytes.gb { sentences.append(L("The split between RAM and compressed memory is an estimate per process.")) }
+        return sentences.joined(separator: " ")
     }
 }

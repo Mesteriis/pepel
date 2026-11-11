@@ -359,8 +359,8 @@ public actor PepelEngine {
             var assessment = ProcessAssessment(
                 process: process, role: .system, lifecycle: .abandonedSubprocess, confidence: .verified, projectID: nil, projectConfidence: .unknown,
                 evidence: [
-                    "\(item.name) is a macOS component that the system starts again by itself, within about a second.",
-                    "It holds \(Bytes.format(item.footprintBytes)); a fresh copy starts small.",
+                    L("\(item.name) is a macOS component that the system starts again by itself, within about a second."),
+                    L("It holds \(Bytes.format(item.footprintBytes)); a fresh copy starts small."),
                     item.note,
                 ],
                 eligibility: .approvalRequired(warning: item.note), descendantCount: 0, subtreeFootprintBytes: item.footprintBytes)
@@ -373,11 +373,11 @@ public actor PepelEngine {
             var assessment = ProcessAssessment(
                 process: renderer, role: .userApp, lifecycle: .abandonedSubprocess, confidence: .probable, projectID: nil, projectConfidence: .unknown,
                 evidence: [
-                    "A process of \(tab.browser) that renders one tab, or the tabs of one site.",
-                    "It has used almost no CPU for \(TimeFormat.age(tab.idleFor ?? 0)), so it is not the tab in front and nothing is playing in it.",
-                    "Ending it unloads those tabs. They stay in the tab strip and load again when you open them; unsent form input and the scroll position are lost.",
+                    L("A process of \(tab.browser) that renders one tab, or the tabs of one site."),
+                    L("It has used almost no CPU for \(TimeFormat.age(tab.idleFor ?? 0)), so it is not the tab in front and nothing is playing in it."),
+                    L("Ending it unloads those tabs. They stay in the tab strip and load again when you open them; unsent form input and the scroll position are lost."),
                 ],
-                eligibility: .approvalRequired(warning: "Unsent form input in those tabs is lost."), descendantCount: 0, subtreeFootprintBytes: tab.footprintBytes)
+                eligibility: .approvalRequired(warning: L("Unsent form input in those tabs is lost.")), descendantCount: 0, subtreeFootprintBytes: tab.footprintBytes)
             assessment.idleBrowserTab = true
             return assessment
         }
@@ -390,11 +390,11 @@ public actor PepelEngine {
                 process: root, role: RoleClassifier.role(of: root, attributor: projectIndex), lifecycle: .abandonedSubprocess, confidence: .probable,
                 projectID: nil, projectConfidence: .unknown,
                 evidence: [
-                    "\(branch.serviceName)'s server runs \(branch.copies) copies of this program; this is not the newest.",
-                    "The whole branch (\(branch.processCount) process\(branch.processCount == 1 ? "" : "es")) has used almost no CPU for \(TimeFormat.age(branch.idleFor ?? 0)).",
-                    "Started \(TimeFormat.ago(branch.startedAt)). PEPEL cannot see conversations: if one still uses it, its tools stop working until the application starts them again.",
+                    L("\(branch.serviceName)'s server runs \(branch.copies) copies of this program; this is not the newest."),
+                    L("The whole branch (\(branch.processCount) processes) has used almost no CPU for \(TimeFormat.age(branch.idleFor ?? 0))."),
+                    L("Started \(TimeFormat.ago(branch.startedAt)). PEPEL cannot see conversations: if one still uses it, its tools stop working until the application starts them again."),
                 ],
-                eligibility: .approvalRequired(warning: "A conversation that is still open may be using it."), descendantCount: branch.processCount - 1,
+                eligibility: .approvalRequired(warning: L("A conversation that is still open may be using it.")), descendantCount: branch.processCount - 1,
                 subtreeFootprintBytes: branch.footprintBytes)
             assessment.staleServiceBranch = true
             return assessment
@@ -447,10 +447,10 @@ public actor PepelEngine {
         scanning = true
         defer { scanning = false }
         let now = Date()
-        progress?(ScanProgress(phase: "Discovering projects"))
+        progress?(ScanProgress(phase: L("Discovering projects")))
         _ = await refreshProjects()
         let discovered = Date()
-        progress?(ScanProgress(phase: "Looking inside \(projects.count) projects"))
+        progress?(ScanProgress(phase: L("Looking inside \(projects.count) projects")))
         let hits = await ProjectArtifactWalker().walk(projectIndex, consultGit: tools.locate("git") != nil)
         let walked = Date()
         let context = ScanContext(
