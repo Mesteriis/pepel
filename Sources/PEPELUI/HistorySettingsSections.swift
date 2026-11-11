@@ -197,6 +197,21 @@ struct SettingsSection: View {
                     }
                     .buttonStyle(QuietButtonStyle()).disabled(newKeep.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
+                HStack {
+                    Text(
+                        !model.fileCachePermission.available
+                            ? "Flushing the file cache is not available here."
+                            : model.fileCachePermission.granted
+                                ? "PEPEL may flush the file cache without asking for a password."
+                                : "The first file cache flush asks for an administrator once; after that PEPEL does not ask again."
+                    )
+                    .font(.system(size: 12)).foregroundStyle(Theme.text)
+                    Spacer()
+                    if model.fileCachePermission.granted {
+                        Button("Remove permission") { model.revokeFileCachePermission() }.buttonStyle(QuietButtonStyle())
+                    }
+                }
+                .onAppear { model.refreshFileCachePermission() }
                 toggle("Under memory pressure, act sooner", s.adaptToMemoryPressure) { v in model.updateSettings { $0.adaptToMemoryPressure = v } }
                 Text("Halves the waiting periods below under elevated pressure and quarters them under critical pressure (never under 30 minutes for an agent session), and lets the Docker VM restart outside its night window, at most every six hours. Only affects rules that are switched on.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)

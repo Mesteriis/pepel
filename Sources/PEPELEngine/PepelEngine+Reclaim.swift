@@ -84,7 +84,11 @@ extension PepelEngine {
             steps.append(
                 ReclaimStep(
                     kind: .fileCache, title: "Flush the file cache",
-                    detail: "Turns cached file pages into free pages. Asks for your administrator password. It does not shrink what applications use, and macOS fills the cache again as files are read.",
+                    detail: "Turns cached file pages into free pages. "
+                        + (fileCacheFlusher.hasPermission()
+                            ? "Uses the permission you gave earlier, without a prompt."
+                            : "Asks for your administrator password this once; after that PEPEL may flush without asking.")
+                        + " It does not shrink what applications use, and macOS fills the cache again as files are read.",
                     targets: ["\(Bytes.format(cached)) of cached files become free"], estimatedBytes: 0, selectedByDefault: true))
         }
         return ReclaimPlan(steps: steps, telemetry: live.telemetry)
@@ -191,5 +195,21 @@ extension PepelEngine {
                     "cachedFiles": "\(Bytes.format(before.cachedFileBytes)) → \(Bytes.format(after.cachedFileBytes))",
                 ]))
         return report
+    }
+
+    /// Whether flushing the file cache is possible here, and whether it would prompt.
+    public func fileCachePermission() -> (available: Bool, granted: Bool) {
+        (fileCacheFlusher.isAvailable, fileCacheFlusher.isAvailable && fileCacheFlusher.hasPermission())
+    }
+
+    /// Removes the standing permission to flush the file cache. Only a person can ask for this.
+    public func revokeFileCachePermission(initiator: Initiator) async -> FileCacheFlushOutcome {
+        guard policy.cacheFlushDenial(initiator: initiator) == nil else { return .failed("Only you can change this permission.") }
+        let flusher = fileCacheFlusher
+        let outcome = await Task.detached(priority: .userInitiated) { flusher.revoke() }.value
+        if outcome == .flushed {
+            store.appendAudit(AuditEntry(kind: .termination, initiator: initiator.rawValue, subject: "File cache permission", outcome: "removed"))
+        }
+        return outcome
     }
 }

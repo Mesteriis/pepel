@@ -269,6 +269,23 @@ case "containers":
     print("\n\(report.total - report.running) more container\(report.total - report.running == 1 ? " is" : "s are") stopped and use no memory.")
     print("The limit is set in \(report.product) › Settings › Resources; PEPEL does not change it. `pepel containers refresh-vm` restarts the VM to return its memory.")
 
+case "free" where arguments.positional.first == "permission":
+    let state = await engine.fileCachePermission()
+    if arguments.flags.contains("revoke") {
+        switch await engine.revokeFileCachePermission(initiator: .cli) {
+        case .flushed: print("Removed. The next cache flush will ask for an administrator again.")
+        case .cancelled: print("Not removed: the administrator prompt was dismissed.")
+        case .failed(let reason): print("Not removed: \(reason)")
+        case .unavailable: print("Flushing the file cache is not available here.")
+        }
+    } else if !state.available {
+        print("Flushing the file cache is not available here.")
+    } else {
+        print(state.granted
+            ? "PEPEL may flush the file cache without asking (rule: \(FileCacheFlusher.rulePath)). Remove it with `pepel free permission --revoke`."
+            : "Not granted yet. The first cache flush asks for an administrator once and installs a rule allowing only `/usr/sbin/purge`.")
+    }
+
 case "free":
     let plan = await engine.reclaimPlan()
     if arguments.json, !arguments.flags.contains("yes") { Out.json(plan); break }

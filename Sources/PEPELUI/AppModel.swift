@@ -374,6 +374,19 @@ public final class AppModel {
 
     public func cancelReclaim() { reclaimPlan = nil }
 
+    public var fileCachePermission: (available: Bool, granted: Bool) = (false, false)
+
+    public func refreshFileCachePermission() {
+        Task { fileCachePermission = await engine.fileCachePermission() }
+    }
+
+    public func revokeFileCachePermission() {
+        Task {
+            if case .failed(let reason) = await engine.revokeFileCachePermission(initiator: .user) { message = "Not removed: \(reason)" }
+            fileCachePermission = await engine.fileCachePermission()
+        }
+    }
+
     public func confirmReclaim() {
         let selection = reclaimSelection
         reclaimPlan = nil

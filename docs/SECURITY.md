@@ -7,7 +7,7 @@ PEPEL runs as the logged-in user and asks for nothing more.
 | Permission | Requested | Why / what happens without it |
 |---|---|---|
 | Full Disk Access | No | Folders macOS protects are reported as unreadable; their sizes become lower bounds. `~/Documents`, `~/Desktop` and `~/Downloads` are not scanned by default so no privacy prompt appears. Adding one of them as a project root makes macOS ask once. |
-| Administrator rights | Only for "Flush the file cache" | Only the current user's processes are inspected or signalled. Flushing the file cache runs the system's `purge`, which needs an administrator: macOS shows its standard prompt each time, PEPEL stores no password and installs no helper. Dismiss the prompt and the step is skipped. |
+| Administrator rights | Only for "Flush the file cache" | Only the current user's processes are inspected or signalled. Flushing the file cache runs the system's `purge`, which needs an administrator. The first flush shows the standard macOS prompt once and, with that approval, installs one sudo rule allowing this user to run exactly `/usr/sbin/purge`; later flushes do not ask. PEPEL stores no password and installs no helper. Dismiss the prompt and nothing is installed or flushed. |
 | Accessibility | No | Not used. |
 | Notifications | On first alert | Without it PEPEL still shows alerts in the popover and dashboard. |
 | Login item | When you enable "Launch at login" | Uses `SMAppService`; macOS may ask for approval in System Settings. |
@@ -91,12 +91,23 @@ by one, so anything policy refuses is reported and skipped. Idle (not yet sleepi
 while a session is working or a container is kept, the VM restart are offered but not
 preselected; working sessions are never offered. Agents cannot run it.
 
-The last step, **Flush the file cache**, runs `/usr/sbin/purge` through the macOS administrator
-prompt (a fixed command line; nothing is interpolated into it). It turns cached file pages into
+The last step, **Flush the file cache**, runs `/usr/sbin/purge`. The first time it goes through
+the macOS administrator prompt, which says that PEPEL also asks to be allowed to flush without
+asking again. With that approval PEPEL writes `/private/etc/sudoers.d/pepel-purge`, root-owned
+and read-only, containing one line:
+
+    #<your user id> ALL=(root) NOPASSWD: /usr/sbin/purge ""
+
+The line is checked with `visudo` before it is installed; the only variable part is the numeric
+user id; `""` forbids arguments; `purge` sits on the sealed system volume and cannot be swapped.
+Nothing else gains root. Later flushes run `sudo -n /usr/sbin/purge`. `pepel free permission`
+shows the state and `--revoke` (or "Remove permission" in Settings) deletes the file, which asks
+for an administrator once more. A flush turns cached file pages into
 free pages and nothing else: memory used by applications, compressed memory and swap are
 unchanged, and macOS fills the cache again as files are read. PEPEL therefore does not count it
 in "up to N GB" and reports it separately as cached files and free memory before and after. Only
-a person can start it; the automatic pass and agents are refused by policy.
+a person can start it, also after the permission exists; the automatic pass and agents are
+refused by policy.
 
 The result is the measured before/after of memory used, free memory, cached files, compressed
 memory, swap and pressure.

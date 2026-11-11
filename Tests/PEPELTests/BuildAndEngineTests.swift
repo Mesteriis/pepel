@@ -588,6 +588,30 @@ struct EngineTests {
         #expect(cancelled.results.first?.done == 0 && cancelled.results.first?.notes.first?.contains("dismissed") == true)
     }
 
+    @Test("The standing permission is one fixed sudo rule for purge, and the plan says whether a prompt will appear")
+    func fileCachePermission() async throws {
+        #expect(FileCacheFlusher.rule(uid: 501) == "#501 ALL=(root) NOPASSWD: /usr/sbin/purge \"\"")
+        let script = FileCacheFlusher.grantScript(uid: 501)
+        #expect(script.contains("/usr/sbin/visudo -cf") && script.contains("install -m 0440 -o root -g wheel") && script.hasSuffix("; /usr/sbin/purge"))
+        #expect(script.contains(FileCacheFlusher.rulePath) && !script.contains("rm -rf"))
+        // Quotes and backslashes survive the trip through AppleScript.
+        #expect(FileCacheFlusher.appleScript(shell: "a \"b\" \\n", prompt: "p") == "do shell script \"a \\\"b\\\" \\\\n\" with prompt \"p\" with administrator privileges")
+
+        let f = Fixture()
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: try PepelStore.inMemory(), tools: .disabled, analyzers: [],
+            processSource: FakeProcessSource(processes: []), telemetry: { SystemTelemetry(cachedFileBytes: 6 * Bytes.gb) })
+        #expect(await engine.fileCachePermission() == (false, false))
+        let revoked = FlushCounter()
+        await engine.setFileCacheFlusher(FileCacheFlusher(isAvailable: true, hasPermission: { false }, flush: { .flushed }))
+        #expect(await engine.reclaimPlan().steps.first?.detail.contains("this once") == true)
+        await engine.setFileCacheFlusher(FileCacheFlusher(isAvailable: true, hasPermission: { true }, flush: { .flushed }, revoke: { revoked.bump(); return .flushed }))
+        #expect(await engine.reclaimPlan().steps.first?.detail.contains("without a prompt") == true)
+        #expect(await engine.fileCachePermission() == (true, true))
+        #expect(await engine.revokeFileCachePermission(initiator: .agent) != .flushed && revoked.count == 0, "an agent cannot change the permission")
+        #expect(await engine.revokeFileCachePermission(initiator: .user) == .flushed && revoked.count == 1)
+    }
+
     @Test("Under memory pressure thresholds shorten only when the setting is on, and never below their floors")
     func pressureAdaptation() {
         var settings = PepelSettings()

@@ -315,13 +315,13 @@ public struct ContainerVMRefresher: Sendable {
 }
 
 extension CleanupPolicyEngine {
-    /// Flushing the file cache asks for an administrator password, so only a person can start it.
+    /// Only a person starts a flush, also once the standing permission exists.
     /// Returns why it is refused, or nil when it may go ahead.
     public func cacheFlushDenial(initiator: Initiator) -> String? {
         switch initiator {
         case .user, .cli: return nil
         case .agent: return "Agents cannot have the file cache flushed."
-        case .automatic: return "The file cache is only flushed when you ask: it needs your administrator password."
+        case .automatic: return "The file cache is only flushed when you ask. macOS gives cached memory up by itself under pressure; flushing on a timer would only slow file access."
         }
     }
 }
