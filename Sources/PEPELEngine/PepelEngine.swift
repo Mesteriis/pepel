@@ -304,6 +304,8 @@ public actor PepelEngine {
         recordMemory(owners: owners, now: now)
         state.growth = growthCache
         state.overBudget = OverBudget.find(owners: owners, budgets: settings.memoryBudgets)
+        // A redirected PEPEL describes its fixture, not this Mac's swap directory.
+        if !paths.isRedirected { state.swap = SwapReport.read(usedBytes: telemetry.swapUsedBytes) }
         if telemetry.memoryTotalBytes > 0 {
             var samples = store.telemetryHistory(since: now.addingTimeInterval(-95 * 60)).map { MemorySample(at: $0.timestamp, bytes: $0.memoryUsed) }
             samples.append(MemorySample(at: now, bytes: telemetry.memoryUsedBytes))

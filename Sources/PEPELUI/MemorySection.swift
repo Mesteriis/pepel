@@ -26,6 +26,17 @@ struct MemorySection: View {
                 owners(live)
                 growth(live)
                 unused(live)
+                if let swap = live.swap, swap.fileCount > 0 {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack {
+                            Caption("Swap on disk")
+                            Spacer()
+                            Text("\(Bytes.format(swap.usedBytes)) used of \(Bytes.format(swap.onDiskBytes))").font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(Theme.secondary)
+                        }
+                        Text(swap.explanation).font(.system(size: 12)).foregroundStyle(Theme.text).fixedSize(horizontal: false, vertical: true)
+                    }
+                    .panel()
+                }
                 tabs(live)
                 system(live)
                 dormant(live)

@@ -1090,6 +1090,29 @@ struct EngineTests {
         #expect(await engine.alerts().contains { $0.id.hasPrefix("memory-forecast-") } == false)
     }
 
+    @Test("Swap on disk is read from the swap directory and explained by how much of it is in use")
+    func swapOnDisk() throws {
+        let f = Fixture()
+        let directory = f.root + "/vm"
+        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+        for name in ["swapfile0", "swapfile1", "sleepimage", "kernelcore"] {
+            try Data(count: 1 << 20).write(to: URL(fileURLWithPath: directory + "/" + name))
+        }
+        try FileManager.default.createSymbolicLink(atPath: directory + "/swapfile9", withDestinationPath: "/etc/hosts")
+        let report = SwapReport.read(directory: directory, usedBytes: 100_000)
+        #expect(report.fileCount == 2, "two swap files; the link and the other files are not counted")
+        #expect(report.onDiskBytes >= 2 << 20 && report.onDiskBytes < 4 << 20 && report.sleepImageBytes >= 1 << 20)
+        #expect(report.oldestFile != nil)
+
+        let empty = SwapReport(fileCount: 0, onDiskBytes: 0, usedBytes: 0, sleepImageBytes: 0, oldestFile: nil)
+        #expect(empty.explanation.contains("no swap files"))
+        let mostlyEmpty = SwapReport(fileCount: 6, onDiskBytes: 6 * Bytes.gb, usedBytes: 500 * Bytes.mb, sleepImageBytes: 0, oldestFile: nil)
+        #expect(mostlyEmpty.slackBytes == 6 * Bytes.gb - 500 * Bytes.mb && mostlyEmpty.explanation.contains("Most of it is empty"))
+        let heavy = SwapReport(fileCount: 6, onDiskBytes: 6 * Bytes.gb, usedBytes: 5 * Bytes.gb, sleepImageBytes: 2 * Bytes.gb, oldestFile: nil)
+        #expect(heavy.explanation.contains("memory was short") && heavy.explanation.contains("hibernation image"))
+        #expect(SwapReport.read(directory: f.root + "/missing", usedBytes: 0).fileCount == 0)
+    }
+
     final class FlushCounter: @unchecked Sendable {
         private let lock = NSLock()
         private var value = 0

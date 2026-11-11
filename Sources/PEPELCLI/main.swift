@@ -220,6 +220,12 @@ case "simulators":
         live.simulators.map { [Bytes.format($0.footprintBytes), String($0.processCount), TimeFormat.ago($0.bootedAt), $0.name, $0.udid, $0.inUse ?? "nothing suggests it"] })
     print("\n`pepel simulators shutdown <udid or name>` (or --all) shuts one down; devices and their data stay.")
 
+case "memory" where arguments.positional.first == "swap":
+    let live = await engine.refreshLive()
+    if arguments.json { Out.json(live.swap); break }
+    print(live.swap?.explanation ?? "Swap files cannot be read here.")
+    if let swap = live.swap, swap.fileCount > 0, let oldest = swap.oldestFile { print("The oldest swap file was last written \(TimeFormat.ago(oldest)).") }
+
 case "memory" where arguments.positional.first == "forecast":
     let live = await engine.refreshLive()
     if arguments.json { Out.json(live.forecast); break }

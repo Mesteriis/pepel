@@ -52,6 +52,8 @@ public struct LiveState: Codable, Sendable {
     public var restartableSystem: [ProcessAssessment] = []
     /// Where memory use is heading, when it has been rising steadily.
     public var forecast: MemoryForecast?
+    /// Swap files on disk against swap in use.
+    public var swap: SwapReport?
     /// Process trees PEPEL has suspended.
     public var frozen: [FrozenTree] = []
 

@@ -92,6 +92,7 @@ enum Out {
           pepel budget [set <owner> <GB>]  Memory budgets per owner (a name, or kind:agentSession); alerts when exceeded
           pepel memory system [restart …]  Large macOS components; restart one that the system brings back by itself
           pepel memory forecast            Where memory use is heading, when it has been rising steadily
+          pepel memory swap                What swap takes on disk, how much of it is in use, and when it shrinks
           pepel memory swapped             Processes that live almost entirely in swap and do nothing
           pepel memory growth              Applications, sessions and tools whose memory keeps growing
           pepel apps [restart|quit <name>] Applications by memory; ask one to quit, or to quit and open again

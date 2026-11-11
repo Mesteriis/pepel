@@ -690,3 +690,62 @@ public struct MemoryForecast: Codable, Sendable, Hashable {
         "Memory in use has risen by about \(Bytes.format(perHourBytes)) an hour over the last \(TimeFormat.age(basedOn)). At that rate it reaches \(Int(Self.thresholdShare * 100))% of this Mac's memory in about \(TimeFormat.age(max(60, reachesAt.timeIntervalSince(now)))), where macOS usually starts to struggle."
     }
 }
+
+// MARK: - Swap on disk
+
+/// What swap costs on disk, next to how much of it is actually in use.
+public struct SwapReport: Codable, Sendable, Hashable {
+    public var fileCount: Int
+    public var onDiskBytes: Int64
+    public var usedBytes: Int64
+    /// The hibernation image macOS keeps beside the swap files, when there is one.
+    public var sleepImageBytes: Int64
+    public var oldestFile: Date?
+
+    public init(fileCount: Int, onDiskBytes: Int64, usedBytes: Int64, sleepImageBytes: Int64, oldestFile: Date?) {
+        self.fileCount = fileCount
+        self.onDiskBytes = onDiskBytes
+        self.usedBytes = usedBytes
+        self.sleepImageBytes = sleepImageBytes
+        self.oldestFile = oldestFile
+    }
+
+    /// Allocated on disk but holding nothing right now.
+    public var slackBytes: Int64 { max(0, onDiskBytes - usedBytes) }
+
+    public var explanation: String {
+        guard fileCount > 0 else { return "macOS has no swap files right now: nothing has been written out of memory." }
+        var text = "Swap takes \(Bytes.format(onDiskBytes)) on disk in \(fileCount) file\(fileCount == 1 ? "" : "s"); \(Bytes.format(usedBytes)) of that holds memory that was written out."
+        if usedBytes * 5 < onDiskBytes, slackBytes >= Bytes.gb {
+            text += " Most of it is empty. macOS removes swap files it no longer needs by itself, usually within minutes of memory being freed; restarting the Mac removes all of them."
+        } else if usedBytes >= 4 * Bytes.gb {
+            text += " That much swap in use means memory was short at some point. Ending what lives in swap (`pepel memory swapped`) or freeing memory lets macOS read the rest back and shrink the files."
+        } else {
+            text += " macOS grows and shrinks these by itself; there is nothing to do."
+        }
+        if sleepImageBytes > 0 { text += " The hibernation image beside them takes another \(Bytes.format(sleepImageBytes)); macOS manages it." }
+        return text
+    }
+
+    /// Reads the swap directory. Sizes are what the files occupy, which is what the disk loses.
+    public static func read(directory: String = "/System/Volumes/VM", usedBytes: Int64) -> SwapReport {
+        var count = 0
+        var bytes: Int64 = 0
+        var sleep: Int64 = 0
+        var oldest: Date?
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? [] {
+            var info = stat()
+            guard lstat(directory + "/" + name, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG else { continue }
+            let size = Int64(info.st_blocks) * 512
+            if name.hasPrefix("swapfile") {
+                count += 1
+                bytes += size
+                let modified = Date(timeIntervalSince1970: TimeInterval(info.st_mtimespec.tv_sec))
+                oldest = oldest.map { min($0, modified) } ?? modified
+            } else if name == "sleepimage" {
+                sleep = size
+            }
+        }
+        return SwapReport(fileCount: count, onDiskBytes: bytes, usedBytes: usedBytes, sleepImageBytes: sleep, oldestFile: oldest)
+    }
+}
