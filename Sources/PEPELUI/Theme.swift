@@ -68,9 +68,9 @@ public enum Theme {
 
     public static func title(for pressure: MemoryPressureLevel) -> String {
         switch pressure {
-        case .normal: L("Normal")
-        case .elevated: L("Elevated")
-        case .critical: L("Critical")
+        case .normal: L(LocalizedStringResource("pressure.normal", defaultValue: "Normal"))
+        case .elevated: L(LocalizedStringResource("pressure.elevated", defaultValue: "Elevated"))
+        case .critical: L(LocalizedStringResource("pressure.critical", defaultValue: "Critical"))
         }
     }
 
@@ -149,6 +149,7 @@ struct Caption: View {
 
     var body: some View {
         text.textCase(.uppercase).font(.system(size: 10, weight: .semibold)).kerning(0.6).foregroundStyle(Theme.tertiary)
+            .lineLimit(1).minimumScaleFactor(0.75)
     }
 }
 

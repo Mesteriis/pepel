@@ -361,7 +361,7 @@ public final class AppModel {
         switch settings.menuBarMode {
         case .iconOnly: return nil
         case .reclaimable: return storage == nil ? nil : reclaimableText
-        case .memoryPressure: return live.map { $0.telemetry.pressure == .normal ? L("OK") : $0.telemetry.pressure == .elevated ? L("Elevated") : L("Critical") }
+        case .memoryPressure: return live.map { $0.telemetry.pressure == .normal ? L("OK") : $0.telemetry.pressure == .elevated ? L(LocalizedStringResource("pressure.elevated", defaultValue: "Elevated")) : L(LocalizedStringResource("pressure.critical", defaultValue: "Critical")) }
         case .activeBuilds: return live.map { "\($0.activeBuildCount)" }
         }
     }

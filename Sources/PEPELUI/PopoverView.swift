@@ -300,9 +300,9 @@ public struct PopoverView: View {
     /// The pressure level as a figure ("Normal").
     private func pressureTitle(_ level: MemoryPressureLevel) -> String {
         switch level {
-        case .normal: L("Normal")
-        case .elevated: L("Elevated")
-        case .critical: L("Critical")
+        case .normal: L(LocalizedStringResource("pressure.normal", defaultValue: "Normal"))
+        case .elevated: L(LocalizedStringResource("pressure.elevated", defaultValue: "Elevated"))
+        case .critical: L(LocalizedStringResource("pressure.critical", defaultValue: "Critical"))
         }
     }
 

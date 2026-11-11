@@ -70,6 +70,19 @@ the bundled icons need the real bundle.
 The app icon and menu bar glyph are generated from `Resources/AppIcon.png` and
 `Resources/Glyph-source.png` by `Scripts/make-icon.sh` and `Scripts/make-glyphs.swift`.
 
+## Languages
+
+The app speaks English and Russian and follows macOS: the system language, or the one chosen
+for PEPEL in System Settings › General › Language & Region › Applications (applied on the next
+launch). The command line always prints English, so scripts and agents read stable text.
+
+Texts live in one String Catalog, `Resources/Localizable.xcstrings` (English source, Russian with
+plural forms). Sentences shown to a person are written as `Text("…")`, a literal passed to a PEPEL
+primitive, or `L("… \(count) …")` in non-UI code; codes that code compares and audit records stay
+English. After changing texts run `Scripts/sync-strings.sh`: it compiles the app with key
+extraction and merges new keys into the catalog (they arrive untranslated). `Scripts/build-app.sh`
+compiles the catalog into `en.lproj` / `ru.lproj`.
+
 ## Command line
 
 ```

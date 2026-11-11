@@ -40,7 +40,7 @@ public enum Bytes {
     public static func format(_ value: Int64) -> String {
         let sign = value < 0 ? "-" : ""
         var x = Double(value.magnitude)
-        let units = ["B", "KB", "MB", "GB", "TB", "PB"]
+        let units = localizedUnits
         var i = 0
         while x >= 1000, i < units.count - 1 {
             x /= 1000
@@ -56,8 +56,18 @@ public enum Bytes {
         } else {
             number = String(format: "%.2f", x)
         }
-        return "\(sign)\(number) \(units[i])"
+        let separator = decimalSeparator == "." ? number : number.replacingOccurrences(of: ".", with: decimalSeparator)
+        return "\(sign)\(separator) \(units[i])"
     }
+
+    /// Units and the decimal separator in the app's language ("ГБ", "," in Russian); read once,
+    /// since macOS applies a language change on the next launch.
+    static let localizedUnits = [
+        L(LocalizedStringResource("unit.B", defaultValue: "B")), L(LocalizedStringResource("unit.KB", defaultValue: "KB")),
+        L(LocalizedStringResource("unit.MB", defaultValue: "MB")), L(LocalizedStringResource("unit.GB", defaultValue: "GB")),
+        L(LocalizedStringResource("unit.TB", defaultValue: "TB")), L(LocalizedStringResource("unit.PB", defaultValue: "PB")),
+    ]
+    static let decimalSeparator = L(LocalizedStringResource("number.decimalSeparator", defaultValue: "."))
 
     /// Signed variant for growth figures ("+3.2 GB").
     public static func formatDelta(_ value: Int64) -> String {
