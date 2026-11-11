@@ -282,3 +282,23 @@ public struct AgentSession: Codable, Sendable, Identifiable, Hashable {
         self.startedAt = startedAt
     }
 }
+
+/// The same helper program started once per agent session (a tool server, typically).
+public struct AgentHelperGroup: Codable, Sendable, Hashable, Identifiable {
+    /// The command with paths shortened and options dropped; identical for every copy.
+    public var id: String
+    public var copies: Int
+    /// How many different sessions run a copy.
+    public var sessions: Int
+    public var footprintBytes: Int64
+
+    public init(id: String, copies: Int, sessions: Int, footprintBytes: Int64) {
+        self.id = id
+        self.copies = copies
+        self.sessions = sessions
+        self.footprintBytes = footprintBytes
+    }
+
+    /// What all copies but one hold: an upper bound on what one shared instance would save.
+    public var duplicatedBytes: Int64 { copies > 1 ? footprintBytes - footprintBytes / Int64(copies) : 0 }
+}

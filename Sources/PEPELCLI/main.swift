@@ -233,6 +233,14 @@ case "agents":
                 Out.truncate($0.evidence.first ?? "", 90),
             ]
         })
+    if !live.agentHelpers.isEmpty {
+        let duplicated = live.agentHelpers.reduce(Int64(0)) { $0 + $1.duplicatedBytes }
+        print("\nThe same helper started once per session (\(Bytes.format(duplicated)) held by the extra copies):")
+        Out.table(
+            ["COPIES", "SESSIONS", "MEMORY", "EXTRA COPIES", "HELPER"],
+            live.agentHelpers.prefix(15).map { [String($0.copies), String($0.sessions), Bytes.format($0.footprintBytes), Bytes.format($0.duplicatedBytes), Out.truncate($0.id, 80)] })
+        print("PEPEL cannot merge them: each session starts its own. Closing idle sessions, or running such a server once and connecting sessions to it over HTTP, is what frees this.")
+    }
     let asleep = live.agentSessions.filter { $0.state == .sleeping }
     print("\nSessions asleep for \(settings.agentSleepMinutes) minutes are \(settings.terminateSleepingAgents ? "terminated automatically" : "only reported (automatic termination is off)"). \(asleep.count) asleep now, holding \(Bytes.format(asleep.reduce(0) { $0 + $1.footprintBytes })).")
 

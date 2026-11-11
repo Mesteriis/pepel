@@ -388,6 +388,28 @@ struct ProcessTests {
         #expect(sessions.first { $0.kind == .openCode }?.projectID == nil)
     }
 
+    @Test("The same tool server started by several sessions is reported once, with what the extra copies hold")
+    func duplicatedAgentHelpers() {
+        var processes: [ProcessSnapshot] = []
+        for session in 0..<3 {
+            let root = Int32(100 * (session + 1))
+            processes.append(process(root, name: "claude", path: "/Users/x/.local/bin/claude"))
+            processes.append(process(root + 1, parent: root, name: "python3", path: "/Users/x/.local/share/uv/tools/serena-agent/bin/python", args: ["/Users/x/.local/share/uv/tools/serena-agent/bin/python", "/Users/x/.local/bin/serena", "start-mcp-server", "--context=claude-code"], start: 1_000_100, footprint: 100_000_000))
+            processes.append(process(root + 2, parent: root, name: "node", args: ["node", "/srv/tools/tg/index.js"], start: 1_000_100, footprint: 50_000_000))
+        }
+        // Only one session runs this one: not a duplicate.
+        processes.append(process(103, parent: 100, name: "node", args: ["node", "/srv/tools/unique/index.js"], start: 1_000_100, footprint: 70_000_000))
+        // A server process of an application is not a session and contributes nothing.
+        processes.append(process(900, name: "codex", path: "/Applications/ChatGPT.app/Contents/Resources/codex", args: ["codex", "app-server"]))
+        processes.append(process(901, parent: 900, name: "node", args: ["node", "/srv/tools/tg/index.js"], start: 1_000_100, footprint: 50_000_000))
+
+        let sessions = AgentDetector.sessions(processes: processes, attributor: nil)
+        let groups = AgentDetector.helperGroups(processes: processes, sessions: sessions)
+        #expect(groups.map(\.id) == ["python bin/serena start-mcp-server", "node tg/index.js"])
+        #expect(groups[0].copies == 3 && groups[0].sessions == 3 && groups[0].footprintBytes == 300_000_000 && groups[0].duplicatedBytes == 200_000_000)
+        #expect(groups[1].copies == 3 && groups[1].duplicatedBytes == 100_000_000)
+    }
+
     // MARK: Leftovers of quit applications
 
     private func appProcess(_ pid: Int32, _ parent: Int32, _ path: String, start: UInt64 = 1_000_000, footprint: Int64 = 100_000_000, args: [String]? = nil) -> ProcessSnapshot {

@@ -47,4 +47,44 @@ public enum AgentDetector {
         }
         return sessions.sorted { $0.startedAt > $1.startedAt }
     }
+
+    /// A command reduced to what identifies the program: the executable name and its first few
+    /// arguments, with directories shortened to their last two components and options dropped,
+    /// so the same server started from ten sessions reads as one line.
+    static func signature(_ p: ProcessSnapshot) -> String {
+        var parts: [String] = []
+        for (index, raw) in p.arguments.enumerated() {
+            if index > 0, raw.hasPrefix("-") { continue }
+            var token = raw
+            if raw.contains("/") {
+                let components = raw.split(separator: "/")
+                token = index == 0 ? String(components.last ?? "") : components.suffix(2).joined(separator: "/")
+            }
+            // Version numbers and hashes differ per install without changing what the program is.
+            if token.count > 20, token.allSatisfy({ $0.isHexDigit || $0 == "-" }) { continue }
+            if !token.isEmpty { parts.append(token) }
+            if parts.count == 4 { break }
+        }
+        return parts.isEmpty ? p.name : parts.joined(separator: " ")
+    }
+
+    /// Helper programs that run in more than one copy across agent sessions, largest first.
+    public static func helperGroups(processes: [ProcessSnapshot], sessions: [AgentSession]) -> [AgentHelperGroup] {
+        let tree = ProcessTree(processes)
+        var groups: [String: (copies: Int, sessions: Set<ProcessIdentity>, bytes: Int64)] = [:]
+        for session in sessions where !session.isService {
+            guard let root = tree.process(session.root) else { continue }
+            for helper in tree.descendants(of: root) where RoleClassifier.agentKind(of: helper) == nil {
+                let key = signature(helper)
+                var group = groups[key] ?? (0, [], 0)
+                group.copies += 1
+                group.sessions.insert(session.root)
+                group.bytes += helper.footprintBytes
+                groups[key] = group
+            }
+        }
+        return groups.filter { $0.value.sessions.count > 1 }
+            .map { AgentHelperGroup(id: $0.key, copies: $0.value.copies, sessions: $0.value.sessions.count, footprintBytes: $0.value.bytes) }
+            .sorted { ($0.duplicatedBytes, $0.id) > ($1.duplicatedBytes, $1.id) }
+    }
 }

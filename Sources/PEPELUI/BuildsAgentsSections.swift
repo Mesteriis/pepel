@@ -107,6 +107,7 @@ struct AgentsSection: View {
                 title: "Agents",
                 subtitle: "Agent sessions are found by watching processes, not by reading the agents' private files. Their state, history and credentials are always protected.")
             sessions
+            helpers
             leases
             integration
         }
@@ -160,6 +161,34 @@ struct AgentsSection: View {
             }
         }
         .panel()
+    }
+
+    /// The same tool server started by every session.
+    @ViewBuilder private var helpers: some View {
+        if let groups = model.live?.agentHelpers, !groups.isEmpty {
+            let duplicated = groups.reduce(Int64(0)) { $0 + $1.duplicatedBytes }
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Caption("Same helper, one copy per session")
+                    Spacer()
+                    Text("\(Bytes.format(duplicated)) in extra copies").font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(Theme.amber)
+                }
+                ForEach(groups.prefix(12)) { group in
+                    HStack(spacing: 10) {
+                        Text("×\(group.copies)").font(.system(size: 12, weight: .semibold)).monospacedDigit().frame(width: 34, alignment: .trailing)
+                        Text(group.id).font(Theme.mono).lineLimit(1).truncationMode(.middle)
+                        Spacer(minLength: 4)
+                        Text("\(group.sessions) sessions").font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                        Text(Bytes.format(group.footprintBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 66, alignment: .trailing)
+                    }
+                    .foregroundStyle(Theme.text)
+                    .accessibilityElement(children: .combine)
+                }
+                Text("PEPEL cannot merge these: every session starts its own. Closing idle sessions frees them; so does running a server once and connecting sessions to it over HTTP.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+            .panel()
+        }
     }
 
     private var leases: some View {

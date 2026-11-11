@@ -173,6 +173,7 @@ public actor PepelEngine {
         state.leftovers = appTracker.leftovers(
             processes: processes, assessments: assessments, protectedRoots: Set(sessions.map(\.root)), attributor: projectIndex, now: now,
             automaticAfter: TimeInterval(settings.appLeftoverGraceMinutes) * 60)
+        state.agentHelpers = AgentDetector.helperGroups(processes: processes, sessions: sessions)
         state.memoryOwners = owners
         state.memoryExplanation = MemoryAttributor.explanation(owners: owners, telemetry: telemetry)
         live = state

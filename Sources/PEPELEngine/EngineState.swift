@@ -23,6 +23,8 @@ public struct LiveState: Codable, Sendable {
     /// Memory grouped by who is responsible for it, largest first.
     public var memoryOwners: [MemoryOwner] = []
     public var memoryExplanation = ""
+    /// The same helper started once per agent session.
+    public var agentHelpers: [AgentHelperGroup] = []
     /// Processes still running after the application that started them quit.
     public var leftovers: [AppLeftovers] = []
 
