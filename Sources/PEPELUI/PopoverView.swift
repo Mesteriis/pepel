@@ -22,7 +22,7 @@ public struct MenuBarLabel: View {
                 Text(text).monospacedDigit()
             }
         }
-        .accessibilityLabel("PEPEL. \(model.healthSentence) \(model.menuBarText.map { "Reclaimable: \($0)" } ?? "")")
+        .accessibilityLabel("PEPEL. \(model.healthSentence) \(model.menuBarText.map { L("Reclaimable: \($0)") } ?? "")")
     }
 }
 
@@ -89,32 +89,34 @@ public struct PopoverView: View {
             GridRow {
                 MetricTile(
                     label: "Disk free", value: t.map { Bytes.format($0.diskAvailableBytes) } ?? "—",
-                    detail: t.map { "of \(Bytes.format($0.diskTotalBytes))" },
+                    detail: t.map { L("of \(Bytes.format($0.diskTotalBytes))") },
                     fraction: t.map { $0.diskTotalBytes > 0 ? Double($0.diskUsedBytes) / Double($0.diskTotalBytes) : 0 })
                 MetricTile(
                     label: "Reclaimable now", value: model.reclaimableText,
-                    detail: model.storage.map { "\($0.reclaimableIsApproximate ? "upper bound · " : "")scanned \(TimeFormat.ago($0.scan.finishedAt))" } ?? "Not scanned yet",
+                    detail: model.storage.map {
+                        $0.reclaimableIsApproximate ? L("upper bound · scanned \(TimeFormat.ago($0.scan.finishedAt))") : L("scanned \(TimeFormat.ago($0.scan.finishedAt))")
+                    } ?? L("Not scanned yet"),
                     tint: Theme.copper)
             }
             GridRow {
                 MetricTile(
-                    label: "Memory pressure", value: t.map { $0.pressure.rawValue.capitalized } ?? "—",
-                    detail: t.map { "\(Bytes.format($0.compressedBytes)) compressed" }, tint: t.map { Theme.color(for: $0.pressure) } ?? Theme.text)
-                MetricTile(label: "Swap", value: t.map { Bytes.format($0.swapUsedBytes) } ?? "—", detail: t.map { "of \(Bytes.format($0.swapTotalBytes)) allocated" })
+                    label: "Memory pressure", value: t.map { pressureTitle($0.pressure) } ?? "—",
+                    detail: t.map { L("\(Bytes.format($0.compressedBytes)) compressed") }, tint: t.map { Theme.color(for: $0.pressure) } ?? Theme.text)
+                MetricTile(label: "Swap", value: t.map { Bytes.format($0.swapUsedBytes) } ?? "—", detail: t.map { L("of \(Bytes.format($0.swapTotalBytes)) allocated") })
             }
             GridRow {
                 MetricTile(
                     label: "Active builds", value: model.live.map { "\($0.activeBuildCount)" } ?? "—",
-                    detail: model.live.map { "\($0.agentSessions.count) agent session\($0.agentSessions.count == 1 ? "" : "s")" })
+                    detail: model.live.map { L("\($0.agentSessions.count) agent sessions") })
                 MetricTile(
                     label: "Abandoned", value: model.live.map { "\($0.abandoned.count)" } ?? "—",
-                    detail: model.live.map { $0.abandoned.isEmpty ? "No candidates" : "up to \(Bytes.format($0.memory.proposalFootprintBytes))" },
+                    detail: model.live.map { $0.abandoned.isEmpty ? L("No candidates") : L("up to \(Bytes.format($0.memory.proposalFootprintBytes))") },
                     tint: (model.live?.abandoned.isEmpty ?? true) ? Theme.text : Theme.amber)
             }
             GridRow {
                 MetricTile(
                     label: "Storage growth · 24 h", value: day.map { Bytes.formatDelta($0.deltaBytes) } ?? "—",
-                    detail: day.map { $0.coversWindow ? "disk usage change" : "over the last \(TimeFormat.age($0.actualSpan)) (history is shorter)" } ?? "No history yet"
+                    detail: day.map { $0.coversWindow ? L("disk usage change") : L("over the last \(TimeFormat.age($0.actualSpan)) (history is shorter)") } ?? L("No history yet")
                 )
                 .gridCellColumns(2)
             }
@@ -124,7 +126,7 @@ public struct PopoverView: View {
     private var scanRow: some View {
         HStack(spacing: 8) {
             ProgressView().controlSize(.small)
-            Text(model.scanProgress.map { $0.total > 0 ? "\($0.phase) \($0.completed)/\($0.total)" : $0.phase } ?? "Scanning")
+            Text(model.scanProgress.map { $0.total > 0 ? "\($0.phase) \($0.completed)/\($0.total)" : $0.phase } ?? L("Scanning"))
                 .font(.system(size: 11)).foregroundStyle(Theme.secondary).monospacedDigit()
             Spacer()
             Button("Cancel") { model.cancelScan() }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Theme.secondary)
@@ -178,7 +180,8 @@ public struct PopoverView: View {
                                     Text("up to \(Bytes.format(step.estimatedBytes))").font(.system(size: 10)).monospacedDigit().foregroundStyle(Theme.copper)
                                 }
                             }
-                            Text(step.targets.prefix(3).joined(separator: ", ") + (step.targets.count > 3 ? " and \(step.targets.count - 3) more" : ""))
+                            let names = step.targets.prefix(3).joined(separator: ", ")
+                            Text(step.targets.count > 3 ? L("\(names) and \(step.targets.count - 3) more") : names)
                                 .font(.system(size: 10)).foregroundStyle(Theme.secondary).lineLimit(2)
                         }
                     }
@@ -258,7 +261,11 @@ public struct PopoverView: View {
                 .help("Restarts the Docker VM and starts the same containers again. Asks first.")
                 .accessibilityHint("Restarts the Docker virtual machine after confirmation.")
                 if let done = model.vmRefreshReport, done.restarted {
-                    Text("Last restart: \(Bytes.format(done.hostFootprintBefore)) → \(Bytes.format(done.hostFootprintAfter))\(done.missing.isEmpty ? "" : "; \(done.missing.count) containers did not come back")")
+                    let before = Bytes.format(done.hostFootprintBefore), after = Bytes.format(done.hostFootprintAfter)
+                    Text(
+                        done.missing.isEmpty
+                            ? L("Last restart: \(before) → \(after)")
+                            : L("Last restart: \(before) → \(after); \(done.missing.count) containers did not come back"))
                         .font(.system(size: 10)).foregroundStyle(done.missing.isEmpty ? Theme.tertiary : Theme.amber)
                 }
             }
@@ -278,7 +285,7 @@ public struct PopoverView: View {
         }
     }
 
-    private func action(_ title: String, _ symbol: String, _ run: @escaping () -> Void) -> some View {
+    private func action(_ title: LocalizedStringKey, _ symbol: String, _ run: @escaping () -> Void) -> some View {
         Button(action: run) {
             HStack(spacing: 6) {
                 Image(systemName: symbol).frame(width: 14)
@@ -288,6 +295,15 @@ public struct PopoverView: View {
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(QuietButtonStyle())
+    }
+
+    /// The pressure level as a figure ("Normal").
+    private func pressureTitle(_ level: MemoryPressureLevel) -> String {
+        switch level {
+        case .normal: L("Normal")
+        case .elevated: L("Elevated")
+        case .critical: L("Critical")
+        }
     }
 
     private var footer: some View {

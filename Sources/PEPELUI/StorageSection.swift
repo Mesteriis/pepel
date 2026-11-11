@@ -39,14 +39,15 @@ struct StorageSection: View {
                 if model.isTidying { ProgressView().controlSize(.small) }
                 if let items = model.tidyItems {
                     let going = items.filter { $0.keptBecause == nil }
-                    Button("\(s.tidyAction == .trash ? "Move to Trash" : "Remove") \(going.count) · \(Bytes.format(going.reduce(0) { $0 + $1.bytes }))…") { confirmTidy = true }
+                    let size = Bytes.format(going.reduce(0) { $0 + $1.bytes })
+                    Button(s.tidyAction == .trash ? L("Move to Trash \(going.count) · \(size)…") : L("Remove \(going.count) · \(size)…")) { confirmTidy = true }
                         .buttonStyle(CopperButtonStyle(prominent: false)).disabled(going.isEmpty || model.isTidying)
                 }
             }
             if let items = model.tidyItems {
                 let going = items.filter { $0.keptBecause == nil }
                 let shots = going.filter { $0.kind == .screenshot }
-                Text("\(shots.count) screenshots and recordings older than \(s.screenshotDays) day\(s.screenshotDays == 1 ? "" : "s") · \(going.count - shots.count) downloads unused for \(s.downloadDays) days or unfinished · \(items.count - going.count) kept")
+                Text("\(shots.count) screenshots and recordings older than \(s.screenshotDays) days · \(going.count - shots.count) downloads unused for \(s.downloadDays) days or unfinished · \(items.count - going.count) kept")
                     .font(.system(size: 12)).foregroundStyle(Theme.secondary)
                 ForEach(going.prefix(8)) { item in
                     HStack(spacing: 10) {
@@ -81,7 +82,10 @@ struct StorageSection: View {
                 Spacer()
                 if model.isReadingDocker || model.isCleaningDocker { ProgressView().controlSize(.small) }
                 if let report = model.dockerDisk {
-                    Text("disk image \(Bytes.format(report.diskImageBytes))" + (report.diskImageLimitBytes > 0 ? " of up to \(Bytes.format(report.diskImageLimitBytes))" : ""))
+                    Text(
+                        report.diskImageLimitBytes > 0
+                            ? L("disk image \(Bytes.format(report.diskImageBytes)) of up to \(Bytes.format(report.diskImageLimitBytes))")
+                            : L("disk image \(Bytes.format(report.diskImageBytes))"))
                         .font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(Theme.secondary)
                         .help("Docker's disk image grows up to its limit and shrinks only when trimmed. Lowering the limit in Docker Desktop deletes the disk image with every image, container and volume in it, so PEPEL leaves it alone.")
                 }
@@ -114,15 +118,19 @@ struct StorageSection: View {
                                 Text(volume.name).font(Theme.mono).lineLimit(1).truncationMode(.middle)
                                 if volume.projectState == .gone { Badge(text: "project folder gone", tint: Theme.amber) }
                                 Spacer()
-                                Text(volume.createdAt.map { "created \(TimeFormat.ago($0))" } ?? "").font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                                Text(volume.createdAt.map { L("created \(TimeFormat.ago($0))") } ?? "").font(.system(size: 11)).foregroundStyle(Theme.secondary)
                                 Text(Bytes.format(volume.bytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)
                             }
-                            .help(volume.projectFolder.map { "Project \(volume.project ?? ""): \($0)" } ?? "No compose project recorded.")
+                            .help(volume.projectFolder.map { L("Project \(volume.project ?? ""): \($0)") } ?? L("No compose project recorded."))
                         }
                         Text("PEPEL never removes named volumes: they hold data rebuilding does not bring back. Remove one yourself with docker volume rm.")
                             .font(.system(size: 11)).foregroundStyle(Theme.tertiary)
                     } label: {
-                        Text("\(volumes.count) named volumes no container mounts · \(Bytes.format(volumes.reduce(0) { $0 + $1.bytes }))" + (gone.isEmpty ? "" : " · \(gone.count) from projects whose folder is gone"))
+                        let size = Bytes.format(volumes.reduce(0) { $0 + $1.bytes })
+                        Text(
+                            gone.isEmpty
+                                ? L("\(volumes.count) named volumes no container mounts · \(size)")
+                                : L("\(volumes.count) named volumes no container mounts · \(size) · \(gone.count) from projects whose folder is gone"))
                             .font(.system(size: 12))
                     }
                 }
@@ -135,8 +143,8 @@ struct StorageSection: View {
                         .help("Hands blocks Docker no longer uses back to the Mac. Nothing is removed.")
                 }
                 if let done = model.dockerCleanReport {
-                    Text("Last cleanup: " + done.steps.map { "\($0.kind.title.lowercased()) \($0.removed) of \($0.attempted)" }.joined(separator: ", ")
-                        + ". Disk image \(Bytes.format(done.diskImageBefore)) → \(Bytes.format(done.diskImageAfter)).")
+                    let steps = done.steps.map { L("\($0.kind.title.lowercased()) \($0.removed) of \($0.attempted)") }.joined(separator: ", ")
+                    Text(L("Last cleanup: \(steps). Disk image \(Bytes.format(done.diskImageBefore)) → \(Bytes.format(done.diskImageAfter))."))
                         .font(.system(size: 11)).foregroundStyle(Theme.forest).fixedSize(horizontal: false, vertical: true)
                 }
                 Text("Containers, images and build cache can be rebuilt or pulled again, so they can also be removed automatically once a day (Settings). Named volumes are never removed; anonymous ones nothing mounts only from here. Nothing is removed with force: Docker refuses what is in use.")
@@ -197,7 +205,10 @@ struct StorageSection: View {
             } else {
                 Text("Measuring walks every cache and takes some seconds; nothing is removed.").font(.system(size: 12)).foregroundStyle(Theme.secondary)
             }
-            Text("Only entries nobody has read or written for \(days) days are removed" + (limit > 0 ? ", and then the least recently used ones until each cache is under \(limit) GB" : "") + "; the rest stays warm. Everything here is downloaded or rebuilt when it is needed again.")
+            Text(
+                limit > 0
+                    ? L("Only entries nobody has read or written for \(days) days are removed, and then the least recently used ones until each cache is under \(limit) GB; the rest stays warm. Everything here is downloaded or rebuilt when it is needed again.")
+                    : L("Only entries nobody has read or written for \(days) days are removed; the rest stays warm. Everything here is downloaded or rebuilt when it is needed again."))
                 .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
         }
         .panel()
@@ -205,7 +216,10 @@ struct StorageSection: View {
             Button("Remove") { model.trimCaches() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Entries unused for \(days) days" + (limit > 0 ? ", and the least recently used ones above \(limit) GB per cache," : "") + " are removed. The next build or install that needs one of them fetches or rebuilds it.")
+            Text(
+                limit > 0
+                    ? L("Entries unused for \(days) days, and the least recently used ones above \(limit) GB per cache, are removed. The next build or install that needs one of them fetches or rebuilds it.")
+                    : L("Entries unused for \(days) days are removed. The next build or install that needs one of them fetches or rebuilds it."))
         }
     }
 
@@ -230,7 +244,7 @@ struct StorageSection: View {
                             tint: cache.owner == .running ? Theme.forest : cache.owner == .removed ? Theme.amber : Theme.tertiary)
                         Text(cache.name).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
                         Spacer()
-                        Text(cache.lastUse.map { "used \(TimeFormat.ago($0))" } ?? "").font(.system(size: 11)).monospacedDigit()
+                        Text(cache.lastUse.map { L("used \(TimeFormat.ago($0))") } ?? "").font(.system(size: 11)).monospacedDigit()
                             .foregroundStyle(cache.unused(days: days) && cache.owner != .running ? Theme.copper : Theme.tertiary)
                         Text(Bytes.format(cache.bytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)
                     }
@@ -299,7 +313,7 @@ struct StorageSection: View {
                     }
                     Text(Bytes.format(entries.reduce(0) { $0 + $1.bytes })).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)
                 }
-                .help(entries.prefix(6).map { "\(Bytes.format($0.bytes))  \($0.name)  \($0.keptBecause ?? "would go")" }.joined(separator: "\n"))
+                .help(entries.prefix(6).map { "\(Bytes.format($0.bytes))  \($0.name)  \($0.keptBecause ?? L("would go"))" }.joined(separator: "\n"))
                 .confirmationDialog("Remove unused temporary files?", isPresented: $confirmTemp, titleVisibility: .visible) {
                     Button("Remove") { model.cleanTemp() }
                     Button("Cancel", role: .cancel) {}
@@ -318,7 +332,7 @@ struct StorageSection: View {
                         Button("Remove \(doomed.count) · \(Bytes.format(doomed.reduce(0) { $0 + $1.bytes }))…") { confirmBackups = true }.buttonStyle(QuietButtonStyle())
                     }
                 }
-                .help(model.toolBackups.map { "\(Bytes.format($0.bytes))  \($0.set)  \(TimeFormat.ago($0.createdAt))  \($0.kept ? "kept" : "would go")" }.joined(separator: "\n"))
+                .help(model.toolBackups.map { "\(Bytes.format($0.bytes))  \($0.set)  \(TimeFormat.ago($0.createdAt))  \($0.kept ? L("kept") : L("would go"))" }.joined(separator: "\n"))
                 .confirmationDialog("Remove \(doomed.count) Clausona backups?", isPresented: $confirmBackups, titleVisibility: .visible) {
                     Button("Remove", role: .destructive) { model.cleanToolBackups() }
                     Button("Cancel", role: .cancel) {}
@@ -357,7 +371,7 @@ struct StorageSection: View {
                         }
                         .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Theme.secondary)
                         .help(kept ? "Let the daily rule delete it when it is unused long enough." : "The daily rule never deletes it.")
-                        Text(emulator.lastUse.map { "used \(TimeFormat.ago($0))" } ?? "").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
+                        Text(emulator.lastUse.map { L("used \(TimeFormat.ago($0))") } ?? "").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
                         Text(Bytes.format(emulator.bytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)
                     }
                 }
@@ -371,12 +385,13 @@ struct StorageSection: View {
                         Button("Delete unused · \(Bytes.format(unusedImages.reduce(0) { $0 + $1.bytes }))…") { confirmImages = true }.buttonStyle(QuietButtonStyle())
                     }
                 }
-                .help(model.systemImages.map { "\(Bytes.format($0.bytes))  \($0.id)  \($0.usedBy.isEmpty ? "no emulator" : $0.usedBy.joined(separator: ", "))" }.joined(separator: "\n"))
+                .help(model.systemImages.map { "\(Bytes.format($0.bytes))  \($0.id)  \($0.usedBy.isEmpty ? L("no emulator") : $0.usedBy.joined(separator: ", "))" }.joined(separator: "\n"))
                 .confirmationDialog("Delete system images no emulator uses?", isPresented: $confirmImages, titleVisibility: .visible) {
                     Button("Delete") { model.deleteUnusedSystemImages() }
                     Button("Cancel", role: .cancel) {}
                 } message: {
-                    Text(unusedImages.map(\.id).joined(separator: "\n") + "\n\nAndroid Studio or sdkmanager downloads one again when a new emulator needs it.")
+                    let ids = unusedImages.map(\.id).joined(separator: "\n")
+                    Text(L("\(ids)\n\nAndroid Studio or sdkmanager downloads one again when a new emulator needs it."))
                 }
                 Divider().overlay(Theme.stroke)
             }
@@ -386,7 +401,7 @@ struct StorageSection: View {
                         Text(place.title).font(.system(size: 12, weight: .medium)).lineLimit(1).frame(width: 300, alignment: .leading)
                         if place.kept { Badge(text: "kept", tint: Theme.forest) }
                         Spacer()
-                        Text(place.lastUse.map { "used \(TimeFormat.ago($0))" } ?? "").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
+                        Text(place.lastUse.map { L("used \(TimeFormat.ago($0))") } ?? "").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
                         Text(Bytes.format(place.bytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)
                     }
                     .help(place.note + "\n" + place.path)
@@ -398,7 +413,7 @@ struct StorageSection: View {
             }
         }
         .panel()
-        .confirmationDialog("Delete \(chosenEmulators.count) Android emulator\(chosenEmulators.count == 1 ? "" : "s")?", isPresented: $confirmEmulators, titleVisibility: .visible) {
+        .confirmationDialog("Delete \(chosenEmulators.count) Android emulators?", isPresented: $confirmEmulators, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 model.deleteAndroidEmulators(Array(chosenEmulators))
                 chosenEmulators = []
@@ -459,7 +474,7 @@ struct StorageSection: View {
         }
     }
 
-    private func dockerRow(_ title: String, _ count: Int, _ bytes: Int64, _ candidates: Int, _ free: Int64, tint: Color = Theme.copper) -> some View {
+    private func dockerRow(_ title: LocalizedStringKey, _ count: Int, _ bytes: Int64, _ candidates: Int, _ free: Int64, tint: Color = Theme.copper) -> some View {
         GridRow {
             Text(title).foregroundStyle(Theme.text)
             Text("\(count)").foregroundStyle(Theme.secondary)
@@ -549,7 +564,7 @@ struct StorageSection: View {
         .panel()
     }
 
-    private func summary(_ label: String, _ bytes: Int64, _ tint: Color) -> some View {
+    private func summary(_ label: LocalizedStringKey, _ bytes: Int64, _ tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Caption(label)
             Text(Bytes.format(bytes)).font(.system(size: 16, weight: .semibold, design: .rounded)).monospacedDigit().foregroundStyle(tint)
@@ -568,7 +583,7 @@ struct StorageSection: View {
             .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Theme.stroke))
             Picker("Class", selection: $filter) {
                 Text("All").tag(SafetyClass?.none)
-                ForEach(SafetyClass.allCases, id: \.self) { Text($0.rawValue.capitalized).tag(SafetyClass?.some($0)) }
+                ForEach(SafetyClass.allCases, id: \.self) { Text(storageSafetyTitle($0)).tag(SafetyClass?.some($0)) }
             }
             .pickerStyle(.segmented).labelsHidden().frame(width: 260)
         }
@@ -588,7 +603,7 @@ private struct StorageRow: View {
                 HStack(spacing: 10) {
                     Text((item.size?.isApproximate ?? false ? "≤ " : "") + Bytes.format(item.reclaimableBytes))
                         .font(.system(size: 12, weight: .medium)).monospacedDigit().foregroundStyle(Theme.text).frame(width: 78, alignment: .trailing)
-                    Badge(text: item.safety.rawValue, tint: Theme.color(for: item.safety)).frame(width: 66, alignment: .leading)
+                    Badge(text: storageSafetyLabel(item.safety), tint: Theme.color(for: item.safety)).frame(width: 66, alignment: .leading)
                     VStack(alignment: .leading, spacing: 1) {
                         HStack(spacing: 6) {
                             Text(item.title).font(.system(size: 12)).foregroundStyle(Theme.text).lineLimit(1)
@@ -605,7 +620,10 @@ private struct StorageRow: View {
                 .padding(.horizontal, 12).padding(.vertical, 7).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("\(item.title), \(Bytes.format(item.reclaimableBytes)), \(item.safety.rawValue)\(inUse == nil ? "" : ", in use")")
+            .accessibilityLabel(
+                inUse == nil
+                    ? L("\(item.title), \(Bytes.format(item.reclaimableBytes)), \(storageSafetyLabel(item.safety))")
+                    : L("\(item.title), \(Bytes.format(item.reclaimableBytes)), \(storageSafetyLabel(item.safety)), in use"))
             if expanded { detail }
         }
     }
@@ -667,7 +685,7 @@ struct ProjectsSection: View {
                         if folder.looksLikeData { Badge(text: "looks like data", tint: Theme.amber) }
                         PathText(path: folder.path)
                         Spacer()
-                        Text(folder.lastUse.map { "changed \(TimeFormat.ago($0))" } ?? "").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
+                        Text(folder.lastUse.map { L("changed \(TimeFormat.ago($0))") } ?? "").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
                         Text(Bytes.format(folder.bytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)
                         Button("Move to Trash…") { trashing = folder }.buttonStyle(QuietButtonStyle())
                     }
@@ -681,13 +699,18 @@ struct ProjectsSection: View {
         }
         .panel()
         .confirmationDialog(
-            trashing.map { "Move \(($0.path as NSString).lastPathComponent) of \($0.projectName) to the Trash?" } ?? "",
+            trashing.map { L("Move \(($0.path as NSString).lastPathComponent) of \($0.projectName) to the Trash?") } ?? "",
             isPresented: Binding(get: { trashing != nil }, set: { if !$0 { trashing = nil } }), titleVisibility: .visible
         ) {
             Button("Move to Trash") { if let folder = trashing { model.trashIgnoredFolder(folder) } }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(trashing.map { ($0.looksLikeData ? "Its name suggests it holds data (a database, dumps, backups or configuration). " : "") + "\(Bytes.format($0.bytes)). It can be taken back from the Trash; the space is freed when the Trash is emptied." } ?? "")
+            Text(
+                trashing.map {
+                    $0.looksLikeData
+                        ? L("Its name suggests it holds data (a database, dumps, backups or configuration). \(Bytes.format($0.bytes)). It can be taken back from the Trash; the space is freed when the Trash is emptied.")
+                        : L("\(Bytes.format($0.bytes)). It can be taken back from the Trash; the space is freed when the Trash is emptied.")
+                } ?? "")
         }
     }
 
@@ -755,7 +778,7 @@ struct ProjectsSection: View {
                             VStack(alignment: .leading, spacing: 1) {
                                 HStack(spacing: 6) {
                                     Text(project.name).font(.system(size: 12, weight: .medium)).foregroundStyle(Theme.text).lineLimit(1)
-                                    ForEach(project.kinds.filter { $0 != .git }.prefix(4), id: \.self) { Badge(text: $0.rawValue) }
+                                    ForEach(project.kinds.filter { $0 != .git }.prefix(4), id: \.self) { Badge(text: storageProjectKindLabel($0)) }
                                     if project.roots.count > 1 { Badge(text: "\(project.roots.count) worktrees", tint: Theme.forest) }
                                 }
                                 HStack(spacing: 6) {
@@ -769,7 +792,7 @@ struct ProjectsSection: View {
                             Text(Bytes.format(project.artifactBytes)).frame(width: 80, alignment: .trailing)
                             Text(Bytes.format(project.reclaimableBytes)).foregroundStyle(project.reclaimableBytes > 0 ? Theme.copper : Theme.tertiary).frame(width: 86, alignment: .trailing)
                             Text(project.growth.map { Bytes.formatDelta($0.deltaBytes) } ?? "—").foregroundStyle(Theme.secondary).frame(width: 80, alignment: .trailing)
-                                .help(project.growth.map { "Over the last \(TimeFormat.age($0.actualSpan))" } ?? "Needs two scans")
+                                .help(project.growth.map { L("Over the last \(TimeFormat.age($0.actualSpan))") } ?? L("Needs two scans"))
                             Text(project.processCount > 0 ? "\(project.processCount)" : "—").foregroundStyle(Theme.secondary).frame(width: 70, alignment: .trailing)
                             Text(project.agentCount > 0 ? "\(project.agentCount)" : "—").foregroundStyle(project.agentCount > 0 ? Theme.forest : Theme.secondary).frame(width: 54, alignment: .trailing)
                         }
@@ -787,5 +810,39 @@ struct ProjectsSection: View {
                         : "Nothing recognisable was found under \(model.settings.projectRoots.joined(separator: ", ")). Run a scan or adjust the roots in Settings.")
             }
         }
+    }
+}
+
+/// The safety class as a heading ("Safe").
+private func storageSafetyTitle(_ safety: SafetyClass) -> String {
+    switch safety {
+    case .safe: L("Safe")
+    case .review: L("Review")
+    case .protected: L("Protected")
+    }
+}
+
+/// The safety class as a badge ("safe").
+private func storageSafetyLabel(_ safety: SafetyClass) -> String {
+    switch safety {
+    case .safe: L("safe")
+    case .review: L("review")
+    case .protected: L("protected")
+    }
+}
+
+/// A project kind as a badge; the names are the tools' own.
+private func storageProjectKindLabel(_ kind: ProjectKind) -> String {
+    switch kind {
+    case .git: L("git")
+    case .xcode: L("xcode")
+    case .swiftpm: L("swiftpm")
+    case .python: L("python")
+    case .node: L("node")
+    case .cargo: L("cargo")
+    case .go: L("go")
+    case .dockerCompose: L("dockerCompose")
+    case .cmake: L("cmake")
+    case .registered: L("registered")
     }
 }

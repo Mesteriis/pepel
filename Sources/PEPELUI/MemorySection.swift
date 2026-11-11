@@ -55,7 +55,7 @@ struct MemorySection: View {
             }
         }
         .confirmationDialog(
-            model.pendingApplication.map { "\($0.action == .restart ? "Restart" : "Quit") \($0.name)?" } ?? "",
+            model.pendingApplication.map { $0.action == .restart ? L("Restart \($0.name)?") : L("Quit \($0.name)?") } ?? "",
             isPresented: Binding(get: { model.pendingApplication != nil }, set: { if !$0 { model.pendingApplication = nil } }), titleVisibility: .visible
         ) {
             if model.pendingApplication?.verdict != .denied { Button(model.pendingApplication?.action == .quit ? "Quit" : "Restart") { model.confirmApplication() } }
@@ -81,7 +81,7 @@ struct MemorySection: View {
                 ForEach(live.browserTabs.prefix(10)) { tab in
                     HStack(spacing: 10) {
                         Text(tab.browser).font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                        Text("tab process \(tab.root.pid) · " + (tab.idleFor.map { "idle \(TimeFormat.age($0))" } ?? "busy or newly seen")).font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
+                        Text(tab.idleFor.map { L("tab process \(tab.root.pid) · idle \(TimeFormat.age($0))") } ?? L("tab process \(tab.root.pid) · busy or newly seen")).font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
                         Spacer()
                         Text(Bytes.format(tab.footprintBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit()
                     }
@@ -90,7 +90,7 @@ struct MemorySection: View {
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
             .panel()
-            .confirmationDialog("Unload \(idle.count) idle browser tab process\(idle.count == 1 ? "" : "es")?", isPresented: $confirmTabs, titleVisibility: .visible) {
+            .confirmationDialog("Unload \(idle.count) idle browser tab processes?", isPresented: $confirmTabs, titleVisibility: .visible) {
                 Button("Unload") { model.unloadIdleTabs() }
                 Button("Cancel", role: .cancel) {}
             } message: {
@@ -131,7 +131,9 @@ struct MemorySection: View {
                 ForEach(live.simulators) { simulator in
                     HStack(spacing: 10) {
                         Text(simulator.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                        Text("booted \(TimeFormat.ago(simulator.bootedAt)) · \(simulator.processCount) processes" + (simulator.inUse.map { " · " + $0 } ?? ""))
+                        Text(
+                            simulator.inUse.map { L("booted \(TimeFormat.ago(simulator.bootedAt)) · \(simulator.processCount) processes · \($0)") }
+                                ?? L("booted \(TimeFormat.ago(simulator.bootedAt)) · \(simulator.processCount) processes"))
                             .font(.system(size: 11)).foregroundStyle(Theme.secondary).lineLimit(1)
                         Spacer()
                         Text(Bytes.format(simulator.footprintBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit()
@@ -227,13 +229,13 @@ struct MemorySection: View {
 
     private func composition(_ t: SystemTelemetry, developer: Int64) -> some View {
         let parts: [(String, Int64, Color)] = [
-            ("App memory", t.appMemoryBytes, Theme.forest), ("Wired", t.wiredBytes, Theme.secondary), ("Compressed", t.compressedBytes, Theme.amber),
-            ("Cached files", t.cachedFileBytes, Theme.forestDim), ("Free", t.freeBytes, Theme.raised),
+            (L("App memory"), t.appMemoryBytes, Theme.forest), (L("Wired"), t.wiredBytes, Theme.secondary), (L("Compressed"), t.compressedBytes, Theme.amber),
+            (L("Cached files"), t.cachedFileBytes, Theme.forestDim), (L("Free"), t.freeBytes, Theme.raised),
         ]
         let total = CGFloat(max(1, t.memoryTotalBytes))
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 18) {
-                stat("Pressure", t.pressure.rawValue.capitalized, Theme.color(for: t.pressure))
+                stat("Pressure", pressureTitle(t.pressure), Theme.color(for: t.pressure))
                 stat("Used", Bytes.format(t.memoryUsedBytes), Theme.text)
                 stat("Physical", Bytes.format(t.memoryTotalBytes), Theme.text)
                 stat("Swap used", Bytes.format(t.swapUsedBytes), t.swapUsedBytes > t.memoryTotalBytes / 4 ? Theme.amber : Theme.text)
@@ -300,7 +302,7 @@ struct MemorySection: View {
                             }
                             Badge(text: ownerLabel(owner.kind), tint: owner.kind == .agentSession ? Theme.forest : Theme.secondary)
                             if owner.confidence != .verified { ConfidenceBadge(confidence: owner.confidence) }
-                            Text("\(owner.processCount) process\(owner.processCount == 1 ? "" : "es")").font(.system(size: 10)).foregroundStyle(Theme.tertiary)
+                            Text("\(owner.processCount) processes").font(.system(size: 10)).foregroundStyle(Theme.tertiary)
                             Spacer(minLength: 0)
                             if owner.notInRAMBytes > 50 * Bytes.mb {
                                 Text("≈ \(Bytes.format(owner.notInRAMBytes)) not in RAM").font(.system(size: 10)).monospacedDigit().foregroundStyle(Theme.amber)
@@ -319,7 +321,7 @@ struct MemorySection: View {
                     }
                 }
                 .foregroundStyle(Theme.text)
-                .help(owner.detail + "\n" + owner.largest.map { "\($0.name) (PID \($0.identity.pid)): \(Bytes.format($0.footprintBytes))" }.joined(separator: "\n"))
+                .help(owner.detail + "\n" + owner.largest.map { L("\($0.name) (PID \($0.identity.pid)): \(Bytes.format($0.footprintBytes))") }.joined(separator: "\n"))
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel("\(owner.name): \(Bytes.format(owner.footprintBytes)), \(owner.processCount) processes")
             }
@@ -365,12 +367,12 @@ struct MemorySection: View {
                     HStack(spacing: 10) {
                         Text(Bytes.format(group.memoryBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 66, alignment: .trailing)
                         Text(group.name).font(.system(size: 12)).lineLimit(1)
-                        Text("\(group.containers.count) container\(group.containers.count == 1 ? "" : "s")").font(.system(size: 10)).foregroundStyle(Theme.tertiary)
+                        Text("\(group.containers.count) containers").font(.system(size: 10)).foregroundStyle(Theme.tertiary)
                         if let project = model.projectName(group.projectID) { Badge(text: project, tint: Theme.forest) }
                         if group.projectID == nil {
                             Text("not tied to a project").font(.system(size: 10)).foregroundStyle(Theme.tertiary)
                         } else if group.agentSessions > 0 {
-                            Badge(text: "\(group.agentSessions) agent session\(group.agentSessions == 1 ? "" : "s")", tint: Theme.forest)
+                            Badge(text: "\(group.agentSessions) agent sessions", tint: Theme.forest)
                         } else if let idle = group.idleSince {
                             Badge(text: "no agent for \(TimeFormat.age(Date().timeIntervalSince(idle)))", tint: Theme.amber)
                         }
@@ -391,7 +393,7 @@ struct MemorySection: View {
                         }
                     }
                     .foregroundStyle(Theme.text)
-                    .help(group.containers.map { "\($0.name): \(Bytes.format($0.memoryBytes))\($0.isKept ? " — kept" : "")" }.joined(separator: "\n"))
+                    .help(group.containers.map { $0.isKept ? L("\($0.name): \(Bytes.format($0.memoryBytes)) — kept") : "\($0.name): \(Bytes.format($0.memoryBytes))" }.joined(separator: "\n"))
                 }
                 Text("The limit is set in \(report.product) › Settings › Resources; PEPEL can lower it from Settings › Containers. Containers are stopped or paused, never removed. \(report.total - report.running) stopped containers use no memory.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
@@ -417,7 +419,7 @@ struct MemorySection: View {
         }
     }
 
-    private func bar(_ label: String, _ bytes: Int64, _ scale: CGFloat, _ tint: Color) -> some View {
+    private func bar(_ label: LocalizedStringKey, _ bytes: Int64, _ scale: CGFloat, _ tint: Color) -> some View {
         HStack(spacing: 8) {
             Text(label).font(.system(size: 11)).foregroundStyle(Theme.secondary).frame(width: 170, alignment: .leading)
             GeometryReader { proxy in
@@ -427,7 +429,7 @@ struct MemorySection: View {
             Text(Bytes.format(bytes)).font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(Theme.text).frame(width: 66, alignment: .trailing)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(label): \(Bytes.format(bytes))")
+        .accessibilityLabel(Text(label) + Text(verbatim: ": \(Bytes.format(bytes))"))
     }
 
     /// What applications that have quit left running.
@@ -453,7 +455,11 @@ struct MemorySection: View {
                                 Text(Bytes.format(leftover.subtreeFootprintBytes)).font(.system(size: 11, weight: .medium)).monospacedDigit().frame(width: 62, alignment: .trailing)
                                 VStack(alignment: .leading, spacing: 0) {
                                     Text(leftover.process.shortCommand).font(Theme.mono).foregroundStyle(Theme.text).lineLimit(1)
-                                    Text("PID \(leftover.process.pid)\(leftover.descendantCount > 0 ? " · \(leftover.descendantCount) child processes" : "") · \(leftover.evidence.dropFirst().first ?? "")")
+                                    let evidence = leftover.evidence.dropFirst().first ?? ""
+                                    Text(
+                                        leftover.descendantCount > 0
+                                            ? L("PID \(leftover.process.pid) · \(leftover.descendantCount) child processes · \(evidence)")
+                                            : L("PID \(leftover.process.pid) · \(evidence)"))
                                         .font(.system(size: 10)).foregroundStyle(Theme.tertiary).lineLimit(1)
                                 }
                                 Spacer(minLength: 0)
@@ -478,17 +484,17 @@ struct MemorySection: View {
 
     private func ownerLabel(_ kind: MemoryOwnerKind) -> String {
         switch kind {
-        case .virtualMachine: "VM"
-        case .agentSession: "agent"
-        case .application: "app"
-        case .project: "project"
-        case .developerTool: "dev tool"
-        case .system: "system"
-        case .other: "other"
+        case .virtualMachine: L("VM")
+        case .agentSession: L("agent")
+        case .application: L("app")
+        case .project: L("project")
+        case .developerTool: L("dev tool")
+        case .system: L("system")
+        case .other: L("other")
         }
     }
 
-    private func stat(_ label: String, _ value: String, _ tint: Color) -> some View {
+    private func stat(_ label: LocalizedStringKey, _ value: String, _ tint: Color) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Caption(label)
             Text(value).font(.system(size: 15, weight: .semibold, design: .rounded)).monospacedDigit().foregroundStyle(tint)
@@ -505,7 +511,7 @@ struct MemorySection: View {
                 Button("Dismiss") { model.terminationReport = nil }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Theme.secondary)
             }
             ForEach(report.steps, id: \.self) { Text($0).font(.system(size: 11)).foregroundStyle(Theme.secondary) }
-            Text("Measured: memory used \(Bytes.format(report.before.memoryUsedBytes)) → \(Bytes.format(report.after.memoryUsedBytes)) (\(Bytes.formatDelta(report.observedMemoryChange))), pressure \(report.before.pressure.rawValue) → \(report.after.pressure.rawValue). The process tree held \(Bytes.format(report.footprintBefore)); other activity also moves these numbers.")
+            Text("Measured: memory used \(Bytes.format(report.before.memoryUsedBytes)) → \(Bytes.format(report.after.memoryUsedBytes)) (\(Bytes.formatDelta(report.observedMemoryChange))), pressure \(pressureLabel(report.before.pressure)) → \(pressureLabel(report.after.pressure)). The process tree held \(Bytes.format(report.footprintBefore)); other activity also moves these numbers.")
                 .font(.system(size: 11)).foregroundStyle(Theme.text).fixedSize(horizontal: false, vertical: true)
         }
         .panel()
@@ -516,7 +522,11 @@ struct MemorySection: View {
             Caption("Abandoned-process candidates")
             if live.abandoned.isEmpty {
                 let unknown = live.assessments.filter { $0.lifecycle == .unknown && $0.agentAncestor == nil }.count
-                Text("None. PEPEL only proposes a process when its parent is gone and it has shown no CPU activity for \(model.settings.idleMinutesBeforeAbandoned) minutes of observation." + (unknown > 0 ? " \(unknown) process\(unknown == 1 ? " has" : "es have") not been observed long enough to judge." : ""))
+                let minutes = model.settings.idleMinutesBeforeAbandoned
+                Text(
+                    unknown > 0
+                        ? L("None. PEPEL only proposes a process when its parent is gone and it has shown no CPU activity for \(minutes) minutes of observation. \(unknown) processes have not been observed long enough to judge.")
+                        : L("None. PEPEL only proposes a process when its parent is gone and it has shown no CPU activity for \(minutes) minutes of observation."))
                     .font(.system(size: 12)).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
             }
             ForEach(live.abandoned) { candidate in
@@ -582,7 +592,7 @@ struct MemorySection: View {
                     Badge(text: lifecycleLabel(a.lifecycle), tint: lifecycleTint(a.lifecycle)).frame(width: 96, alignment: .leading)
                     VStack(alignment: .leading, spacing: 0) {
                         Text(a.process.shortCommand).font(Theme.mono).foregroundStyle(Theme.text).lineLimit(1).truncationMode(.tail)
-                        Text("PID \(a.process.pid) · \(a.role.rawValue) · \(model.projectName(a.projectID) ?? "no project")\(a.cpuPercent.map { String(format: " · %.1f%% CPU", $0) } ?? "")\(a.process.listeningPorts.isEmpty ? "" : " · :" + a.process.listeningPorts.map(String.init).joined(separator: ","))")
+                        Text(processLine(a))
                             .font(.system(size: 10)).foregroundStyle(Theme.tertiary).lineLimit(1)
                     }
                     Spacer(minLength: 0)
@@ -608,13 +618,54 @@ struct MemorySection: View {
 
     private func lifecycleLabel(_ l: LifecycleClass) -> String {
         switch l {
-        case .agentSession: "agent"
-        case .activeBuildOrTest: "active build"
-        case .activeDevService: "dev service"
-        case .backgroundService: "background"
-        case .abandonedSubprocess: "abandoned"
-        case .suspiciousOrphan: "orphan"
-        case .unknown: "unknown"
+        case .agentSession: L("agent")
+        case .activeBuildOrTest: L("active build")
+        case .activeDevService: L("dev service")
+        case .backgroundService: L("background")
+        case .abandonedSubprocess: L("abandoned")
+        case .suspiciousOrphan: L("orphan")
+        case .unknown: L("unknown")
+        }
+    }
+
+    /// PID, role, project, CPU and listening ports of one process, as one line.
+    private func processLine(_ a: ProcessAssessment) -> String {
+        var parts = [L("PID \(a.process.pid)"), roleLabel(a.role), model.projectName(a.projectID) ?? L("no project")]
+        if let cpu = a.cpuPercent { parts.append(String(format: "%.1f%% CPU", cpu)) }
+        if !a.process.listeningPorts.isEmpty { parts.append(":" + a.process.listeningPorts.map(String.init).joined(separator: ",")) }
+        return parts.joined(separator: " · ")
+    }
+
+    private func roleLabel(_ role: ProcessRole) -> String {
+        switch role {
+        case .agent: L("agent")
+        case .buildTool: L("buildTool")
+        case .testRunner: L("testRunner")
+        case .devServer: L("devServer")
+        case .container: L("container")
+        case .projectBinary: L("projectBinary")
+        case .ide: L("ide")
+        case .userApp: L("userApp")
+        case .system: L("system")
+        case .other: L("other")
+        }
+    }
+
+    /// The pressure level as a figure ("Normal").
+    private func pressureTitle(_ level: MemoryPressureLevel) -> String {
+        switch level {
+        case .normal: L("Normal")
+        case .elevated: L("Elevated")
+        case .critical: L("Critical")
+        }
+    }
+
+    /// The pressure level inside a sentence ("normal").
+    private func pressureLabel(_ level: MemoryPressureLevel) -> String {
+        switch level {
+        case .normal: L("normal")
+        case .elevated: L("elevated")
+        case .critical: L("critical")
         }
     }
 
