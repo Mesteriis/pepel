@@ -83,6 +83,7 @@ extension PepelEngine {
         var terminations: [TerminationReport] = []
         guard !settings.paused else { return (nil, []) }
         _ = await stopIdleProjectContainers()
+        _ = await nightlyVMRefresh()
         if settings.monitoringMode == .automaticSafe, let storage {
             let safe = Set(storage.items.filter { $0.safety == .safe }.map(\.id))
             if !safe.isEmpty {
@@ -169,10 +170,17 @@ extension PepelEngine {
         return (decision, report)
     }
 
+    public nonisolated func lastVMRefresh() -> Date? {
+        store.value("containers.lastVMRefresh").flatMap(Double.init).map { Date(timeIntervalSince1970: $0) }
+    }
+
     public func vmRefreshDecision(initiator: Initiator) async -> (decision: VMRefreshDecision, report: ContainerReport)? {
         guard let report = await inspectContainers() else { return nil }
         let working = live?.agentSessions.filter { $0.state == .working && !$0.isService }.count ?? 0
-        return (policy.evaluateVMRefresh(report, workingSessions: working, initiator: initiator), report)
+        let decision = policy.evaluateVMRefresh(
+            report, workingSessions: working, initiator: initiator, settings: settings, lastRefresh: lastVMRefresh(),
+            userIdleSeconds: TelemetryReader.userIdleSeconds())
+        return (decision, report)
     }
 
     /// Restarts the container VM and starts the same containers again, measuring what the Mac
@@ -182,11 +190,17 @@ extension PepelEngine {
         guard let approved = policy.approveVMRefresh(decision, confirmed: confirmed, initiator: initiator) else { return (decision, nil) }
         let tools = tools, store = store
         var report = await ContainerVMRefresher(tools: tools, store: store).refresh(approved)
+        if report.restarted { try? store.setValue(String(Date().timeIntervalSince1970), for: "containers.lastVMRefresh") }
         report.hostFootprintBefore = containers.hostFootprintBytes
         // Give the new VM a moment to settle before reading what it is charged.
         try? await Task.sleep(for: .seconds(20))
         let after = await refreshLive()
         report.hostFootprintAfter = after.memoryOwners.first { $0.kind == .virtualMachine }?.footprintBytes ?? 0
+        // What a fresh VM costs beyond its containers: the floor no restart can go below.
+        if report.restarted, report.hostFootprintAfter > 0, let fresh = await inspectContainers() {
+            let overhead = max(0, report.hostFootprintAfter - fresh.usedByContainersBytes)
+            try? store.setValue(String(overhead), for: "containers.vmOverhead")
+        }
         store.appendAudit(
             AuditEntry(
                 kind: .container, initiator: initiator.rawValue, subject: "Docker Desktop VM memory", outcome: "measured",
@@ -194,6 +208,17 @@ extension PepelEngine {
                 detail: ["chargedBefore": Bytes.format(report.hostFootprintBefore), "chargedAfter": Bytes.format(report.hostFootprintAfter)]))
         containerRefreshStarted = .distantPast
         return (decision, report)
+    }
+
+    /// The nightly restart. Cheap checks first, so Docker is only asked when it could matter.
+    func nightlyVMRefresh() async -> VMRefreshReport? {
+        guard settings.refreshContainerVMNightly, let cached = live?.containers else { return nil }
+        let working = live?.agentSessions.filter { $0.state == .working && !$0.isService }.count ?? 0
+        let quick = policy.evaluateVMRefresh(
+            cached, workingSessions: working, initiator: .automatic, settings: settings, lastRefresh: lastVMRefresh(),
+            userIdleSeconds: TelemetryReader.userIdleSeconds())
+        guard quick.verdict == .allowed else { return nil }
+        return await refreshContainerVM(confirmed: false, initiator: .automatic)?.report
     }
 
     /// Stops containers of projects no agent session has worked in for the grace period.

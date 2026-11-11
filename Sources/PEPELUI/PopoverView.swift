@@ -50,6 +50,7 @@ public struct PopoverView: View {
             metrics
             if model.isScanning { scanRow }
             primaryAction
+            dockerMemory
             quickActions
             footer
         }
@@ -144,6 +145,53 @@ public struct PopoverView: View {
         .buttonStyle(CopperButtonStyle())
         .keyboardShortcut(.defaultAction)
         .accessibilityHint("Opens the cleanup review. Nothing is removed until you confirm.")
+    }
+
+    /// Return the memory the Docker VM holds beyond what its containers use.
+    @ViewBuilder private var dockerMemory: some View {
+        if let containers = model.live?.containers {
+            if model.isRefreshingVM {
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text("Restarting the Docker VM; containers will be started again…").font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                }
+            } else if let pending = model.pendingVMRefresh {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(pending.verdict == .denied ? "PEPEL will not restart the VM" : "Restart the Docker VM?").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text)
+                    ForEach((pending.reasons + pending.warnings).prefix(4), id: \.self) { line in
+                        Text(line).font(.system(size: 11)).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                    HStack {
+                        Button("Cancel") { model.pendingVMRefresh = nil }.buttonStyle(QuietButtonStyle())
+                        Spacer()
+                        if pending.verdict != .denied {
+                            Button("Restart and bring containers back") { model.confirmVMRefresh() }.buttonStyle(CopperButtonStyle())
+                        }
+                    }
+                }
+                .panel(padding: 10)
+            } else {
+                Button {
+                    model.requestVMRefresh()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "shippingbox").frame(width: 14)
+                        Text("Return Docker memory")
+                        Spacer(minLength: 0)
+                        Text(containers.excessBytes > Bytes.gb ? "≈ \(Bytes.format(containers.excessBytes))" : "little to return")
+                            .font(.system(size: 11)).monospacedDigit().foregroundStyle(containers.excessBytes > 4 * Bytes.gb ? Theme.copper : Theme.tertiary)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(QuietButtonStyle())
+                .help("Restarts the Docker VM and starts the same containers again. Asks first.")
+                .accessibilityHint("Restarts the Docker virtual machine after confirmation.")
+                if let done = model.vmRefreshReport, done.restarted {
+                    Text("Last restart: \(Bytes.format(done.hostFootprintBefore)) → \(Bytes.format(done.hostFootprintAfter))\(done.missing.isEmpty ? "" : "; \(done.missing.count) containers did not come back")")
+                        .font(.system(size: 10)).foregroundStyle(done.missing.isEmpty ? Theme.tertiary : Theme.amber)
+                }
+            }
+        }
     }
 
     private var quickActions: some View {

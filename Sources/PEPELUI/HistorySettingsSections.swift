@@ -173,6 +173,11 @@ struct SettingsSection: View {
                 toggle("Terminate verified abandoned build/test processes automatically under memory pressure", s.autoTerminateAbandoned) { v in model.updateSettings { $0.autoTerminateAbandoned = v } }
                 toggle("Stop (never remove) a project's containers when no agent session has worked in it", s.stopContainersOfIdleProjects) { v in model.updateSettings { $0.stopContainersOfIdleProjects = v } }
                 stepper("A project is idle after", s.projectIdleGraceMinutes, 5...720, step: 5, suffix: " min without an agent session") { v in model.updateSettings { $0.projectIdleGraceMinutes = v } }
+                toggle("Restart the Docker VM once a day to return its memory", s.refreshContainerVMNightly) { v in model.updateSettings { $0.refreshContainerVMNightly = v } }
+                stepper("Start looking for a quiet moment at", s.vmRefreshHour, 0...23, suffix: ":00") { v in model.updateSettings { $0.vmRefreshHour = v } }
+                stepper("Only when at least", Int(s.vmRefreshMinimumExcessBytes / Bytes.gb), 1...64, suffix: " GB would come back") { v in model.updateSettings { $0.vmRefreshMinimumExcessBytes = Int64(v) * Bytes.gb } }
+                Text("All containers go down for about a minute and are started again. Skipped while an agent session is working or a kept container is running. If the Mac slept through the hour, it catches up at the next quiet moment.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
                 Text("Leave running, whatever happens (container or compose project names; a container labelled pepel.keep=true is always kept):")
                     .font(.system(size: 11)).foregroundStyle(Theme.secondary)
                 ForEach(s.keepContainers, id: \.self) { name in

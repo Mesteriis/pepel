@@ -211,7 +211,9 @@ public final class AppModel {
         if settings.paused { return "Monitoring is paused." }
         switch health {
         case .critical: return alerts.first { $0.severity == .critical }?.title ?? "Needs attention now."
-        case .attention: return alerts.first { $0.severity == .warning }?.title ?? "\(live?.abandoned.count ?? 0) process(es) look abandoned."
+        case .attention:
+            let count = live?.abandoned.count ?? 0
+            return alerts.first { $0.severity == .warning }?.title ?? (count == 1 ? "One process looks abandoned." : "\(count) processes look abandoned.")
         case .healthy: return "Workstation is healthy."
         }
     }

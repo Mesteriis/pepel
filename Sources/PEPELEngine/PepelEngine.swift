@@ -131,6 +131,8 @@ public actor PepelEngine {
             report.hostFootprintBytes = vm.footprintBytes
             report.hostResidentBytes = vm.residentBytes
         }
+        // Measured after the last restart; before any restart was observed, a cautious 6 GiB.
+        report.baselineOverheadBytes = store.value("containers.vmOverhead").flatMap(Int64.init) ?? (6 << 30)
         func group(of projectID: String) -> String { projectIndex.project(id: projectID)?.groupID ?? projectID }
         var live: [String: Int] = [:]
         for session in sessions where !session.isService {

@@ -85,6 +85,14 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     /// exist only to serve development done through agents.
     public var stopContainersOfIdleProjects = false
     public var projectIdleGraceMinutes = 60
+    /// Opt-in. Restarts the container VM once a day at `vmRefreshHour` to return the memory it
+    /// holds beyond what its containers use, then starts the same containers again. Skipped while
+    /// an agent session is working, while a kept container runs, or when there is little to return.
+    public var refreshContainerVMNightly = false
+    /// Local hour (0–23) at which the nightly restart may start; it has two hours to find a quiet moment.
+    public var vmRefreshHour = 4
+    /// The VM is only restarted when it is charged at least this much more than its containers use.
+    public var vmRefreshMinimumExcessBytes: Int64 = 4 * Bytes.gb
     /// Containers and compose projects PEPEL must leave running: exact container names or compose
     /// project names. A container can also declare this itself with the label `pepel.keep=true`.
     public var keepContainers: [String] = []

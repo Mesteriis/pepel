@@ -412,12 +412,19 @@ struct ProcessTests {
         #expect(roomy.suggestedLimitBytes == 14 * gib)
         #expect(roomy.explanation.contains("2 running containers use 8.59 GB of a virtual machine limited to 34.4 GB"))
         #expect(roomy.explanation.contains("charged 35.4 GB") && roomy.explanation.contains("A limit around 15.0 GB"))
+        #expect(roomy.excessBytes == 25 * gib && roomy.explanation.contains("would return about 26.8 GB"))
+        // What a fresh VM costs anyway is not counted as something a restart returns.
+        var fresh = report(used: 4 * gib, limit: 32 * gib, host: 12 * gib)
+        fresh.baselineOverheadBytes = 8 * gib
+        #expect(fresh.excessBytes == 0 && fresh.explanation.contains("about what it costs right after a restart"))
+        fresh.hostFootprintBytes = 30 * gib
+        #expect(fresh.excessBytes == 18 * gib)
         // 14 GiB used of 24: the same formula gives 24 GiB, which is no saving. No suggestion.
         #expect(report(used: 14 * gib, limit: 24 * gib, host: 20 * gib).suggestedLimitBytes == nil)
         // Almost nothing running still gets a sane floor.
         #expect(report(used: gib / 10, limit: 16 * gib, host: 2 * gib).suggestedLimitBytes == 4 * gib)
         // The host is not charged much more than the containers use: nothing alarming to say.
-        #expect(!report(used: 8 * gib, limit: 12 * gib, host: 9 * gib).explanation.contains("charged"))
+        #expect(!report(used: 8 * gib, limit: 12 * gib, host: 9 * gib).explanation.contains("would return"))
     }
 
     @Test("Containers are stopped automatically only for a project without an agent session past the grace period")
@@ -526,7 +533,7 @@ struct ProcessTests {
             product: "Docker Desktop", vmLimitBytes: 32 << 30, cpus: 8, running: 3, total: 9,
             groups: [ContainerGroup(id: "app", name: "app", containers: [ContainerMemory(name: "app-db-1", memoryBytes: 2 << 30, cpuPercent: 0), ContainerMemory(name: "app-api-1", memoryBytes: 1 << 30, cpuPercent: 0), kept])],
             hostFootprintBytes: 30 << 30)
-        #expect(engine.evaluateVMRefresh(report, workingSessions: 0, initiator: .automatic).verdict == .denied, "never automatic")
+        #expect(engine.evaluateVMRefresh(report, workingSessions: 0, initiator: .automatic).verdict == .denied, "off unless the nightly restart is enabled")
         #expect(engine.evaluateVMRefresh(report, workingSessions: 0, initiator: .agent).verdict == .denied)
         var other = report
         other.product = "OrbStack"
@@ -552,6 +559,46 @@ struct ProcessTests {
         // A failed restart changes nothing and says so.
         let failing = await ContainerVMRefresher(store: nil) { arguments, _ in arguments.first == "ps" ? (0, "app-db-1\n") : (1, "") }.refresh(approved)
         #expect(!failing.restarted && failing.steps.last?.contains("failed") == true)
+    }
+
+    @Test("The nightly VM restart runs once a day, at night, in a quiet moment, and only when it is worth it")
+    func nightlyVMRefreshPolicy() {
+        let engine = CleanupPolicyEngine()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        func at(_ hour: Int) -> Date { calendar.date(from: DateComponents(year: 2026, month: 11, day: 12, hour: hour, minute: 10))! }
+        func report(excessGiB: Int64 = 20, kept: Bool = false) -> ContainerReport {
+            var c = ContainerMemory(name: "db", memoryBytes: 4 << 30, cpuPercent: 0)
+            if kept { c.keepReason = "label" }
+            return ContainerReport(product: "Docker Desktop", vmLimitBytes: 32 << 30, cpus: 8, running: 1, total: 1, groups: [ContainerGroup(id: "p", name: "p", containers: [c])], hostFootprintBytes: (4 + excessGiB) << 30)
+        }
+        var settings = PepelSettings()
+        func verdict(_ r: ContainerReport, hour: Int, working: Int = 0, last: Date? = nil, idle: TimeInterval = 0) -> CleanupVerdict {
+            engine.evaluateVMRefresh(r, workingSessions: working, initiator: .automatic, settings: settings, lastRefresh: last, userIdleSeconds: idle, now: at(hour), calendar: calendar).verdict
+        }
+        #expect(verdict(report(), hour: 4) == .denied, "off by default")
+        settings.refreshContainerVMNightly = true
+        #expect(settings.vmRefreshHour == 4)
+        #expect(verdict(report(), hour: 4) == .allowed)
+        #expect(verdict(report(), hour: 5) == .allowed, "two hours to find a quiet moment")
+        #expect(verdict(report(), hour: 6) == .denied && verdict(report(), hour: 14) == .denied)
+        #expect(verdict(report(), hour: 4, working: 1) == .denied, "an agent is working")
+        #expect(verdict(report(kept: true), hour: 4) == .denied, "a kept container cannot be spared")
+        #expect(verdict(report(excessGiB: 2), hour: 4) == .denied, "too little to return")
+        #expect(verdict(report(), hour: 4, last: at(4).addingTimeInterval(-3 * 3600)) == .denied, "at most once a day")
+        #expect(verdict(report(), hour: 4, last: at(4).addingTimeInterval(-24 * 3600)) == .allowed)
+        // The Mac slept through the night: it catches up in the afternoon once the user is away.
+        let longAgo = at(14).addingTimeInterval(-40 * 3600)
+        #expect(verdict(report(), hour: 14, last: longAgo, idle: 60) == .denied)
+        #expect(verdict(report(), hour: 14, last: longAgo, idle: 1800) == .allowed)
+        settings.paused = true
+        #expect(verdict(report(), hour: 4) == .denied)
+
+        // An automatic approval exists only for an allowed automatic decision.
+        settings.paused = false
+        let allowed = engine.evaluateVMRefresh(report(), workingSessions: 0, initiator: .automatic, settings: settings, now: at(4), calendar: calendar)
+        #expect(engine.approveVMRefresh(allowed, confirmed: false, initiator: .automatic) != nil)
+        #expect(engine.approveVMRefresh(allowed, confirmed: true, initiator: .user) == nil)
     }
 
     @Test("The note for agents is added once, replaced in place, removed cleanly, and never disturbs the rest of the file")

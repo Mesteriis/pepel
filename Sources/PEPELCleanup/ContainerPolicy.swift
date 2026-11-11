@@ -158,9 +158,15 @@ public struct ApprovedVMRefresh: Sendable {
 
 extension CleanupPolicyEngine {
     /// Restarting the VM is the only thing that gives its memory back to the Mac, and it takes
-    /// every container down for a minute or two. It is therefore manual only: PEPEL proposes it
-    /// with the numbers and the user decides.
-    public func evaluateVMRefresh(_ report: ContainerReport, workingSessions: Int, initiator: Initiator) -> VMRefreshDecision {
+    /// every container down for a minute or two. By hand it always asks. On its own PEPEL does it
+    /// at most once a day, at night, and only in a quiet moment.
+    /// - Parameters:
+    ///   - lastRefresh: when the VM was last restarted through PEPEL, if ever.
+    ///   - userIdleSeconds: time since the last keyboard or pointer input.
+    public func evaluateVMRefresh(
+        _ report: ContainerReport, workingSessions: Int, initiator: Initiator, settings: PepelSettings = PepelSettings(),
+        lastRefresh: Date? = nil, userIdleSeconds: TimeInterval = 0, now: Date = Date(), calendar: Calendar = .current
+    ) -> VMRefreshDecision {
         var denials: [String] = []
         var confirmations: [String] = []
         var warnings: [String] = []
@@ -170,15 +176,38 @@ extension CleanupPolicyEngine {
             denials.append("Restarting the VM is only supported for Docker Desktop; this is \(report.product).")
         }
         switch initiator {
-        case .agent: denials.append("Agents cannot have the container VM restarted.")
-        case .automatic: denials.append("The container VM is never restarted automatically.")
-        case .user, .cli: confirmations.append("All \(names.count) running containers go down for a minute or two and are started again afterwards.")
-        }
-        if !report.kept.isEmpty {
-            warnings.append("\(report.kept.count) container\(report.kept.count == 1 ? "" : "s") marked to be left running will be restarted too; a VM restart cannot spare any: \(report.kept.map(\.name).joined(separator: ", ")).")
-        }
-        if workingSessions > 0 {
-            warnings.append("\(workingSessions) agent session\(workingSessions == 1 ? " is" : "s are") working right now and may be using these containers.")
+        case .agent:
+            denials.append("Agents cannot have the container VM restarted.")
+        case .automatic:
+            if !settings.refreshContainerVMNightly || settings.paused { denials.append("The nightly VM restart is not enabled.") }
+            let sinceLast = lastRefresh.map { now.timeIntervalSince($0) }
+            if let sinceLast, sinceLast < 20 * 3600 {
+                denials.append("The VM was restarted \(TimeFormat.age(sinceLast)) ago; at most once a day.")
+            }
+            // In its night window, or catching up after a night the Mac slept through.
+            let hour = calendar.component(.hour, from: now)
+            let inWindow = (0..<2).contains((hour - settings.vmRefreshHour + 24) % 24)
+            let overdue = (sinceLast ?? .infinity) > 30 * 3600 && userIdleSeconds >= 20 * 60
+            if !inWindow && !overdue {
+                denials.append("Outside the night window (\(settings.vmRefreshHour):00–\((settings.vmRefreshHour + 2) % 24):00) and not overdue.")
+            }
+            if report.excessBytes < settings.vmRefreshMinimumExcessBytes {
+                denials.append("Only \(Bytes.format(report.excessBytes)) would come back; the threshold is \(Bytes.format(settings.vmRefreshMinimumExcessBytes)).")
+            }
+            if workingSessions > 0 {
+                denials.append("\(workingSessions) agent session\(workingSessions == 1 ? " is" : "s are") working right now.")
+            }
+            if !report.kept.isEmpty {
+                denials.append("A container marked to be left running is up: \(report.kept.map(\.name).joined(separator: ", ")). A VM restart cannot spare it.")
+            }
+        case .user, .cli:
+            confirmations.append("All \(names.count) running containers go down for a minute or two and are started again afterwards.")
+            if !report.kept.isEmpty {
+                warnings.append("\(report.kept.count) container\(report.kept.count == 1 ? "" : "s") marked to be left running will be restarted too; a VM restart cannot spare any: \(report.kept.map(\.name).joined(separator: ", ")).")
+            }
+            if workingSessions > 0 {
+                warnings.append("\(workingSessions) agent session\(workingSessions == 1 ? " is" : "s are") working right now and may be using these containers.")
+            }
         }
         warnings.append("Data in volumes is kept. Work a container is doing at that moment is interrupted.")
         warnings.append("About \(Bytes.format(report.excessBytes)) is charged to the Mac beyond what the containers use; how much of it returns is measured afterwards, not promised.")
@@ -187,7 +216,11 @@ extension CleanupPolicyEngine {
     }
 
     public func approveVMRefresh(_ decision: VMRefreshDecision, confirmed: Bool, initiator: Initiator) -> ApprovedVMRefresh? {
-        guard decision.verdict == .needsConfirmation, confirmed, initiator == .user || initiator == .cli else { return nil }
+        switch decision.verdict {
+        case .denied: return nil
+        case .needsConfirmation: guard confirmed, initiator == .user || initiator == .cli else { return nil }
+        case .allowed: guard initiator == .automatic else { return nil }
+        }
         return ApprovedVMRefresh(containers: decision.containers, initiator: initiator)
     }
 }

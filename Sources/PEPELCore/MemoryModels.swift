@@ -152,6 +152,9 @@ public struct ContainerReport: Codable, Sendable, Hashable {
     public var hostFootprintBytes: Int64
     public var hostResidentBytes: Int64
     public var measuredAt: Date
+    /// What the VM costs the host on top of its containers even right after a restart (its
+    /// kernel and the container engine), as measured the last time it was restarted.
+    public var baselineOverheadBytes: Int64 = 0
 
     public init(
         product: String, vmLimitBytes: Int64, cpus: Int, running: Int, total: Int, groups: [ContainerGroup],
@@ -171,8 +174,9 @@ public struct ContainerReport: Codable, Sendable, Hashable {
     /// Running containers marked to be left alone.
     public var kept: [ContainerMemory] { groups.flatMap(\.containers).filter(\.isKept) }
 
-    /// What the host is charged beyond what the containers use: what a VM restart would give back.
-    public var excessBytes: Int64 { max(0, hostFootprintBytes - usedByContainersBytes) }
+    /// What a VM restart would give back: what the host is charged, minus what the containers
+    /// use, minus what a freshly restarted VM costs anyway.
+    public var excessBytes: Int64 { max(0, hostFootprintBytes - usedByContainersBytes - baselineOverheadBytes) }
 
     /// What the containers themselves use right now, by the runtime's own accounting.
     public var usedByContainersBytes: Int64 { groups.reduce(0) { $0 + $1.memoryBytes } }
@@ -188,8 +192,10 @@ public struct ContainerReport: Codable, Sendable, Hashable {
 
     public var explanation: String {
         var text = "\(running) running container\(running == 1 ? "" : "s") use \(Bytes.format(usedByContainersBytes)) of a virtual machine limited to \(Bytes.format(vmLimitBytes))."
-        if hostFootprintBytes > usedByContainersBytes + (2 << 30) {
-            text += " This Mac is charged \(Bytes.format(hostFootprintBytes)) for that machine: Linux keeps memory it once used as cache, and the virtual machine hands it back slowly or not at all."
+        if excessBytes > (2 << 30) {
+            text += " This Mac is charged \(Bytes.format(hostFootprintBytes)) for that machine: Linux keeps memory it once used as cache, and the virtual machine hands it back slowly or not at all. Restarting it would return about \(Bytes.format(excessBytes))."
+        } else if hostFootprintBytes > 0 {
+            text += " This Mac is charged \(Bytes.format(hostFootprintBytes)) for that machine, which is about what it costs right after a restart."
         }
         if let suggestedLimitBytes {
             text += " A limit around \(Bytes.format(suggestedLimitBytes)) would still leave 1.5× headroom over what is used now."
