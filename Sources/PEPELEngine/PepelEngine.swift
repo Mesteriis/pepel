@@ -159,8 +159,8 @@ public actor PepelEngine {
     /// Asks the container runtime now (blocking for a couple of seconds); used by the command line.
     public func inspectContainers() async -> ContainerReport? {
         let liveState = await refreshLive()
-        let tools = tools, index = projectIndex
-        guard var report = await Task.detached(priority: .utility, operation: { ContainerInspector(tools: tools).inspect(attributor: index) }).value else { return nil }
+        let tools = tools, index = projectIndex, keep = settings.keepContainers
+        guard var report = await Task.detached(priority: .utility, operation: { ContainerInspector(tools: tools).inspect(attributor: index, keep: keep) }).value else { return nil }
         containerReport = report
         report = annotate(report, sessions: liveState.agentSessions, vm: liveState.memoryOwners.first { $0.kind == .virtualMachine }, now: Date())
         return report
@@ -232,9 +232,9 @@ public actor PepelEngine {
             containerReport = nil
         } else if now.timeIntervalSince(containerRefreshStarted) >= 120 {
             containerRefreshStarted = now
-            let tools = tools, index = projectIndex
+            let tools = tools, index = projectIndex, keep = settings.keepContainers
             Task.detached(priority: .utility) { [weak self] in
-                let report = ContainerInspector(tools: tools).inspect(attributor: index)
+                let report = ContainerInspector(tools: tools).inspect(attributor: index, keep: keep)
                 await self?.setContainerReport(report)
             }
         }

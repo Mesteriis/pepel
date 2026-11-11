@@ -32,6 +32,12 @@ extension CleanupPolicyEngine {
         var warnings = ["Containers and their volumes are kept; `docker compose start` brings them back."]
 
         if group.containers.isEmpty { denials.append("No running containers in this group.") }
+        let kept = group.containers.filter(\.isKept)
+        if !group.containers.isEmpty, kept.count == group.containers.count {
+            denials.append("Every container here is marked to be left running.")
+        } else if !kept.isEmpty {
+            warnings.append("\(kept.count) container\(kept.count == 1 ? " is" : "s are") marked to be left running and will not be stopped: \(kept.map(\.name).joined(separator: ", ")).")
+        }
         if let projectID = group.projectID {
             if protections.contains(where: { $0.kind == .project && PathUtil.isInsideIgnoringCase(projectID, root: $0.value) }) {
                 denials.append("Its project is excluded by one of your protection rules.")
@@ -105,8 +111,11 @@ public struct ContainerStopper: Sendable {
     }
 
     public func stop(_ approved: ApprovedContainerStop) -> ContainerStopReport {
-        let names = approved.group.containers.map(\.name)
-        var report = ContainerStopReport(groupName: approved.group.name, stopped: [], failed: [], memoryBytes: approved.group.memoryBytes)
+        // Containers on the keep list are never part of a stop, whoever asked.
+        let names = approved.group.stoppable.map(\.name)
+        var report = ContainerStopReport(
+            groupName: approved.group.name, stopped: [], failed: [], memoryBytes: approved.group.stoppable.reduce(0) { $0 + $1.memoryBytes })
+        guard !names.isEmpty else { return report }
         // `docker stop` prints the name of each container it stopped, one per line.
         if let result = run(["stop"] + names, 180) {
             let printed = Set(result.output.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) })
@@ -124,5 +133,146 @@ public struct ContainerStopper: Sendable {
                     "project": approved.group.projectID ?? "", "failed": report.failed.joined(separator: ", "),
                 ]))
         return report
+    }
+}
+
+// MARK: - Restarting the container VM
+
+public struct VMRefreshDecision: Codable, Sendable, Hashable {
+    public var verdict: CleanupVerdict
+    public var reasons: [String]
+    public var warnings: [String]
+    public var containers: [String]
+}
+
+/// A VM restart the policy engine cleared.
+public struct ApprovedVMRefresh: Sendable {
+    public let containers: [String]
+    public let initiator: Initiator
+
+    init(containers: [String], initiator: Initiator) {
+        self.containers = containers
+        self.initiator = initiator
+    }
+}
+
+extension CleanupPolicyEngine {
+    /// Restarting the VM is the only thing that gives its memory back to the Mac, and it takes
+    /// every container down for a minute or two. It is therefore manual only: PEPEL proposes it
+    /// with the numbers and the user decides.
+    public func evaluateVMRefresh(_ report: ContainerReport, workingSessions: Int, initiator: Initiator) -> VMRefreshDecision {
+        var denials: [String] = []
+        var confirmations: [String] = []
+        var warnings: [String] = []
+        let names = report.groups.flatMap(\.containers).map(\.name)
+
+        if !report.product.lowercased().contains("docker desktop") {
+            denials.append("Restarting the VM is only supported for Docker Desktop; this is \(report.product).")
+        }
+        switch initiator {
+        case .agent: denials.append("Agents cannot have the container VM restarted.")
+        case .automatic: denials.append("The container VM is never restarted automatically.")
+        case .user, .cli: confirmations.append("All \(names.count) running containers go down for a minute or two and are started again afterwards.")
+        }
+        if !report.kept.isEmpty {
+            warnings.append("\(report.kept.count) container\(report.kept.count == 1 ? "" : "s") marked to be left running will be restarted too; a VM restart cannot spare any: \(report.kept.map(\.name).joined(separator: ", ")).")
+        }
+        if workingSessions > 0 {
+            warnings.append("\(workingSessions) agent session\(workingSessions == 1 ? " is" : "s are") working right now and may be using these containers.")
+        }
+        warnings.append("Data in volumes is kept. Work a container is doing at that moment is interrupted.")
+        warnings.append("About \(Bytes.format(report.excessBytes)) is charged to the Mac beyond what the containers use; how much of it returns is measured afterwards, not promised.")
+        let verdict: CleanupVerdict = !denials.isEmpty ? .denied : !confirmations.isEmpty ? .needsConfirmation : .allowed
+        return VMRefreshDecision(verdict: verdict, reasons: denials.isEmpty ? confirmations : denials, warnings: warnings, containers: names)
+    }
+
+    public func approveVMRefresh(_ decision: VMRefreshDecision, confirmed: Bool, initiator: Initiator) -> ApprovedVMRefresh? {
+        guard decision.verdict == .needsConfirmation, confirmed, initiator == .user || initiator == .cli else { return nil }
+        return ApprovedVMRefresh(containers: decision.containers, initiator: initiator)
+    }
+}
+
+public struct VMRefreshReport: Codable, Sendable {
+    public var restarted: Bool
+    /// Containers that were running before and are running again.
+    public var back: [String]
+    /// Containers that were running before and could not be started again.
+    public var missing: [String]
+    public var steps: [String]
+    public var hostFootprintBefore: Int64 = 0
+    public var hostFootprintAfter: Int64 = 0
+
+    public var returnedBytes: Int64 { hostFootprintBefore - hostFootprintAfter }
+}
+
+/// Restarts Docker Desktop and brings back exactly the containers that were running.
+public struct ContainerVMRefresher: Sendable {
+    public typealias Runner = ContainerStopper.Runner
+
+    let run: Runner
+    let store: PepelStore?
+    public var pollInterval: Duration = .seconds(3)
+    public var readyTimeout: TimeInterval = 240
+
+    public init(tools: ToolRunner, store: PepelStore?) {
+        run = { arguments, timeout in tools.run("docker", arguments, timeout: timeout) }
+        self.store = store
+    }
+
+    public init(store: PepelStore?, run: @escaping Runner) {
+        self.run = run
+        self.store = store
+    }
+
+    private func running() -> Set<String>? {
+        guard let result = run(["ps", "--format", "{{.Names}}"], 10), result.status == 0 else { return nil }
+        return Set(result.output.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty })
+    }
+
+    public func refresh(_ approved: ApprovedVMRefresh) async -> VMRefreshReport {
+        var report = VMRefreshReport(restarted: false, back: [], missing: [], steps: [])
+        // The list is taken again right before the restart: it is what must come back.
+        let before = running() ?? Set(approved.containers)
+        report.steps.append("\(before.count) containers were running.")
+
+        guard let restart = run(["desktop", "restart"], 300), restart.status == 0 else {
+            report.steps.append("`docker desktop restart` failed; nothing was changed.")
+            report.missing = []
+            record(report, initiator: approved.initiator)
+            return report
+        }
+        report.restarted = true
+        report.steps.append("Docker Desktop was restarted.")
+
+        let deadline = ContinuousClock.now + .seconds(readyTimeout)
+        var now = running()
+        while now == nil, ContinuousClock.now < deadline {
+            try? await Task.sleep(for: pollInterval)
+            now = running()
+        }
+        guard let after = now else {
+            report.steps.append("Docker did not answer within \(Int(readyTimeout)) seconds; containers were not started.")
+            report.missing = before.sorted()
+            record(report, initiator: approved.initiator)
+            return report
+        }
+        // Containers with a restart policy are back on their own; the rest are started here.
+        let toStart = before.subtracting(after).sorted()
+        report.steps.append("\(before.intersection(after).count) came back on their own; starting \(toStart.count).")
+        if !toStart.isEmpty { _ = run(["start"] + toStart, 300) }
+        let final = running() ?? after
+        report.back = before.intersection(final).sorted()
+        report.missing = before.subtracting(final).sorted()
+        report.steps.append(report.missing.isEmpty ? "All \(report.back.count) containers are running again." : "\(report.missing.count) did not start: \(report.missing.joined(separator: ", ")).")
+        record(report, initiator: approved.initiator)
+        return report
+    }
+
+    private func record(_ report: VMRefreshReport, initiator: Initiator) {
+        store?.appendAudit(
+            AuditEntry(
+                kind: .container, initiator: initiator.rawValue, subject: "Docker Desktop VM",
+                outcome: report.restarted ? (report.missing.isEmpty ? "restarted" : "restarted, \(report.missing.count) containers not back") : "restart failed",
+                detail: ["steps": report.steps.joined(separator: " "), "missing": report.missing.joined(separator: ", ")]))
     }
 }

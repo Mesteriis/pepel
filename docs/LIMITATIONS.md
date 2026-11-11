@@ -56,6 +56,20 @@ Stated plainly so that nothing in the UI is mistaken for more than it is.
   the application running first). A helper an application leaves running on purpose looks the
   same as a forgotten one, which is why automatic termination of leftovers is opt-in.
 
+## Containers
+
+- Stopping some containers frees memory inside the VM, not on the Mac: the VM keeps what it once
+  touched. Only restarting the VM returns it (or Docker Desktop's Resource Saver, when *no*
+  container is running).
+- A VM restart takes every container down for a minute or two; none can be spared.
+- Containers are tied to a project through the working directory Docker Compose records, and to
+  agent activity through the project. PEPEL cannot know *which* session started a container.
+- A Docker label cannot be added to or removed from an existing container, so a label cannot
+  express "needed for this session". Leases do that; the `pepel.keep` label is for permanent
+  services, set in the compose file.
+- Only Docker Desktop is supported for the VM restart. Colima, OrbStack and Podman are reported
+  as virtual machines but not inspected.
+
 ## Platform and distribution
 
 - Not sandboxed, by necessity (see [SECURITY.md](SECURITY.md)); not suitable for the Mac App Store.

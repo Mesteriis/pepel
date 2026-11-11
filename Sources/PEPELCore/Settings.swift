@@ -84,7 +84,10 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     /// running in that project for `projectIdleGraceMinutes`. For workstations where containers
     /// exist only to serve development done through agents.
     public var stopContainersOfIdleProjects = false
-    public var projectIdleGraceMinutes = 30
+    public var projectIdleGraceMinutes = 60
+    /// Containers and compose projects PEPEL must leave running: exact container names or compose
+    /// project names. A container can also declare this itself with the label `pepel.keep=true`.
+    public var keepContainers: [String] = []
     /// Opt-in. Terminates processes an application left running after it quit, once
     /// `appLeftoverGraceMinutes` have passed. System-managed components, agent sessions and
     /// container runtimes are never part of this.

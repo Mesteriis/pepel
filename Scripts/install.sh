@@ -22,6 +22,19 @@ mv "$staging" "$target"
 open "$target"
 echo "installed and started $target"
 
+# Make `pepel` available to you and to agents, which are told to use it for leases.
+# Only into ~/.local/bin, only when that directory exists, and never over someone else's file.
+link="$HOME/.local/bin/pepel"
+helper="$target/Contents/Helpers/pepel"
+if [ -d "$HOME/.local/bin" ]; then
+    if [ ! -e "$link" ] || [ "$(readlink "$link" 2>/dev/null)" = "$helper" ]; then
+        ln -sf "$helper" "$link"
+        echo "pepel command: $link"
+    else
+        echo "note: $link exists and is not PEPEL's; left alone."
+    fi
+fi
+
 if pgrep -xq "Hidden Bar"; then
     echo "Hidden Bar is running: expand it and collapse it once so it learns about the restarted PEPEL."
 fi

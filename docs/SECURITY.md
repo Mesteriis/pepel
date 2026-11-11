@@ -99,6 +99,29 @@ Threat model note: any process running as the same user can already read the tok
 database, as it can read your source code. The socket permissions and the token keep out other
 users and accidental callers; the narrow operation set is what limits a participating agent.
 
+## Containers
+
+- PEPEL reads Docker through `docker info`, `docker stats --no-stream` and `docker ps`.
+- It can **stop** the containers of a compose project (`docker stop`): by hand with confirmation,
+  or automatically (`stopContainersOfIdleProjects`, off by default) once the project has had no
+  agent session for `projectIdleGraceMinutes` (60). Containers and volumes are kept. Never
+  stopped automatically: containers not tied to a project, containers on the keep list or
+  labelled `pepel.keep=true`, excluded or leased projects, projects with a running session.
+- It can **restart the Docker Desktop VM** (`docker desktop restart`) and start the same
+  containers again. Manual only, always confirmed; a VM restart cannot spare a container, so
+  kept containers are named in the warning.
+- It never runs `rm`, `down`, `kill`, `prune` on volumes, or anything else that removes data.
+
+## Agents' instruction files
+
+`pepel agents instructions --install` adds a short note about PEPEL to each installed agent's
+global instruction file (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`,
+`~/.config/opencode/AGENTS.md`, `~/.hermes/SOUL.md`). It runs only when asked. The note sits
+between `PEPEL:BEGIN` and `PEPEL:END` markers, is replaced in place on update, and `--remove`
+takes it out leaving the rest of the file as it was. The first version of each changed file is
+copied to PEPEL's support directory. These are the only writes PEPEL ever makes inside an
+agent's directory.
+
 ## Secrets
 
 - Only the argument vector of a process is read. The environment block that follows it in the

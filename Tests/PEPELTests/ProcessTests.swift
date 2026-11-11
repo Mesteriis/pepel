@@ -425,6 +425,8 @@ struct ProcessTests {
         let engine = CleanupPolicyEngine()
         let now = Date()
         var settings = PepelSettings()
+        #expect(settings.projectIdleGraceMinutes == 60, "an hour by default")
+        settings.projectIdleGraceMinutes = 30
         func group(project: String? = "/p/app", sessions: Int = 0, idleMinutes: Double? = 45) -> ContainerGroup {
             var g = ContainerGroup(id: "app", name: "app", projectID: project, projectConfidence: project == nil ? .unknown : .verified, containers: [ContainerMemory(name: "app-db-1", memoryBytes: 1 << 30, cpuPercent: 0)])
             g.agentSessions = sessions
@@ -477,6 +479,113 @@ struct ProcessTests {
         #expect(report.stopped == ["app-db-1"] && report.failed == ["app-api-1"] && report.memoryBytes == (1 << 30) + (1 << 29))
         let entry = store.audit(kinds: [.container]).first
         #expect(entry?.outcome == "stopped 1 of 2" && entry?.initiator == "automatic")
+    }
+
+    @Test("Containers on the keep list or labelled pepel.keep are never stopped, and block nothing else")
+    func keptContainers() throws {
+        let inspector = ContainerInspector { arguments, _ in
+            switch arguments.first {
+            case "info": return "33859940352\t18\t4\t4\tDocker Desktop\n"
+            case "ps": return "app-db-1\tapp\t/p/app\t\napp-api-1\tapp\t/p/app\t\nvault\t\t\ttrue\nmon-grafana-1\tmon\t/p/mon\t\n"
+            case "stats": return "app-db-1\t1GiB / 31GiB\t0%\napp-api-1\t1GiB / 31GiB\t0%\nvault\t1GiB / 31GiB\t0%\nmon-grafana-1\t1GiB / 31GiB\t0%\n"
+            default: return nil
+            }
+        }
+        let report = try #require(inspector.inspect(keep: ["app-db-1", "mon"]))
+        let kept = Dictionary(uniqueKeysWithValues: report.kept.map { ($0.name, $0.keepReason ?? "") })
+        #expect(kept.keys.sorted() == ["app-db-1", "mon-grafana-1", "vault"])
+        #expect(kept["vault"]?.contains("label") == true && kept["app-db-1"]?.contains("keep list") == true && kept["mon-grafana-1"]?.contains("compose project") == true)
+
+        let engine = CleanupPolicyEngine()
+        var settings = PepelSettings()
+        settings.stopContainersOfIdleProjects = true
+        func idle(_ id: String) -> ContainerGroup {
+            var g = report.groups.first { $0.id == id }!
+            g.projectID = "/p/" + id
+            g.idleSince = Date().addingTimeInterval(-7200)
+            return g
+        }
+        // A group that is kept entirely is refused; a mixed one is stopped without its kept member.
+        #expect(engine.evaluateContainerStop(idle("mon"), initiator: .automatic, settings: settings, protections: [], leases: []).verdict == .denied)
+        #expect(engine.evaluateContainerStop(idle("mon"), initiator: .user, settings: settings, protections: [], leases: []).verdict == .denied)
+        let mixed = engine.evaluateContainerStop(idle("app"), initiator: .automatic, settings: settings, protections: [], leases: [])
+        #expect(mixed.verdict == .allowed && mixed.warnings.contains { $0.contains("app-db-1") })
+        let calls = CallLog()
+        let stopped = ContainerStopper(store: nil) { arguments, _ in calls.add(arguments); return (0, "app-api-1\n") }
+            .stop(try #require(engine.approveContainerStop(mixed, confirmed: false, initiator: .automatic)))
+        #expect(calls.all == [["stop", "app-api-1"]] && stopped.stopped == ["app-api-1"])
+    }
+
+    @Test("Restarting the VM is manual only, warns about what it takes down, and brings back exactly what was running")
+    func vmRefresh() async throws {
+        let store = try PepelStore.inMemory()
+        let engine = CleanupPolicyEngine()
+        var kept = ContainerMemory(name: "vault", memoryBytes: 1 << 30, cpuPercent: 0)
+        kept.keepReason = "It carries the label pepel.keep."
+        let report = ContainerReport(
+            product: "Docker Desktop", vmLimitBytes: 32 << 30, cpus: 8, running: 3, total: 9,
+            groups: [ContainerGroup(id: "app", name: "app", containers: [ContainerMemory(name: "app-db-1", memoryBytes: 2 << 30, cpuPercent: 0), ContainerMemory(name: "app-api-1", memoryBytes: 1 << 30, cpuPercent: 0), kept])],
+            hostFootprintBytes: 30 << 30)
+        #expect(engine.evaluateVMRefresh(report, workingSessions: 0, initiator: .automatic).verdict == .denied, "never automatic")
+        #expect(engine.evaluateVMRefresh(report, workingSessions: 0, initiator: .agent).verdict == .denied)
+        var other = report
+        other.product = "OrbStack"
+        #expect(engine.evaluateVMRefresh(other, workingSessions: 0, initiator: .user).verdict == .denied)
+
+        let decision = engine.evaluateVMRefresh(report, workingSessions: 2, initiator: .user)
+        #expect(decision.verdict == .needsConfirmation)
+        #expect(decision.warnings.contains { $0.contains("vault") } && decision.warnings.contains { $0.contains("2 agent sessions are working") })
+        #expect(decision.warnings.contains { $0.contains("27.9 GB") }, "30 GiB charged minus 4 GiB used is 26 GiB")
+        #expect(engine.approveVMRefresh(decision, confirmed: false, initiator: .user) == nil)
+        let approved = try #require(engine.approveVMRefresh(decision, confirmed: true, initiator: .user))
+
+        // Docker: restart succeeds, is unreachable twice, then only the container with a restart policy is back.
+        let state = RefreshScript()
+        var refresher = ContainerVMRefresher(store: store) { arguments, _ in state.answer(arguments) }
+        refresher.pollInterval = .milliseconds(5)
+        let result = await refresher.refresh(approved)
+        #expect(result.restarted && result.back == ["app-api-1", "app-db-1", "vault"] && result.missing.isEmpty)
+        #expect(state.calls.contains(["desktop", "restart"]) && state.calls.contains(["start", "app-api-1", "app-db-1"]))
+        #expect(!state.calls.joined().contains { ["rm", "down", "prune", "volume", "kill"].contains($0) })
+        #expect(store.audit(kinds: [.container]).first?.outcome == "restarted")
+
+        // A failed restart changes nothing and says so.
+        let failing = await ContainerVMRefresher(store: nil) { arguments, _ in arguments.first == "ps" ? (0, "app-db-1\n") : (1, "") }.refresh(approved)
+        #expect(!failing.restarted && failing.steps.last?.contains("failed") == true)
+    }
+
+    @Test("The note for agents is added once, replaced in place, removed cleanly, and never disturbs the rest of the file")
+    func agentInstructionBlock() throws {
+        let f = Fixture()
+        let claude = f.file(f.home + "/.claude/CLAUDE.md", text: "# My rules\n\nAlways write tests.\n")
+        f.dir(f.home + "/.codex")  // installed, no AGENTS.md yet
+        f.file(f.home + "/.hermes/SOUL.md", text: "You are Hermes.\n")
+        // OpenCode is not installed at all.
+        let backups = f.root + "/backups"
+        var settings = PepelSettings()
+
+        let first = AgentInstructions.install(home: f.home, settings: settings, backupDirectory: backups)
+        #expect(first.map(\.1) == [.installed, .installed, .skipped("OpenCode is not installed."), .installed])
+        let text = try String(contentsOfFile: claude, encoding: .utf8)
+        #expect(text.hasPrefix("# My rules\n\nAlways write tests.\n\n" + AgentInstructions.begin))
+        #expect(text.contains("for 60 minutes") && text.contains("Do not protect containers yourself") && text.hasSuffix(AgentInstructions.end + "\n"))
+        #expect(try String(contentsOfFile: f.home + "/.codex/AGENTS.md", encoding: .utf8).hasPrefix(AgentInstructions.begin))
+        #expect(PathUtil.list(backups)?.count == 2, "the two files that existed were backed up; the new one had nothing to back up")
+
+        // Installing again changes nothing; changed settings replace the block in place.
+        #expect(AgentInstructions.install(home: f.home, settings: settings, backupDirectory: backups).map(\.1).filter { $0 == .unchanged }.count == 3)
+        settings.projectIdleGraceMinutes = 90
+        #expect(AgentInstructions.install(home: f.home, settings: settings, backupDirectory: backups).first?.1 == .updated)
+        let updated = try String(contentsOfFile: claude, encoding: .utf8)
+        #expect(updated.contains("for 90 minutes") && !updated.contains("for 60 minutes"))
+        #expect(updated.components(separatedBy: AgentInstructions.begin).count == 2, "exactly one block")
+
+        // Text the user adds after the block survives an update and a removal.
+        try (updated + "\n## Later notes\nKeep these.\n").write(toFile: claude, atomically: true, encoding: .utf8)
+        #expect(AgentInstructions.remove(home: f.home).first?.1 == .removed)
+        #expect(try String(contentsOfFile: claude, encoding: .utf8) == "# My rules\n\nAlways write tests.\n\n## Later notes\nKeep these.\n")
+        #expect(try String(contentsOfFile: f.home + "/.hermes/SOUL.md", encoding: .utf8) == "You are Hermes.\n")
+        #expect(AgentInstructions.remove(home: f.home).allSatisfy { $0.1 == .absent })
     }
 
     // MARK: Agents
@@ -839,4 +948,39 @@ final class CallLog: @unchecked Sendable {
     private var calls: [[String]] = []
     func add(_ call: [String]) { lock.lock(); calls.append(call); lock.unlock() }
     var all: [[String]] { lock.lock(); defer { lock.unlock() }; return calls }
+}
+
+/// A scripted Docker for the VM restart: unreachable twice after the restart, then one container
+/// back by itself, and whatever `docker start` is given afterwards.
+final class RefreshScript: @unchecked Sendable {
+    private let lock = NSLock()
+    private var log: [[String]] = []
+    private var restarted = false
+    private var polls = 0
+    private var running: Set<String> = ["app-db-1", "app-api-1", "vault"]
+
+    var calls: [[String]] { lock.lock(); defer { lock.unlock() }; return log }
+
+    func answer(_ arguments: [String]) -> (status: Int32, output: String)? {
+        lock.lock()
+        defer { lock.unlock() }
+        log.append(arguments)
+        switch arguments.first {
+        case "desktop":
+            restarted = true
+            running = ["vault"]
+            return (0, "")
+        case "ps":
+            if restarted {
+                polls += 1
+                if polls <= 2 { return nil }
+            }
+            return (0, running.sorted().joined(separator: "\n") + "\n")
+        case "start":
+            running.formUnion(arguments.dropFirst())
+            return (0, arguments.dropFirst().joined(separator: "\n"))
+        default:
+            return nil
+        }
+    }
 }

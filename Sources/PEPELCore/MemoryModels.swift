@@ -97,8 +97,11 @@ public struct ContainerMemory: Codable, Sendable, Hashable, Identifiable {
     public var workingDirectory: String?
     public var memoryBytes: Int64
     public var cpuPercent: Double
+    /// Why PEPEL leaves this container running, when it does: the `pepel.keep` label or the keep list.
+    public var keepReason: String?
 
     public var id: String { name }
+    public var isKept: Bool { keepReason != nil }
 
     public init(name: String, composeProject: String? = nil, workingDirectory: String? = nil, memoryBytes: Int64, cpuPercent: Double) {
         self.name = name
@@ -131,6 +134,8 @@ public struct ContainerGroup: Codable, Sendable, Hashable, Identifiable {
 
     public var memoryBytes: Int64 { containers.reduce(0) { $0 + $1.memoryBytes } }
     public var cpuPercent: Double { containers.reduce(0) { $0 + $1.cpuPercent } }
+    /// Containers PEPEL may stop: everything not on the keep list.
+    public var stoppable: [ContainerMemory] { containers.filter { !$0.isKept } }
 }
 
 /// What the container runtime reports about memory inside its virtual machine, next to what
@@ -162,6 +167,12 @@ public struct ContainerReport: Codable, Sendable, Hashable {
         self.hostResidentBytes = hostResidentBytes
         self.measuredAt = measuredAt
     }
+
+    /// Running containers marked to be left alone.
+    public var kept: [ContainerMemory] { groups.flatMap(\.containers).filter(\.isKept) }
+
+    /// What the host is charged beyond what the containers use: what a VM restart would give back.
+    public var excessBytes: Int64 { max(0, hostFootprintBytes - usedByContainersBytes) }
 
     /// What the containers themselves use right now, by the runtime's own accounting.
     public var usedByContainersBytes: Int64 { groups.reduce(0) { $0 + $1.memoryBytes } }

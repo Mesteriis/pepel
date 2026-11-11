@@ -113,6 +113,7 @@ struct SettingsSection: View {
     @Environment(AppModel.self) private var model
     @State private var newRule = ""
     @State private var newRuleKind = ProtectionKind.path
+    @State private var newKeep = ""
 
     var body: some View {
         let s = model.settings
@@ -172,6 +173,25 @@ struct SettingsSection: View {
                 toggle("Terminate verified abandoned build/test processes automatically under memory pressure", s.autoTerminateAbandoned) { v in model.updateSettings { $0.autoTerminateAbandoned = v } }
                 toggle("Stop (never remove) a project's containers when no agent session has worked in it", s.stopContainersOfIdleProjects) { v in model.updateSettings { $0.stopContainersOfIdleProjects = v } }
                 stepper("A project is idle after", s.projectIdleGraceMinutes, 5...720, step: 5, suffix: " min without an agent session") { v in model.updateSettings { $0.projectIdleGraceMinutes = v } }
+                Text("Leave running, whatever happens (container or compose project names; a container labelled pepel.keep=true is always kept):")
+                    .font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                ForEach(s.keepContainers, id: \.self) { name in
+                    HStack {
+                        Badge(text: "keep", tint: Theme.copper)
+                        Text(name).font(Theme.mono).foregroundStyle(Theme.text)
+                        Spacer()
+                        Button("Remove") { model.updateSettings { $0.keepContainers.removeAll { $0 == name } } }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                    }
+                }
+                HStack(spacing: 8) {
+                    TextField("container or compose project name", text: $newKeep).textFieldStyle(.roundedBorder).font(.system(size: 12)).frame(maxWidth: 320)
+                    Button("Keep running") {
+                        let name = newKeep.trimmingCharacters(in: .whitespaces)
+                        model.updateSettings { if !$0.keepContainers.contains(name) { $0.keepContainers.append(name) } }
+                        newKeep = ""
+                    }
+                    .buttonStyle(QuietButtonStyle()).disabled(newKeep.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
                 toggle("Terminate what an application leaves running after it quits", s.terminateAppLeftovers) { v in model.updateSettings { $0.terminateAppLeftovers = v } }
                 stepper("Wait", s.appLeftoverGraceMinutes, 1...240, suffix: " min after the application quit") { v in model.updateSettings { $0.appLeftoverGraceMinutes = v } }
                 Text("Covers helpers and child processes PEPEL saw the application start, or that run from inside its bundle. System-managed components, agent sessions and container runtimes are never included.")

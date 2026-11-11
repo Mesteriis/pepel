@@ -200,6 +200,28 @@ case "containers":
         break
     }
     let containerSettings = await engine.currentSettings()
+    if arguments.positional.first == "keep" || arguments.positional.first == "unkeep" {
+        guard arguments.positional.count > 1 else { Out.error("usage: pepel containers keep|unkeep <container or compose project>"); exit(2) }
+        let name = arguments.positional[1], adding = arguments.positional.first == "keep"
+        let updated = try? await engine.update { settings in
+            settings.keepContainers.removeAll { $0 == name }
+            if adding { settings.keepContainers.append(name) }
+        }
+        print("PEPEL leaves these running: " + ((updated?.keepContainers.isEmpty ?? true) ? "(none; containers labelled pepel.keep=true are always left running)" : updated!.keepContainers.joined(separator: ", ")))
+        break
+    }
+    if arguments.positional.first == "refresh-vm" {
+        guard let (decision, before) = await engine.vmRefreshDecision(initiator: .cli) else { Out.error("no container runtime answered"); exit(1) }
+        print("\(before.product): \(decision.containers.count) containers use \(Bytes.format(before.usedByContainersBytes)); the Mac is charged \(Bytes.format(before.hostFootprintBytes)) for the VM.")
+        for line in decision.reasons + decision.warnings { print("  ! \(line)") }
+        guard decision.verdict != .denied else { print("PEPEL will not restart the VM."); exit(3) }
+        guard arguments.flags.contains("yes") || Out.confirm("Restart Docker Desktop and start the same containers again?") else { print("Nothing was restarted."); break }
+        if let report = await engine.refreshContainerVM(confirmed: true, initiator: .cli)?.report {
+            for step in report.steps { print("  \(step)") }
+            print("Charged to the Mac for the VM: \(Bytes.format(report.hostFootprintBefore)) before, \(Bytes.format(report.hostFootprintAfter)) after (\(Bytes.formatDelta(-report.returnedBytes))). Measured about 20 seconds after Docker came back.")
+        }
+        break
+    }
     if arguments.positional.first == "stop" {
         guard arguments.positional.count > 1 else { Out.error("usage: pepel containers stop <compose project> [--yes]"); exit(2) }
         let name = arguments.positional[1]
@@ -220,7 +242,9 @@ case "containers":
         ["MEMORY", "CPU", "CONTAINERS", "COMPOSE PROJECT", "PEPEL PROJECT", "AGENT SESSIONS", "STATUS"],
         report.groups.map { group in
             let status: String
-            if group.projectID == nil {
+            if !group.containers.isEmpty, group.stoppable.isEmpty {
+                status = "kept running (keep list or pepel.keep label)"
+            } else if group.projectID == nil {
                 status = "not tied to a project; left alone"
             } else if group.agentSessions > 0 {
                 status = "in use"
@@ -268,6 +292,35 @@ case "leftovers":
     }
     print("\nLeftovers are \(settings.terminateAppLeftovers ? "terminated automatically \(settings.appLeftoverGraceMinutes) minutes after the application quit" : "only reported; use `pepel terminate <pid>`, or enable terminateAppLeftovers").")
     print("macOS frees a quit application's own memory by itself; only what keeps running holds any.")
+
+case "agents" where arguments.positional.first == "instructions":
+    let settings = await engine.currentSettings()
+    func describe(_ outcome: AgentInstructions.Outcome) -> String {
+        switch outcome {
+        case .installed: "added"
+        case .updated: "updated"
+        case .unchanged: "already current"
+        case .removed: "removed"
+        case .absent: "not present"
+        case .skipped(let why): "skipped — \(why)"
+        }
+    }
+    if arguments.flags.contains("install") {
+        for (target, outcome) in AgentInstructions.install(home: appPaths.home, settings: settings, backupDirectory: appPaths.supportDirectory + "/instruction-backups") {
+            print("\(target.agent.displayName.padding(toLength: 12, withPad: " ", startingAt: 0)) \(PathUtil.display(target.path, home: appPaths.home)): \(describe(outcome))")
+        }
+        print("The first version of each changed file is kept in \(PathUtil.display(appPaths.supportDirectory, home: appPaths.home))/instruction-backups.")
+    } else if arguments.flags.contains("remove") {
+        for (target, outcome) in AgentInstructions.remove(home: appPaths.home) {
+            print("\(target.agent.displayName.padding(toLength: 12, withPad: " ", startingAt: 0)) \(PathUtil.display(target.path, home: appPaths.home)): \(describe(outcome))")
+        }
+    } else {
+        for (target, installed) in AgentInstructions.status(home: appPaths.home) {
+            print("\(target.agent.displayName.padding(toLength: 12, withPad: " ", startingAt: 0)) \(PathUtil.display(target.path, home: appPaths.home)): \(installed ? "note installed" : "no note")")
+        }
+        print("\nThe note PEPEL would add (`pepel agents instructions --install`, `--remove` to take it out):\n")
+        print(AgentInstructions.block(settings: settings))
+    }
 
 case "agents":
     let live = await engine.refreshLive()

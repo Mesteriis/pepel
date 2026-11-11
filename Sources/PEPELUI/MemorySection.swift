@@ -6,6 +6,7 @@ struct MemorySection: View {
     @State private var search = ""
     @State private var showAgentOwned = false
     @State private var expandedOwners = false
+    @State private var stopping: ContainerGroup?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -129,8 +130,21 @@ struct MemorySection: View {
                     Caption("\(report.product): containers")
                     Spacer()
                     Text("read \(TimeFormat.ago(report.measuredAt))").font(.system(size: 10)).foregroundStyle(Theme.tertiary)
+                    if model.isRefreshingVM {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button("Restart VM to return memory…") { model.requestVMRefresh() }.buttonStyle(CopperButtonStyle(prominent: false))
+                            .help("Restarts Docker Desktop and starts the same containers again. Asks first.")
+                    }
                 }
                 Text(report.explanation).font(.system(size: 12)).foregroundStyle(Theme.text).fixedSize(horizontal: false, vertical: true)
+                if let done = model.vmRefreshReport {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(done.restarted ? "VM restarted: charged \(Bytes.format(done.hostFootprintBefore)) before, \(Bytes.format(done.hostFootprintAfter)) after." : "The VM was not restarted.")
+                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(done.restarted && done.missing.isEmpty ? Theme.forest : Theme.amber)
+                        ForEach(done.steps, id: \.self) { Text($0).font(.system(size: 11)).foregroundStyle(Theme.secondary) }
+                    }
+                }
                 VStack(alignment: .leading, spacing: 4) {
                     bar("Used by containers", report.usedByContainersBytes, scale, Theme.forest)
                     bar("Virtual machine limit", report.vmLimitBytes, scale, Theme.secondary)
@@ -150,16 +164,39 @@ struct MemorySection: View {
                         } else if let idle = group.idleSince {
                             Badge(text: "no agent for \(TimeFormat.age(Date().timeIntervalSince(idle)))", tint: Theme.amber)
                         }
+                        if !group.containers.filter(\.isKept).isEmpty {
+                            Badge(text: group.stoppable.isEmpty ? "kept running" : "\(group.containers.count - group.stoppable.count) kept", tint: Theme.copper)
+                        }
                         Spacer(minLength: 0)
                         Text(String(format: "%.1f%% CPU", group.cpuPercent)).font(.system(size: 10)).monospacedDigit().foregroundStyle(Theme.secondary)
+                        if !group.stoppable.isEmpty {
+                            Button("Stop") { stopping = group }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Theme.copper)
+                        }
                     }
                     .foregroundStyle(Theme.text)
-                    .help(group.containers.map { "\($0.name): \(Bytes.format($0.memoryBytes))" }.joined(separator: "\n"))
+                    .help(group.containers.map { "\($0.name): \(Bytes.format($0.memoryBytes))\($0.isKept ? " — kept" : "")" }.joined(separator: "\n"))
                 }
                 Text("The limit is set in \(report.product) › Settings › Resources. PEPEL does not change it and does not stop or restart containers. \(report.total - report.running) stopped containers use no memory.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
             .panel()
+            .confirmationDialog(
+                "Stop \(stopping?.stoppable.count ?? 0) containers of \(stopping?.name ?? "")?", isPresented: Binding(get: { stopping != nil }, set: { if !$0 { stopping = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button("Stop containers") { if let group = stopping { model.stopContainers(group) } }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("They are stopped, not removed: containers and volumes stay, and `docker compose start` brings them back. Containers marked to be kept are left running.")
+            }
+            .confirmationDialog(
+                "Restart the Docker VM?", isPresented: Binding(get: { model.pendingVMRefresh != nil }, set: { if !$0 { model.pendingVMRefresh = nil } }), titleVisibility: .visible
+            ) {
+                if model.pendingVMRefresh?.verdict != .denied { Button("Restart and bring containers back") { model.confirmVMRefresh() } }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(((model.pendingVMRefresh?.reasons ?? []) + (model.pendingVMRefresh?.warnings ?? [])).joined(separator: "\n"))
+            }
         }
     }
 

@@ -40,20 +40,25 @@ public struct ContainerInspector: Sendable {
     }
 
     /// Nil when Docker is not installed or its daemon does not answer.
-    public func inspect(attributor: (any ProjectAttributing)? = nil, now: Date = Date()) -> ContainerReport? {
+    public func inspect(attributor: (any ProjectAttributing)? = nil, keep: [String] = [], now: Date = Date()) -> ContainerReport? {
         guard let info = run(["info", "--format", "{{.MemTotal}}\t{{.NCPU}}\t{{.ContainersRunning}}\t{{.Containers}}\t{{.OperatingSystem}}"], 6) else { return nil }
         let fields = info.trimmingCharacters(in: .whitespacesAndNewlines).components(separatedBy: "\t")
         guard fields.count >= 5, let limit = Int64(fields[0]) else { return nil }
 
         // Compose project and its directory come from labels Docker Compose itself sets.
-        var labels: [String: (project: String?, directory: String?)] = [:]
-        if let ps = run(["ps", "--format", "{{.Names}}\t{{.Label \"com.docker.compose.project\"}}\t{{.Label \"com.docker.compose.project.working_dir\"}}"], 6) {
-            for line in ps.split(separator: "\n") {
+        var labels: [String: (project: String?, directory: String?, keep: Bool)] = [:]
+        if let ps = run(["ps", "--format", "{{.Names}}\t{{.Label \"com.docker.compose.project\"}}\t{{.Label \"com.docker.compose.project.working_dir\"}}\t{{.Label \"pepel.keep\"}}"], 6) {
+            for line in ps.split(separator: "\n", omittingEmptySubsequences: true) {
                 let parts = line.components(separatedBy: "\t")
                 guard let name = parts.first, !name.isEmpty else { continue }
-                labels[name] = (parts.count > 1 && !parts[1].isEmpty ? parts[1] : nil, parts.count > 2 && !parts[2].isEmpty ? parts[2] : nil)
+                let keepLabel = parts.count > 3 ? parts[3].trimmingCharacters(in: .whitespaces).lowercased() : ""
+                labels[name] = (
+                    parts.count > 1 && !parts[1].isEmpty ? parts[1] : nil, parts.count > 2 && !parts[2].isEmpty ? parts[2] : nil,
+                    ["true", "1", "yes"].contains(keepLabel)
+                )
             }
         }
+        let keepList = Set(keep)
 
         var containers: [ContainerMemory] = []
         if let stats = run(["stats", "--no-stream", "--format", "{{.Name}}\t{{.MemUsage}}\t{{.CPUPerc}}"], 15) {
@@ -61,10 +66,17 @@ public struct ContainerInspector: Sendable {
                 let parts = line.components(separatedBy: "\t")
                 guard parts.count >= 3, let used = Self.parseMemory(parts[1].components(separatedBy: "/")[0]) else { continue }
                 let label = labels[parts[0]]
-                containers.append(
-                    ContainerMemory(
-                        name: parts[0], composeProject: label?.project, workingDirectory: label?.directory, memoryBytes: used,
-                        cpuPercent: Double(parts[2].replacingOccurrences(of: "%", with: "")) ?? 0))
+                var container = ContainerMemory(
+                    name: parts[0], composeProject: label?.project, workingDirectory: label?.directory, memoryBytes: used,
+                    cpuPercent: Double(parts[2].replacingOccurrences(of: "%", with: "")) ?? 0)
+                if label?.keep == true {
+                    container.keepReason = "It carries the label pepel.keep."
+                } else if keepList.contains(parts[0]) {
+                    container.keepReason = "It is on PEPEL's keep list."
+                } else if let project = label?.project, keepList.contains(project) {
+                    container.keepReason = "Its compose project is on PEPEL's keep list."
+                }
+                containers.append(container)
             }
         }
 

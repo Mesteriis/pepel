@@ -169,6 +169,33 @@ extension PepelEngine {
         return (decision, report)
     }
 
+    public func vmRefreshDecision(initiator: Initiator) async -> (decision: VMRefreshDecision, report: ContainerReport)? {
+        guard let report = await inspectContainers() else { return nil }
+        let working = live?.agentSessions.filter { $0.state == .working && !$0.isService }.count ?? 0
+        return (policy.evaluateVMRefresh(report, workingSessions: working, initiator: initiator), report)
+    }
+
+    /// Restarts the container VM and starts the same containers again, measuring what the Mac
+    /// is charged for the VM before and after.
+    public func refreshContainerVM(confirmed: Bool, initiator: Initiator) async -> (decision: VMRefreshDecision, report: VMRefreshReport?)? {
+        guard let (decision, containers) = await vmRefreshDecision(initiator: initiator) else { return nil }
+        guard let approved = policy.approveVMRefresh(decision, confirmed: confirmed, initiator: initiator) else { return (decision, nil) }
+        let tools = tools, store = store
+        var report = await ContainerVMRefresher(tools: tools, store: store).refresh(approved)
+        report.hostFootprintBefore = containers.hostFootprintBytes
+        // Give the new VM a moment to settle before reading what it is charged.
+        try? await Task.sleep(for: .seconds(20))
+        let after = await refreshLive()
+        report.hostFootprintAfter = after.memoryOwners.first { $0.kind == .virtualMachine }?.footprintBytes ?? 0
+        store.appendAudit(
+            AuditEntry(
+                kind: .container, initiator: initiator.rawValue, subject: "Docker Desktop VM memory", outcome: "measured",
+                bytes: max(0, report.returnedBytes),
+                detail: ["chargedBefore": Bytes.format(report.hostFootprintBefore), "chargedAfter": Bytes.format(report.hostFootprintAfter)]))
+        containerRefreshStarted = .distantPast
+        return (decision, report)
+    }
+
     /// Stops containers of projects no agent session has worked in for the grace period.
     func stopIdleProjectContainers() async -> [ContainerStopReport] {
         guard settings.stopContainersOfIdleProjects, let groups = live?.containers?.groups else { return [] }

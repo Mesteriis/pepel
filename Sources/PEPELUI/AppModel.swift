@@ -354,6 +354,38 @@ public final class AppModel {
         refreshSecondary()
     }
 
+    // MARK: Containers
+
+    public var pendingVMRefresh: VMRefreshDecision?
+    public var vmRefreshReport: VMRefreshReport?
+    public var isRefreshingVM = false
+
+    public func requestVMRefresh() {
+        Task { pendingVMRefresh = await engine.vmRefreshDecision(initiator: .user)?.decision }
+    }
+
+    public func confirmVMRefresh() {
+        pendingVMRefresh = nil
+        isRefreshingVM = true
+        Task {
+            vmRefreshReport = await engine.refreshContainerVM(confirmed: true, initiator: .user)?.report
+            isRefreshingVM = false
+            live = await engine.live
+            refreshSecondary()
+        }
+    }
+
+    public func stopContainers(_ group: ContainerGroup) {
+        Task {
+            if let result = await engine.stopContainers(groupID: group.id, confirmed: true, initiator: .user) {
+                message = result.report.map { "Stopped \($0.stopped.count) container\($0.stopped.count == 1 ? "" : "s") of \($0.groupName)." + ($0.failed.isEmpty ? "" : " Not stopped: \($0.failed.joined(separator: ", ")).") }
+                    ?? "Not stopped: \(result.decision.reasons.joined(separator: " "))"
+            }
+            live = await engine.refreshLive()
+            refreshSecondary()
+        }
+    }
+
     public func reveal(_ path: String) {
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
     }
