@@ -495,6 +495,34 @@ case "thaw":
         if !trees.isEmpty { print("\n`pepel thaw <pid>` wakes one, `pepel thaw --all` wakes all.") }
     }
 
+case "agents" where arguments.positional.first == "servers":
+    let live = await engine.refreshLive()
+    if arguments.positional.dropFirst().first == "clean" {
+        guard !live.staleBranches.isEmpty else { print("Nothing inside agent servers looks left behind."); break }
+        for item in live.staleBranches { print("  \(item.process.pid)  \(Bytes.format(item.subtreeFootprintBytes))  \(Out.truncate(item.process.shortCommand, 80))") }
+        print("An open conversation that still uses one of these loses its tools until the application starts them again.")
+        guard arguments.flags.contains("yes") || Out.confirm("End these \(live.staleBranches.count) old copies?") else { print("Nothing was ended."); break }
+        var ended = 0
+        for item in live.staleBranches {
+            if case .completed(let report) = await engine.terminate(item.process.identity, confirmed: true, force: false, initiator: .cli), report.exited { ended += 1 }
+        }
+        print("Ended \(ended) of \(live.staleBranches.count).")
+        break
+    }
+    if arguments.json { Out.json(live.serviceBranches); break }
+    if live.serviceBranches.isEmpty { print("No agent server has started anything."); break }
+    Out.table(
+        ["PID", "MEMORY", "PROCS", "STARTED", "IDLE", "COPIES", "", "SERVER", "PROGRAM"],
+        live.serviceBranches.map {
+            [
+                String($0.root.pid), Bytes.format($0.footprintBytes), String($0.processCount), TimeFormat.ago($0.startedAt),
+                $0.idleFor.map { TimeFormat.age($0) } ?? "—", String($0.copies), $0.isStale ? "old copy" : ($0.copies > 1 ? "newest" : ""), $0.serviceName,
+                Out.truncate($0.signature, 60),
+            ]
+        })
+    let stale = live.serviceBranches.filter(\.isStale)
+    print(stale.isEmpty ? "\nNothing looks left behind." : "\n\(stale.count) old copies hold \(Bytes.format(stale.reduce(0) { $0 + $1.footprintBytes })). `pepel agents servers clean` ends them after asking.")
+
 case "agents":
     let live = await engine.refreshLive()
     if arguments.json { Out.json(live.agentSessions); break }

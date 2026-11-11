@@ -100,6 +100,7 @@ struct BuildsSection: View {
 
 struct AgentsSection: View {
     @Environment(AppModel.self) private var model
+    @State private var confirmBranches = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -108,6 +109,7 @@ struct AgentsSection: View {
                 subtitle: "Agent sessions are found by watching processes, not by reading the agents' private files. Their state, history and credentials are always protected.")
             sessions
             helpers
+            serverBranches
             leases
             integration
         }
@@ -167,6 +169,43 @@ struct AgentsSection: View {
             }
         }
         .panel()
+    }
+
+    /// What agents' servers started and kept, with the old idle copies marked.
+    @ViewBuilder private var serverBranches: some View {
+        if let branches = model.live?.serviceBranches, !branches.isEmpty {
+            let stale = branches.filter(\.isStale)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Caption("Inside agent servers")
+                    Spacer()
+                    if !stale.isEmpty {
+                        Text("\(Bytes.format(stale.reduce(0) { $0 + $1.footprintBytes })) in old copies").font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(Theme.amber)
+                        Button("End \(stale.count) old cop\(stale.count == 1 ? "y" : "ies")…") { confirmBranches = true }.buttonStyle(QuietButtonStyle())
+                    }
+                }
+                ForEach(branches.prefix(14)) { branch in
+                    HStack(spacing: 10) {
+                        Badge(text: branch.isStale ? "old copy" : branch.copies > 1 ? "newest of \(branch.copies)" : "only copy", tint: branch.isStale ? Theme.amber : Theme.tertiary)
+                        Text(branch.signature).font(Theme.mono).lineLimit(1).truncationMode(.middle)
+                        Spacer(minLength: 4)
+                        Text(branch.idleFor.map { "idle \(TimeFormat.age($0))" } ?? "active or newly seen").font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                        Text(Bytes.format(branch.footprintBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 66, alignment: .trailing)
+                    }
+                    .foregroundStyle(Theme.text)
+                    .accessibilityElement(children: .combine)
+                }
+                Text("An agent's server starts tool servers and shells per conversation and often keeps them. PEPEL cannot see conversations, so it marks only an older idle copy of a program the server has since started again. A program that runs once is never marked.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+            .panel()
+            .confirmationDialog("End the old copies inside agent servers?", isPresented: $confirmBranches, titleVisibility: .visible) {
+                Button("End \(stale.count)") { model.endStaleBranches() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("An open conversation that still uses one of them loses its tools until the application starts them again.")
+            }
+        }
     }
 
     /// The same tool server started by every session.

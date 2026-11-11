@@ -181,6 +181,8 @@ public struct ProcessAssessment: Codable, Sendable, Identifiable, Hashable {
     public var dormant = false
     /// Set for a language server or indexer whose editor or agent has exited.
     public var orphanedTool = false
+    /// Set for an older, idle copy of a program inside an agent's server.
+    public var staleServiceBranch = false
 
     public var id: ProcessIdentity { process.identity }
 

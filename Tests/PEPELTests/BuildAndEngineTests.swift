@@ -940,6 +940,51 @@ struct EngineTests {
         #expect(source.signals.isEmpty && source.snapshot().count == 3, "a budget never ends anything")
     }
 
+    @Test("Inside an agent's server only an older, idle copy of a program is marked, and it is ended only when a person asks")
+    func serviceBranches() async throws {
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        let now = Date()
+        func micro(_ hoursAgo: Double) -> UInt64 { UInt64((now.timeIntervalSince1970 - hoursAgo * 3600) * 1_000_000) }
+        let server = process(500, name: "codex", path: "/Applications/ChatGPT.app/Contents/Resources/codex", args: ["codex", "app-server"], start: micro(30))
+        func tool(_ pid: Int32, _ script: String, hoursAgo: Double, cpu: UInt64 = 0) -> ProcessSnapshot {
+            process(pid, parent: 500, name: "node", path: "/usr/local/bin/node", args: ["node", "/opt/tools/\(script)"], start: micro(hoursAgo), cpu: cpu, footprint: 300_000_000)
+        }
+        let oldest = tool(510, "search.js", hoursAgo: 20)
+        let oldestChild = process(511, parent: 510, name: "rg", path: "/usr/local/bin/rg", start: micro(20), footprint: 50_000_000)
+        let older = tool(520, "search.js", hoursAgo: 10)
+        let newest = tool(530, "search.js", hoursAgo: 1)
+        let only = tool(540, "files.js", hoursAgo: 20)
+        // Another program in two copies; the older one has been working.
+        let busyOld = tool(550, "build.js", hoursAgo: 9, cpu: 600 * 1_000_000_000)
+        let busyNew = tool(560, "build.js", hoursAgo: 2)
+        let all = [server, oldest, oldestChild, older, newest, only, busyOld, busyNew]
+        // Three hours of readings: nothing used CPU except the old build tool.
+        for hoursAgo in [3.0, 2, 1, 0.1] {
+            store.recordObservations(all.map { p in var copy = p; copy.cpuTimeNs = p.pid == 550 ? UInt64((3 - hoursAgo) * 200) * 1_000_000_000 : 0; return copy }, at: now.addingTimeInterval(-hoursAgo * 3600))
+        }
+        let source = FakeProcessSource(processes: all)
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: source, telemetry: { SystemTelemetry() })
+        let live = await engine.refreshLive()
+        #expect(live.serviceBranches.count == 6)
+        #expect(Set(live.serviceBranches.filter(\.isStale).map(\.root.pid)) == [510, 520], "not the newest copy, the only copy, or the copy that is working")
+        #expect(live.serviceBranches.first { $0.root.pid == 510 }?.footprintBytes == 350_000_000)
+        #expect(live.agentSessions.first?.isService == true)
+
+        _ = try await engine.update { $0.autoTerminateAbandoned = true; $0.terminateSleepingAgents = true }
+        _ = await engine.automaticPass()
+        #expect(source.signals.isEmpty, "never on its own")
+        if case .denied = await engine.terminate(oldest.identity, confirmed: true, force: false, initiator: .agent) {} else { Issue.record("agents must be denied") }
+        if case .completed = await engine.terminate(newest.identity, confirmed: true, force: false, initiator: .user) { Issue.record("the newest copy is not PEPEL's to end") }
+        let plan = await engine.reclaimPlan()
+        #expect(plan.steps.contains { $0.kind == .serviceBranches && !$0.selectedByDefault && $0.estimatedBytes == 650_000_000 })
+        _ = await engine.reclaim(["serviceBranches"])
+        #expect(Set(source.signals.map(\.pid)) == [510, 511, 520], "each old copy with what it started")
+        #expect(Set(source.snapshot().map(\.pid)) == [500, 530, 540, 550, 560])
+    }
+
     final class FlushCounter: @unchecked Sendable {
         private let lock = NSLock()
         private var value = 0

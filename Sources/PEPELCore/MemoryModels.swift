@@ -214,7 +214,7 @@ public struct ContainerReport: Codable, Sendable, Hashable {
 // MARK: - Free memory
 
 public enum ReclaimStepKind: String, Codable, Sendable, CaseIterable {
-    case abandonedProcesses, appLeftovers, sleepingAgents, freezeAgents, idleAgents, grownApps, unusedApps, dormantProcesses, simulators, idleContainers, containerVM, fileCache
+    case abandonedProcesses, appLeftovers, sleepingAgents, freezeAgents, idleAgents, grownApps, unusedApps, dormantProcesses, serviceBranches, simulators, idleContainers, containerVM, fileCache
 }
 
 /// One thing "Free memory" can do, with what it would act on and what it could give back.
@@ -522,5 +522,44 @@ public struct OverBudget: Codable, Sendable, Hashable, Identifiable {
             return OverBudget(ownerID: owner.id, name: owner.name, kind: owner.kind, footprintBytes: owner.footprintBytes, budgetBytes: budget.bytes)
         }
         .sorted { $0.excessBytes > $1.excessBytes }
+    }
+}
+
+// MARK: - Inside agent servers
+
+/// One thing an agent's server started: a tool server or shell with everything under it.
+public struct ServiceBranch: Codable, Sendable, Identifiable, Hashable {
+    public var root: ProcessIdentity
+    public var serviceRoot: ProcessIdentity
+    public var serviceName: String
+    /// The program, reduced to what identifies it, so copies read as one line.
+    public var signature: String
+    public var name: String
+    public var processCount: Int
+    public var footprintBytes: Int64
+    public var startedAt: Date
+    /// How long the whole branch has used almost no CPU; nil when it was busy or not watched long enough.
+    public var idleFor: TimeInterval?
+    /// How many branches of the same program this server has.
+    public var copies = 1
+    public var isNewestCopy = true
+
+    public var id: ProcessIdentity { root }
+    /// An older, idle copy of a program the server has since started again.
+    public var isStale: Bool { idleFor != nil && copies > 1 && !isNewestCopy }
+
+    public init(
+        root: ProcessIdentity, serviceRoot: ProcessIdentity, serviceName: String, signature: String, name: String, processCount: Int,
+        footprintBytes: Int64, startedAt: Date, idleFor: TimeInterval?
+    ) {
+        self.root = root
+        self.serviceRoot = serviceRoot
+        self.serviceName = serviceName
+        self.signature = signature
+        self.name = name
+        self.processCount = processCount
+        self.footprintBytes = footprintBytes
+        self.startedAt = startedAt
+        self.idleFor = idleFor
     }
 }

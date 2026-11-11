@@ -481,6 +481,21 @@ public final class AppModel {
         }
     }
 
+    // MARK: Inside agent servers
+
+    public func endStaleBranches() {
+        Task {
+            var ended = 0
+            let stale = live?.staleBranches ?? []
+            for item in stale {
+                if case .completed(let report) = await engine.terminate(item.process.identity, confirmed: true, force: false, initiator: .user), report.exited { ended += 1 }
+            }
+            message = "Ended \(ended) of \(stale.count) old copies inside agent servers."
+            live = await engine.live
+            refreshSecondary()
+        }
+    }
+
     // MARK: Docker VM memory limit
 
     public var pendingVMLimit: VMLimitDecision?

@@ -100,6 +100,15 @@ extension PepelEngine {
                     estimatedBytes: 0, selectedByDefault: false))
         }
 
+        if !live.staleBranches.isEmpty {
+            steps.append(
+                ReclaimStep(
+                    kind: .serviceBranches, title: "End old copies inside agent servers",
+                    detail: "Tool servers and shells an agent's server started more than once; every copy but the newest that has been idle for \(settings.serviceBranchIdleMinutes) minutes. An open conversation that still uses one loses its tools until the application starts them again.",
+                    targets: live.staleBranches.map { "\(String($0.process.shortCommand.prefix(60))) (PID \($0.process.pid), \(Bytes.format($0.subtreeFootprintBytes)))" },
+                    estimatedBytes: live.staleBranches.reduce(0) { $0 + $1.subtreeFootprintBytes }, selectedByDefault: false))
+        }
+
         if !live.simulators.isEmpty, simulatorShutdown != nil {
             steps.append(
                 ReclaimStep(
@@ -221,6 +230,8 @@ extension PepelEngine {
                 results.append(ReclaimStepResult(kind: step.kind, title: step.title, done: done, attempted: unused.count, notes: notes))
             case .dormantProcesses:
                 results.append(await terminate((live?.dormant ?? []).filter { !$0.eligibility.isNever }.map(\.process.identity), kind: step.kind, title: step.title))
+            case .serviceBranches:
+                results.append(await terminate((live?.staleBranches ?? []).map(\.process.identity), kind: step.kind, title: step.title))
             case .simulators:
                 var done = 0
                 var notes: [String] = []

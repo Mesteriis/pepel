@@ -252,6 +252,7 @@ struct SettingsSection: View {
                 stepper("Call an agent session asleep after", s.agentSleepMinutes, 30...1440, step: 30, suffix: " min of quiet") { v in model.updateSettings { $0.agentSleepMinutes = v } }
                 Text("A session waiting for your reply writes nothing either, so it is treated as asleep. Sessions of Claude Code and Codex can be resumed afterwards; text typed but not sent is lost.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+                stepper("Inside an agent's server, call an older copy left behind after", s.serviceBranchIdleMinutes, 15...1440, step: 15, suffix: " min idle") { v in model.updateSettings { $0.serviceBranchIdleMinutes = v } }
                 Divider().overlay(Theme.stroke)
                 Text("PEPEL's note in agents' global instructions (explains that containers may stop and how to take a lease):").font(.system(size: 11)).foregroundStyle(Theme.secondary)
                 ForEach(model.instructionFiles) { file in

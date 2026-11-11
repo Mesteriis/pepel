@@ -104,6 +104,8 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     public var freeMemoryOnLock = false
     /// Limits for what an owner may hold; exceeding one raises an alert, nothing more.
     public var memoryBudgets: [MemoryBudget] = []
+    /// An older copy of a program inside an agent's server counts as left behind after this long idle.
+    public var serviceBranchIdleMinutes = 120
     public var freezeIdleAgents = false
     public var freezeAfterMinutes = 20
     /// How often a frozen session is woken for a moment to see whether work is waiting.

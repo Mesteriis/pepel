@@ -40,6 +40,10 @@ public struct LiveState: Codable, Sendable {
     public var simulators: [BootedSimulator] = []
     /// Owners holding more than the budget the user set for them.
     public var overBudget: [OverBudget] = []
+    /// What agents' servers have started and kept.
+    public var serviceBranches: [ServiceBranch] = []
+    /// The stale ones among them, assessed so they can be ended.
+    public var staleBranches: [ProcessAssessment] = []
     /// Process trees PEPEL has suspended.
     public var frozen: [FrozenTree] = []
 

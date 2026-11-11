@@ -48,7 +48,7 @@ extension CleanupPolicyEngine {
         // …and, only when a person asks, a process that lives in swap and does nothing.
         let dormant = target.dormant
         // …and a language server whose editor is gone.
-        if !target.role.isDeveloperWorkload && !leftover && !dormant && !target.orphanedTool { denials.append("Not a developer workload; PEPEL leaves applications and system processes alone.") }
+        if !target.role.isDeveloperWorkload && !leftover && !dormant && !target.orphanedTool && !target.staleServiceBranch { denials.append("Not a developer workload; PEPEL leaves applications and system processes alone.") }
 
         switch target.eligibility {
         case .never(let reason):
@@ -61,7 +61,8 @@ extension CleanupPolicyEngine {
         // A sleeping agent session goes down with the tool servers it started; they are "owned by
         // an agent session" only for as long as that session is worth keeping.
         let sleepingAgent = target.lifecycle == .agentSession && target.eligibility == .automaticEligible
-        for child in descendantAssessments where !sleepingAgent {
+        // The same holds for an old copy inside an agent's server: it goes with what it started.
+        for child in descendantAssessments where !sleepingAgent && !target.staleServiceBranch {
             if case .never(let reason) = child.eligibility {
                 denials.append("Its descendant \(child.process.name) (PID \(child.process.pid)) must not be terminated: \(reason)")
             }
@@ -74,7 +75,9 @@ extension CleanupPolicyEngine {
         case .agent:
             denials.append("Agents cannot request process termination.")
         case .automatic:
-            if dormant, !sleepingAgent, !leftover {
+            if target.staleServiceBranch {
+                denials.append("What an agent's server started is only ended when you ask: PEPEL infers that it is left behind, it cannot know.")
+            } else if dormant, !sleepingAgent, !leftover {
                 denials.append("A process living in swap is only ended when you ask: being untouched does not prove it is unwanted.")
             } else if sleepingAgent {
                 if !settings.terminateSleepingAgents { denials.append("Terminating sleeping agent sessions is not enabled.") }

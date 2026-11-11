@@ -105,6 +105,7 @@ enum Out {
           pepel containers keep <name>     Leave a container or compose project running (unkeep to undo)
           pepel containers limit [<GiB>]   Show or lower the Docker VM's memory limit (restarts Docker Desktop)
           pepel containers refresh-vm      Restart the Docker VM to return its memory, then start the same containers
+          pepel agents servers [clean]     What agents' servers started and kept; end old idle copies
           pepel agents instructions        Show, --install or --remove PEPEL's note in agents' global instructions
           pepel cleanup [--dry-run]        Preview what cleanup would do (default)
           pepel cleanup --safe [--yes]     Remove items classified safe

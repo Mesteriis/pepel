@@ -310,6 +310,23 @@ public actor PepelEngine {
             excluded.insert(own.identity)
             excluded.formUnion(processTree.ancestors(of: own).map(\.identity))
         }
+        state.serviceBranches = ServiceBranches.find(
+            processes: processes, services: sessions, history: history, idleAfter: TimeInterval(settings.serviceBranchIdleMinutes) * 60, now: now)
+        state.staleBranches = state.serviceBranches.filter(\.isStale).compactMap { branch -> ProcessAssessment? in
+            guard let root = processTree.process(branch.root) else { return nil }
+            var assessment = ProcessAssessment(
+                process: root, role: RoleClassifier.role(of: root, attributor: projectIndex), lifecycle: .abandonedSubprocess, confidence: .probable,
+                projectID: nil, projectConfidence: .unknown,
+                evidence: [
+                    "\(branch.serviceName)'s server runs \(branch.copies) copies of this program; this is not the newest.",
+                    "The whole branch (\(branch.processCount) process\(branch.processCount == 1 ? "" : "es")) has used almost no CPU for \(TimeFormat.age(branch.idleFor ?? 0)).",
+                    "Started \(TimeFormat.ago(branch.startedAt)). PEPEL cannot see conversations: if one still uses it, its tools stop working until the application starts them again.",
+                ],
+                eligibility: .approvalRequired(warning: "A conversation that is still open may be using it."), descendantCount: branch.processCount - 1,
+                subtreeFootprintBytes: branch.footprintBytes)
+            assessment.staleServiceBranch = true
+            return assessment
+        }
         state.orphanedTools = Simulators.orphanedTools(processes: processes, excluded: excluded, attributor: projectIndex, currentUID: getuid(), now: now)
         state.simulators = Simulators.booted(
             processes: processes, home: paths.home, workingSessions: sessions.filter { $0.state == .working && !$0.isService }.count)
