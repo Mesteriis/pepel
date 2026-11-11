@@ -843,6 +843,25 @@ case "roots":
 
 case "disk":
     let settings = await engine.currentSettings()
+    if arguments.positional.first == "map" {
+        let target = PathUtil.canonical(arguments.positional.dropFirst().first.map { PathUtil.expand($0) } ?? appPaths.home)
+        let scanner = DiskMapScanner(home: appPaths.home)
+        guard let level = scanner.scan(target, depth: 1).first(where: { $0.path == target }) else { Out.error("'\(target)' could not be read"); exit(1) }
+        if arguments.json { Out.json(level); break }
+        let limit = Int(arguments.options["limit"] ?? "") ?? 30
+        print("\(PathUtil.display(target, home: appPaths.home)): \(Bytes.format(level.bytes)) in \(level.nodes.count) items\n")
+        Out.table(
+            ["SIZE", "SHARE", "FILES", "", "NAME"],
+            level.nodes.prefix(limit).map { node in
+                [
+                    node.kind == .restricted ? "—" : Bytes.format(node.bytes), node.kind == .restricted ? "" : String(format: "%.1f%%", Double(node.bytes) / Double(max(1, level.bytes)) * 100),
+                    node.fileCount > 0 ? node.fileCount.formatted() : "", node.kind == .restricted ? "not read" : node.kind == .folder ? "folder" : node.kind == .file ? "file" : "",
+                    Out.truncate(node.name, 60),
+                ]
+            })
+        print("\n`pepel disk map <folder>` opens one. Folders macOS guards are not read until named explicitly.")
+        break
+    }
     if arguments.positional.first == "logs" {
         let days = arguments.options["days"].flatMap { Int($0) } ?? settings.logDays
         let found = await engine.oldLogs(days: days)

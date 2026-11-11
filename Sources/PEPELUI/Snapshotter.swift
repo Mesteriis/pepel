@@ -33,6 +33,11 @@ public enum Snapshotter {
         model.protections = model.engine.store.protections()
         model.leases = model.engine.store.leases()
         model.plan = await model.engine.cleanupPlan(initiator: .user)
+        // The disk map of a chosen folder, measured before the pictures are taken.
+        if let mapRoot = ProcessInfo.processInfo.environment["PEPEL_SNAPSHOT_MAP"] {
+            model.setDiskMapRoot(mapRoot)
+            while model.isMeasuringDiskMap { try? await Task.sleep(for: .milliseconds(200)) }
+        }
 
         render(MenuBarLabel().padding(.horizontal, 10).padding(.vertical, 4).background(Color.black), model: model, size: nil, to: directory + "/menubar.png")
         render(PopoverView(openDashboard: { _ in }), model: model, size: nil, to: directory + "/popover.png")

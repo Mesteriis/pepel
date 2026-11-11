@@ -296,6 +296,15 @@ and larger than 1 MB can be removed; agents' own logs never. Emulators, language
 device support and tool data are sized and shown with their last use, and not removed.
 Model weights are protected and are not offered for removal anywhere.
 
+## Disk map
+
+The Disk map (`pepel disk map`, the Disk map section) only measures: it reads file sizes with
+`lstat`, never file contents, never follows a link below the starting folder and never leaves
+the volume. Folders macOS guards (Documents, Desktop, Downloads, Pictures, the Trash, Mail,
+Messages, Safari, iCloud and application containers) are shown as closed tiles and are not read
+until the user opens one, because reading them makes macOS ask for access. The measured sizes
+of the largest folders are kept in PEPEL's database so the map opens at once next time.
+
 ## Agents' instruction files
 
 `pepel agents instructions --install` adds a short note about PEPEL to each installed agent's

@@ -97,6 +97,7 @@ pepel projects stale [clean]     Projects left untouched for N days; remove thei
 pepel caches [trim …]            Tool caches; remove only what is unused, or above a size limit
 pepel apps caches | leftovers    Application caches by last use; what removed applications left behind
 pepel disk [logs [clean]]        Free space, when the disk would fill, other large places, old logs
+pepel disk map [<folder>]        What a folder holds, largest first (the dashboard's Disk map as a table)
 pepel containers limit [<GiB>]   Show or lower the Docker VM's memory limit
 pepel memory                     Memory pressure, swap and the largest consumers
 pepel processes [--all]          Developer processes and whether they look abandoned

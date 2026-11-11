@@ -84,6 +84,7 @@ public struct DashboardView: View {
         switch model.section {
         case .overview: OverviewSection()
         case .storage: StorageSection()
+        case .map: DiskMapSection()
         case .memory: MemorySection()
         case .builds: BuildsSection()
         case .projects: ProjectsSection()
@@ -121,7 +122,7 @@ private struct SidebarRow: View {
         .buttonStyle(.plain)
         .padding(.horizontal, 6)
         .onHover { hovering = $0 }
-        .keyboardShortcut(KeyEquivalent(Character("\((DashboardSection.allCases.firstIndex(of: section) ?? 0) + 1)")), modifiers: .command)
+        .modifier(SectionShortcut(index: DashboardSection.allCases.firstIndex(of: section) ?? 0))
         .accessibilityLabel(section.title + (badge.map { ", \($0)" } ?? ""))
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
@@ -196,6 +197,19 @@ struct BulletLabelStyle: LabelStyle {
         HStack(alignment: .firstTextBaseline, spacing: 7) {
             configuration.icon.font(.system(size: 4)).foregroundStyle(Theme.tertiary).alignmentGuide(.firstTextBaseline) { $0[.bottom] + 2 }
             configuration.title.fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// ⌘1…⌘9 for the first nine sections; a tenth one has no single digit left.
+private struct SectionShortcut: ViewModifier {
+    let index: Int
+
+    func body(content: Content) -> some View {
+        if index < 9 {
+            content.keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+        } else {
+            content
         }
     }
 }

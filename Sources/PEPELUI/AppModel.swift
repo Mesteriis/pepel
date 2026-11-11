@@ -4,15 +4,16 @@ import PEPELEngine
 import SwiftUI
 
 public enum DashboardSection: String, CaseIterable, Identifiable, Sendable {
-    case overview, storage, memory, builds, projects, agents, cleanup, history, settings
+    case overview, storage, map, memory, builds, projects, agents, cleanup, history, settings
 
     public var id: String { rawValue }
-    public var title: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
+    public var title: String { self == .map ? "Disk map" : rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
 
     public var symbol: String {
         switch self {
         case .overview: "gauge.with.dots.needle.33percent"
         case .storage: "internaldrive"
+        case .map: "square.grid.3x3.topleft.filled"
         case .memory: "memorychip"
         case .builds: "hammer"
         case .projects: "folder"
@@ -514,6 +515,100 @@ public final class AppModel {
             live = await engine.live
             refreshSecondary()
         }
+    }
+
+    // MARK: Disk map
+
+    public var diskMapRoot = NSHomeDirectory()
+    public var diskMapPath = NSHomeDirectory()
+    /// Measured folders by path. A folder that is not here yet is measured when it is opened.
+    public var diskMapLevels: [String: DiskLevel] = [:]
+    var diskMapFacts: [String: DiskTileFacts] = [:]
+    public var isMeasuringDiskMap = false
+    public var diskMapProgress: DiskMapScanner.Progress?
+    private var diskMapTask: Task<Void, Never>?
+    /// Counts measurements, so a stopped one cannot overwrite the state of the one that replaced it.
+    private var diskMapRun = 0
+    private static let diskMapKey = "diskmap.levels"
+
+    public var diskMapLevel: DiskLevel? { diskMapLevels[diskMapPath] }
+
+    /// First time the section is shown: what was measured last time, or a fresh measurement.
+    public func openDiskMapIfNeeded() {
+        guard diskMapLevels.isEmpty, !isMeasuringDiskMap else { return }
+        if let saved = engine.store.loadCodable([String: DiskLevel].self, key: Self.diskMapKey), saved[diskMapRoot] != nil {
+            diskMapLevels = saved
+            refreshDiskMapFacts()
+        } else {
+            measureDiskMap(diskMapRoot)
+        }
+    }
+
+    public func setDiskMapRoot(_ path: String) {
+        diskMapRoot = PathUtil.canonical(path)
+        showDiskMap(diskMapRoot)
+    }
+
+    /// Shows a folder: at once when it has been measured, otherwise after measuring it.
+    public func showDiskMap(_ path: String) {
+        guard path == diskMapRoot || path.hasPrefix(diskMapRoot + "/") else { return }
+        diskMapPath = path
+        if diskMapLevels[path] == nil { measureDiskMap(path) } else { refreshDiskMapFacts() }
+    }
+
+    public func cancelDiskMap() { diskMapTask?.cancel() }
+
+    public func measureDiskMap(_ path: String) {
+        diskMapTask?.cancel()
+        isMeasuringDiskMap = true
+        diskMapProgress = nil
+        diskMapRun += 1
+        let run = diskMapRun
+        let scanner = DiskMapScanner(home: engine.paths.home)
+        // Detached, so the walk runs off the main thread and stops when the task is cancelled.
+        diskMapTask = Task.detached(priority: .userInitiated) { [weak self] in
+            let levels = scanner.scan(path, progress: { progress in
+                Task { @MainActor in if self?.diskMapRun == run, self?.isMeasuringDiskMap == true { self?.diskMapProgress = progress } }
+            })
+            await self?.adoptDiskMap(levels, for: path, run: run)
+        }
+    }
+
+    private func adoptDiskMap(_ levels: [DiskLevel], for path: String, run: Int) {
+        for level in levels { diskMapLevels[level.path] = level }
+        guard run == diskMapRun else { return }
+        if diskMapLevels[path] == nil { diskMapLevels[path] = DiskLevel(path: path, nodes: []) }
+        isMeasuringDiskMap = false
+        diskMapProgress = nil
+        refreshDiskMapFacts()
+        // The largest folders are kept, so the map opens at once next time.
+        let kept = diskMapLevels.values.sorted { $0.bytes > $1.bytes }.prefix(600)
+        try? engine.store.saveCodable(Dictionary(uniqueKeysWithValues: kept.map { ($0.path, $0) }), key: Self.diskMapKey)
+    }
+
+    /// What PEPEL knows about each tile of the folder on screen.
+    func refreshDiskMapFacts() {
+        guard let level = diskMapLevel else { return }
+        let items = (storage?.items ?? []).filter { !$0.hasPseudoPath }
+        let home = engine.paths.home
+        var facts: [String: DiskTileFacts] = [:]
+        // The folder on screen and, for the tiles drawn inside its folders, one level below.
+        let nodes = level.nodes + level.nodes.filter { $0.kind == .folder }.flatMap { diskMapLevels[$0.path]?.nodes.prefix(60) ?? [] }
+        for node in nodes where node.kind == .folder || node.kind == .file {
+            var fact = DiskTileFacts()
+            for item in items {
+                if item.path == node.path || item.path.hasPrefix(node.path + "/") {
+                    if item.safety != .protected { fact.reclaimable += item.reclaimableBytes }
+                } else if node.path.hasPrefix(item.path + "/") {
+                    // The tile lies inside something PEPEL knows as a whole.
+                    if item.safety == .protected { fact.kept = true } else { fact.reclaimable = node.bytes }
+                }
+                if item.path == node.path, item.safety == .protected { fact.kept = true }
+            }
+            if PathUtil.keepMarker(at: node.path, stopAt: home) != nil { fact.kept = true }
+            facts[node.id] = fact
+        }
+        diskMapFacts = facts
     }
 
     // MARK: Other places, logs and the disk forecast

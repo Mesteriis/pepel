@@ -1171,9 +1171,10 @@ struct EngineTests {
 
         await engine.setJournaling(true)
         store.appendAudit(AuditEntry(kind: .termination, initiator: "automatic", subject: "node (PID 9)", outcome: "terminated"))
-        await engine.refreshLive(now: start.addingTimeInterval(1))
-        await engine.refreshLive(now: start.addingTimeInterval(60))  // too soon for a second reading
-        await engine.refreshLive(now: start.addingTimeInterval(301))
+        // Readings are taken on the engine's clock; the margins keep the test independent of how fast it runs.
+        await engine.refreshLive(now: start.addingTimeInterval(30))
+        await engine.refreshLive(now: start.addingTimeInterval(90))  // too soon for a second reading
+        await engine.refreshLive(now: start.addingTimeInterval(331))
         try await Task.sleep(for: .milliseconds(300))
         let readings = journal.read(since: start.addingTimeInterval(-10))
         #expect(readings.count == 2)

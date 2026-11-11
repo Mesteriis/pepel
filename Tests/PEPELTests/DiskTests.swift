@@ -537,3 +537,76 @@ struct OtherPlacesTests {
         #expect(await engine.dueDaily("test.rule", now: now.addingTimeInterval(3700)) == true, "the disk is low, so hourly")
     }
 }
+
+@Suite("Disk map")
+struct DiskMapTests {
+    @Test("Tiles have areas in proportion to their sizes, fill the space, stay inside it and do not overlap")
+    func squarifiedLayout() {
+        let weights: [Double] = [600, 300, 200, 150, 100, 60, 40, 30, 15, 5]
+        let rect = CGRect(x: 10, y: 20, width: 900, height: 500)
+        let rects = Treemap.layout(weights, in: rect)
+        let total = weights.reduce(0, +)
+        for (weight, tile) in zip(weights, rects) {
+            let expected = weight / total * Double(rect.width * rect.height)
+            #expect(abs(Double(tile.width * tile.height) - expected) < 0.01 * expected + 0.5)
+            #expect(tile.minX >= rect.minX - 0.01 && tile.minY >= rect.minY - 0.01 && tile.maxX <= rect.maxX + 0.01 && tile.maxY <= rect.maxY + 0.01)
+        }
+        #expect(abs(rects.reduce(0.0) { $0 + Double($1.width * $1.height) } - Double(rect.width * rect.height)) < 1)
+        for i in rects.indices {
+            for j in rects.indices where j > i {
+                let overlap = rects[i].intersection(rects[j])
+                #expect(overlap.isNull || overlap.width * overlap.height < 0.01)
+            }
+        }
+        // The point of squarifying: the large tiles are not slivers.
+        #expect(rects.prefix(5).allSatisfy { max($0.width / $0.height, $0.height / $0.width) < 3 })
+        #expect(Treemap.layout([], in: rect).isEmpty)
+        #expect(Treemap.layout([5, 0, -1], in: rect)[1] == .zero && Treemap.layout([5, 0, -1], in: rect)[0].width == rect.width)
+        #expect(Treemap.layout([1, 2], in: .zero) == [.zero, .zero])
+    }
+
+    @Test("A folder is measured two levels deep in one walk; links are not followed and guarded folders stay closed until opened")
+    func scanning() throws {
+        let f = Fixture()
+        let root = f.dir(f.home + "/work")
+        f.file(root + "/big.bin", bytes: 12 << 20)
+        f.file(root + "/note.txt", bytes: 4096)
+        f.file(root + "/app/src/main.c", bytes: 8192)
+        f.file(root + "/app/build/out.o", bytes: 2 << 20)
+        f.file(root + "/app/build/deep/more.o", bytes: 1 << 20)
+        f.file(f.root + "/outside/secret.bin", bytes: 20 << 20)
+        try FileManager.default.createSymbolicLink(atPath: root + "/link", withDestinationPath: f.root + "/outside")
+
+        let levels = DiskMapScanner(home: f.home).scan(root, depth: 2)
+        let top = try #require(levels.first { $0.path == root })
+        #expect(top.nodes.map(\.name) == ["big.bin", "app", "2 smaller files"], "largest first; the link counts as a small file, not as what it points to")
+        #expect(top.nodes[0].kind == .file && top.nodes[1].kind == .folder && top.nodes[2].kind == .smallFiles)
+        #expect(top.nodes[1].bytes >= 3 << 20 && top.nodes[1].bytes < 4 << 20 && top.nodes[1].fileCount == 3)
+        #expect(top.bytes < 20 << 20, "nothing from outside the folder")
+        let app = try #require(levels.first { $0.path == root + "/app" })
+        #expect(app.nodes.map(\.name) == ["build", "src"])
+        #expect(levels.first { $0.path == root + "/app/build" } == nil, "the third level is measured when it is opened")
+        let build = try #require(DiskMapScanner(home: f.home).scan(root + "/app/build").first { $0.path == root + "/app/build" })
+        #expect(Set(build.nodes.map(\.name)) == ["deep", "1 smaller files"])
+
+        // Guarded folders: closed from above, read when the walk starts on them.
+        f.file(f.home + "/Documents/letter.doc", bytes: 1 << 20)
+        f.file(f.home + "/code/a.txt", bytes: 4096)
+        let home = try #require(DiskMapScanner(home: f.home).scan(f.home, depth: 1).first { $0.path == f.home })
+        let documents = try #require(home.nodes.first { $0.name == "Documents" })
+        #expect(documents.kind == .restricted && documents.bytes == 0 && documents.canOpen)
+        #expect(home.bytes < 20 << 20)
+        let opened = try #require(DiskMapScanner(home: f.home).scan(f.home + "/Documents").first)
+        #expect(opened.nodes.first?.fileCount == 1 && opened.bytes >= 1 << 20)
+        #expect(DiskMapScanner(home: f.home).scan(f.root + "/missing").isEmpty)
+
+        // A folder that cannot be read does not derail the rest of the walk.
+        f.file(root + "/locked/hidden.bin", bytes: 1 << 20)
+        chmod(root + "/locked", 0)
+        defer { chmod(root + "/locked", 0o755) }
+        let withLocked = try #require(DiskMapScanner(home: f.home).scan(root).first { $0.path == root })
+        #expect(withLocked.nodes.first { $0.name == "locked" }?.unreadable == 1)
+        #expect(withLocked.nodes.first?.name == "big.bin" && withLocked.nodes.contains { $0.name == "app" })
+        #expect(DiskMapScanner(home: f.home).scan(root, isCancelled: { true }).allSatisfy(\.complete) == true, "a walk too short to be interrupted finishes")
+    }
+}
