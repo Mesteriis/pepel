@@ -177,6 +177,8 @@ public struct ProcessAssessment: Codable, Sendable, Identifiable, Hashable {
     public var subtreeFootprintBytes: Int64
     /// Set when this process was left behind by an application that has quit: the application's name.
     public var leftoverOf: String?
+    /// Set when the process lives almost entirely in swap and has not used CPU.
+    public var dormant = false
 
     public var id: ProcessIdentity { process.identity }
 

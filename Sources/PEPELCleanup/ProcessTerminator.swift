@@ -45,7 +45,9 @@ extension CleanupPolicyEngine {
         if p.uid != currentUID { denials.append("The process belongs to another user.") }
         // Two things PEPEL acts on: developer workloads, and whatever a quit application left behind.
         let leftover = target.leftoverOf != nil
-        if !target.role.isDeveloperWorkload && !leftover { denials.append("Not a developer workload; PEPEL leaves applications and system processes alone.") }
+        // …and, only when a person asks, a process that lives in swap and does nothing.
+        let dormant = target.dormant
+        if !target.role.isDeveloperWorkload && !leftover && !dormant { denials.append("Not a developer workload; PEPEL leaves applications and system processes alone.") }
 
         switch target.eligibility {
         case .never(let reason):
@@ -71,7 +73,9 @@ extension CleanupPolicyEngine {
         case .agent:
             denials.append("Agents cannot request process termination.")
         case .automatic:
-            if sleepingAgent {
+            if dormant, !sleepingAgent, !leftover {
+                denials.append("A process living in swap is only ended when you ask: being untouched does not prove it is unwanted.")
+            } else if sleepingAgent {
                 if !settings.terminateSleepingAgents { denials.append("Terminating sleeping agent sessions is not enabled.") }
             } else if leftover {
                 if !settings.terminateAppLeftovers { denials.append("Terminating what quit applications leave behind is not enabled.") }

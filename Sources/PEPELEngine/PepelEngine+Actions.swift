@@ -125,7 +125,8 @@ extension PepelEngine {
     public func terminationDecision(_ identity: ProcessIdentity, initiator: Initiator) async -> TerminationDecision? {
         let liveState = await refreshLive()
         guard
-            let target = liveState.assessments.first(where: { $0.process.identity == identity })
+            let target = liveState.dormant.first(where: { $0.process.identity == identity })
+                ?? liveState.assessments.first(where: { $0.process.identity == identity })
                 ?? liveState.leftovers.flatMap(\.processes).first(where: { $0.process.identity == identity })
         else { return nil }
         let tree = ProcessTree(lastProcesses)

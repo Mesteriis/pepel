@@ -183,6 +183,20 @@ case "apps":
         if report.quit { print("Charged: \(Bytes.format(report.footprintBefore)) before, \(Bytes.format(report.footprintAfter)) after.") }
     }
 
+case "memory" where arguments.positional.first == "swapped":
+    let live = await engine.refreshLive()
+    if arguments.json { Out.json(live.dormant); break }
+    if live.dormant.isEmpty { print("No process of yours holds 500 MB or more with almost none of it in RAM while doing nothing."); break }
+    Out.table(
+        ["PID", "CHARGED", "IN RAM", "STARTED", "CPU", "PROCESS"],
+        live.dormant.map {
+            [
+                String($0.process.pid), Bytes.format($0.subtreeFootprintBytes), Bytes.format($0.process.residentBytes), TimeFormat.ago($0.process.identity.startDate),
+                $0.cpuPercent.map { String(format: "%.2f%%", $0) } ?? "—", Out.truncate($0.process.shortCommand, 70),
+            ]
+        })
+    print("\nThese cost little RAM but fill swap and compressed memory. `pepel terminate <pid>` ends one after showing what PEPEL knows about it.")
+
 case "memory" where arguments.positional.first == "growth":
     let live = await engine.refreshLive()
     let growth = await engine.memoryGrowth(owners: live.memoryOwners)

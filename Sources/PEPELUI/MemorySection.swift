@@ -16,6 +16,7 @@ struct MemorySection: View {
                 owners(live)
                 growth(live)
                 unused(live)
+                dormant(live)
                 containers(live)
                 if let report = model.terminationReport { terminationResult(report) }
                 leftovers(live)
@@ -37,6 +38,31 @@ struct MemorySection: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(((model.pendingApplication?.reasons ?? []) + (model.pendingApplication?.warnings ?? [])).joined(separator: "\n"))
+        }
+    }
+
+    /// Processes that live almost entirely in swap.
+    @ViewBuilder private func dormant(_ live: LiveState) -> some View {
+        if !live.dormant.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Caption("Living in swap")
+                ForEach(live.dormant) { item in
+                    HStack(spacing: 10) {
+                        Text(item.process.name).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                        Text("PID \(item.process.pid) · started \(TimeFormat.ago(item.process.identity.startDate)) · \(Bytes.format(item.process.residentBytes)) in RAM")
+                            .font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary).lineLimit(1)
+                        Spacer()
+                        Text(Bytes.format(item.subtreeFootprintBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit()
+                        if !item.eligibility.isNever {
+                            Button("Review & terminate…") { model.requestTermination(item) }.buttonStyle(QuietButtonStyle())
+                        }
+                    }
+                    .help(item.evidence.joined(separator: "\n"))
+                }
+                Text("A lot of memory charged, almost none of it in RAM, no CPU use. They cost little RAM but keep swap and compressed memory full. PEPEL does not know what they are for, so it only ends one when you say so.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+            .panel()
         }
     }
 

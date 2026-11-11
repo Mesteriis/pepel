@@ -214,7 +214,7 @@ public struct ContainerReport: Codable, Sendable, Hashable {
 // MARK: - Free memory
 
 public enum ReclaimStepKind: String, Codable, Sendable, CaseIterable {
-    case abandonedProcesses, appLeftovers, sleepingAgents, freezeAgents, idleAgents, grownApps, unusedApps, idleContainers, containerVM, fileCache
+    case abandonedProcesses, appLeftovers, sleepingAgents, freezeAgents, idleAgents, grownApps, unusedApps, dormantProcesses, idleContainers, containerVM, fileCache
 }
 
 /// One thing "Free memory" can do, with what it would act on and what it could give back.

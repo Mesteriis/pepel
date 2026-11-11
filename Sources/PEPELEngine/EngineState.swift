@@ -33,6 +33,8 @@ public struct LiveState: Codable, Sendable {
     public var growth: [MemoryGrowth] = []
     /// Open applications nobody has used for a long time.
     public var unusedApplications: [UnusedApplication] = []
+    /// Processes that live almost entirely in swap and do nothing.
+    public var dormant: [ProcessAssessment] = []
     /// Process trees PEPEL has suspended.
     public var frozen: [FrozenTree] = []
 

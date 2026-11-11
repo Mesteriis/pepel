@@ -90,6 +90,16 @@ extension PepelEngine {
                     estimatedBytes: live.unusedApplications.reduce(0) { $0 + $1.footprintBytes }, selectedByDefault: false))
         }
 
+        let dormant = live.dormant.filter { !$0.eligibility.isNever }
+        if !dormant.isEmpty {
+            steps.append(
+                ReclaimStep(
+                    kind: .dormantProcesses, title: "End processes that live in swap",
+                    detail: "A lot of memory charged, almost none of it in RAM, no CPU use. Ending them empties swap and compressed memory rather than RAM. PEPEL does not know what they are for.",
+                    targets: dormant.map { "\($0.process.name) (PID \($0.process.pid), \(Bytes.format($0.subtreeFootprintBytes)), started \(TimeFormat.ago($0.process.identity.startDate)))" },
+                    estimatedBytes: 0, selectedByDefault: false))
+        }
+
         if let containers = live.containers {
             let unused = containers.groups.filter { $0.projectID != nil && $0.agentSessions == 0 && !$0.stoppable.isEmpty }
             if !unused.isEmpty {
@@ -198,6 +208,8 @@ extension PepelEngine {
                     if report.quit { done += 1 } else { notes.append(report.note) }
                 }
                 results.append(ReclaimStepResult(kind: step.kind, title: step.title, done: done, attempted: unused.count, notes: notes))
+            case .dormantProcesses:
+                results.append(await terminate((live?.dormant ?? []).filter { !$0.eligibility.isNever }.map(\.process.identity), kind: step.kind, title: step.title))
             case .idleContainers:
                 var done = 0, attempted = 0
                 var notes: [String] = []

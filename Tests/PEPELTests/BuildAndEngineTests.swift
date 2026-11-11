@@ -801,6 +801,46 @@ struct EngineTests {
         #expect(done.results.first?.done == 1 && !source.snapshot().contains { $0.pid == 1 } && source.snapshot().count == 5)
     }
 
+    @Test("A process living in swap is listed and ended only when a person asks; applications, system processes and agent sessions are not listed")
+    func dormantProcesses() async throws {
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        func swapped(_ pid: Int32, parent: Int32 = 1, name: String, path: String, resident: Int64 = 20_000_000) -> ProcessSnapshot {
+            var p = process(pid, parent: parent, name: name, path: path, footprint: 4_000_000_000)
+            p.residentBytes = resident
+            return p
+        }
+        let forgotten = swapped(50, name: "indexer", path: "/Users/x/bin/indexer")
+        let inRAM = swapped(51, name: "busy", path: "/Users/x/bin/busy", resident: 3_000_000_000)
+        let appHelper = swapped(52, name: "Helper", path: "/Applications/Big.app/Contents/MacOS/Helper")
+        let system = swapped(53, name: "mds", path: "/System/Library/Frameworks/mds")
+        let session = swapped(10, name: "claude", path: "/Users/x/.local/bin/claude")
+        let tool = swapped(11, parent: 10, name: "python3", path: "/usr/local/bin/python3")
+        let small = process(54, name: "small", path: "/Users/x/bin/small", footprint: 100_000_000)
+        let source = FakeProcessSource(processes: [forgotten, inRAM, appHelper, system, session, tool, small])
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: source, telemetry: { SystemTelemetry() })
+        let live = await engine.refreshLive()
+        #expect(live.dormant.map(\.process.pid) == [50])
+        #expect(live.dormant.first?.evidence.first?.contains("in RAM") == true)
+
+        // Never on its own, never for an agent; for a person, after confirmation.
+        _ = try await engine.update { $0.autoTerminateAbandoned = true; $0.terminateAppLeftovers = true }
+        _ = await engine.automaticPass()
+        #expect(source.signals.isEmpty)
+        if case .denied = await engine.terminate(forgotten.identity, confirmed: true, force: false, initiator: .agent) {} else { Issue.record("agents must be denied") }
+        if case .needsConfirmation = await engine.terminate(forgotten.identity, confirmed: false, force: false, initiator: .user) {} else { Issue.record("must ask first") }
+        let plan = await engine.reclaimPlan()
+        #expect(plan.steps.contains { $0.kind == .dormantProcesses && !$0.selectedByDefault && $0.estimatedBytes == 0 })
+        if case .completed(let report) = await engine.terminate(forgotten.identity, confirmed: true, force: false, initiator: .user) {
+            #expect(report.exited)
+        } else {
+            Issue.record("a confirmed request from a person goes through")
+        }
+        #expect(source.signals.map(\.pid) == [50])
+    }
+
     final class FlushCounter: @unchecked Sendable {
         private let lock = NSLock()
         private var value = 0

@@ -72,6 +72,10 @@ and there is no recursive-delete command line anywhere in the project.
   start, or that run from inside its bundle, still alive after the application quit and a grace
   period; system-managed components (XPC services, extensions, login items), agent sessions and
   container runtimes are excluded. Both are off by default.
+- **Processes living in swap** (500 MB or more charged, at most 15% of it in RAM, under 1% of a
+  core over what PEPEL has watched) are listed, excluding application bundles, system paths,
+  agent sessions and the virtual machine. PEPEL does not know what such a process is for, so it
+  is ended only on a confirmed request from a person, never automatically.
 - Identity (PID + start time) is verified right before each signal.
 - `SIGTERM` first; PEPEL waits for the exit. `SIGKILL` only when you ticked the box for that
   specific request; never automatically.

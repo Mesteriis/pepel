@@ -285,6 +285,20 @@ public actor PepelEngine {
         recordMemory(owners: owners, now: now)
         state.growth = growthCache
         state.unusedApplications = unusedApplications(owners: owners, now: now)
+        // Agent sessions, the virtual machine and PEPEL's own surroundings have rules of their own.
+        var excluded = Set<ProcessIdentity>()
+        let processTree = ProcessTree(processes)
+        for session in sessions {
+            excluded.insert(session.root)
+            if let root = processTree.process(session.root) { excluded.formUnion(processTree.descendants(of: root).map(\.identity)) }
+        }
+        for owner in owners where owner.kind == .virtualMachine { excluded.formUnion(owner.largest.map(\.identity)) }
+        if let own = processes.first(where: { $0.pid == getpid() }) {
+            excluded.insert(own.identity)
+            excluded.formUnion(processTree.ancestors(of: own).map(\.identity))
+        }
+        state.dormant = DormantProcesses.find(
+            processes: processes, assessments: assessments, history: history, excluded: excluded, attributor: projectIndex, currentUID: getuid(), now: now)
         state.memoryExplanation = MemoryAttributor.explanation(owners: owners, telemetry: telemetry)
         live = state
         return state
