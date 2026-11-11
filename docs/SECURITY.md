@@ -312,6 +312,15 @@ The daily rule (`cleanAndroidEmulators`, off by default) deletes emulators not s
 `emulatorUnusedDays` (30), except those named in `keepEmulators`; each candidate is checked again
 right before deletion.
 
+**Android system images** (`pepel disk images`). An image in the SDK's `system-images` that no
+emulator names in its `config.ini` can be deleted on request or by the daily rule
+(`cleanUnusedSystemImages`, off by default); one an emulator uses is refused.
+
+**Named Docker volumes** (`pepel docker volumes`). A report of the named volumes no container
+mounts, with their compose project and whether that project's folder is still on this Mac.
+PEPEL never removes them. The Docker disk image's limit is shown and never changed: lowering it
+in Docker Desktop deletes the disk image with everything in it.
+
 **Large old files and copies** (`pepel disk files`). A report only: files of 500 MB or more not
 opened for 90 days, and files of 100 MB or more with identical contents (same size, then the
 same SHA-256; two names of one file are not copies). Library, caches, agents' folders,

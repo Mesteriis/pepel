@@ -901,6 +901,23 @@ case "disk":
         print("\nPEPEL only reports these. Folders macOS guards are left out unless --guarded is given.")
         break
     }
+    if arguments.positional.first == "images" {
+        if arguments.positional.dropFirst().first == "delete" {
+            let ids = Array(arguments.positional.dropFirst(2))
+            guard !ids.isEmpty else { Out.error("usage: pepel disk images delete <api/tag/abi> … [--yes]"); exit(2) }
+            guard arguments.flags.contains("yes") || Out.confirm("Delete \(ids.joined(separator: ", "))? Android Studio or sdkmanager downloads one again when needed.") else { print("Nothing was deleted."); break }
+            for id in ids { print("\(id): \(await engine.deleteSystemImage(id, confirmed: true, initiator: .cli).map { "not deleted, \($0)" } ?? "deleted")") }
+            break
+        }
+        let images = await engine.androidSystemImages()
+        if arguments.json { Out.json(images); break }
+        guard !images.isEmpty else { print("No Android system images found."); break }
+        Out.table(["SIZE", "IMAGE", "USED BY"], images.map { [Bytes.format($0.bytes), $0.id, $0.usedBy.isEmpty ? "no emulator" : Out.truncate($0.usedBy.joined(separator: ", "), 70)] })
+        let unused = images.filter { $0.usedBy.isEmpty }
+        let settings = await engine.currentSettings()
+        print("\n\(unused.count) not used by any emulator, \(Bytes.format(unused.reduce(0) { $0 + $1.bytes })). `pepel disk images delete <image>` removes one; daily rule: \(settings.cleanUnusedSystemImages ? "on" : "off") (cleanUnusedSystemImages).")
+        break
+    }
     if arguments.positional.first == "emulators" {
         let verb = arguments.positional.dropFirst().first
         if verb == "keep" || verb == "unkeep" {
@@ -1014,6 +1031,24 @@ case "caches":
 case "docker":
     let settings = await engine.currentSettings()
     let days = arguments.options["days"].flatMap { Int($0) } ?? settings.dockerUnusedDays
+    if arguments.positional.first == "volumes" {
+        guard let volumes = await engine.namedVolumes() else { Out.error("Docker did not answer"); exit(1) }
+        if arguments.json { Out.json(volumes); break }
+        guard !volumes.isEmpty else { print("Every named volume is mounted by a container."); break }
+        Out.table(
+            ["SIZE", "CREATED", "PROJECT", "PROJECT FOLDER", "VOLUME"],
+            volumes.map {
+                [
+                    Bytes.format($0.bytes), $0.createdAt.map { TimeFormat.ago($0) } ?? "—", $0.project ?? "—",
+                    $0.projectState == .gone ? "gone: " + PathUtil.display($0.projectFolder ?? "", home: appPaths.home) : $0.projectState == .present ? "on this Mac" : "—",
+                    Out.truncate($0.name, 48),
+                ]
+            })
+        let gone = volumes.filter { $0.projectState == .gone }
+        print("\n\(volumes.count) named volumes no container mounts, \(Bytes.format(volumes.reduce(0) { $0 + $1.bytes })); \(gone.count) belong to a project whose folder is gone (\(Bytes.format(gone.reduce(0) { $0 + $1.bytes }))).")
+        print("PEPEL never removes named volumes. To remove one yourself: docker volume rm <volume>")
+        break
+    }
     if arguments.positional.first == "compact" {
         let outcome = engine.dockerDiskCompact()
         print(outcome.done ? "Trimmed: \(outcome.note)" : "Not compacted: \(outcome.note)")
@@ -1061,7 +1096,7 @@ case "docker":
         break
     }
     let stopped = report.containers.filter { !$0.isRunning }
-    print("Docker's disk image takes \(Bytes.format(report.diskImageBytes)) on this Mac.\n")
+    print("Docker's disk image takes \(Bytes.format(report.diskImageBytes)) on this Mac" + (report.diskImageLimitBytes > 0 ? " and may grow to \(Bytes.format(report.diskImageLimitBytes)). Lowering that limit in Docker Desktop deletes the disk image with everything in it, so PEPEL does not change it." : ".") + "\n")
     Out.table(
         ["KIND", "HAS", "SIZE", "UNUSED \(days)+ DAYS", "WOULD FREE"],
         [
@@ -1072,6 +1107,7 @@ case "docker":
         ])
     for line in plan.skipped { print("  · \(line)") }
     print("\n`pepel docker clean` removes containers, images, build cache and networks unused for \(days) days (--days N to change), then trims the disk image.")
+    print("`pepel docker volumes` lists named volumes no container mounts (a report).")
     print("`pepel docker clean volumes` is separate and takes anonymous volumes only; named volumes are never removed. Automatic daily cleanup is \(settings.dockerAutoClean ? "on" : "off") (dockerAutoClean).")
 
 case "journal":

@@ -93,10 +93,12 @@ enum Out {
           pepel simulators [shutdown …]    Booted simulators and what they hold; shut one or all down
           pepel disk map [<folder>]        The whole disk, or one folder, by size (the dashboard's Disk map as a table)
           pepel disk files [--days N]      Large files not opened for N days, and identical copies (a report)
+          pepel disk images [delete …]     Android system images and the emulators that use them; delete unused ones
           pepel disk emulators [delete …]  Android emulators by size and last use; delete chosen ones (keep|unkeep <name>)
           pepel disk temp [clean]          The temporary folder: what nothing has used for N days; remove it
           pepel disk [logs [clean]]        Free space, when the disk would fill, other large places; old log files
           pepel caches [trim …]            Tool caches and what in them is unused for N days; remove only that part
+          pepel docker volumes             Named volumes no container mounts, and whether their project is still here
           pepel docker [clean …|compact]   What Docker keeps on disk; remove what is unused for N days; trim its disk image
           pepel journal [--days N] [path]  The memory journal: what it says about the last days, and where it is
           pepel summary [--hours N]        What PEPEL did over the last day and what it left for you

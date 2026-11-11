@@ -511,3 +511,45 @@ extension PepelEngine {
         }
     }
 }
+
+/// Android system images no emulator starts from.
+extension PepelEngine {
+    /// Overrides where the Android SDK is looked for; tests point it at a fixture.
+    nonisolated var androidSDKRoots: [String]? { paths.isRedirected ? [paths.home + "/Library/Android/sdk"] : nil }
+
+    public nonisolated func androidSystemImages() async -> [AndroidSystemImage] {
+        let images = AndroidSystemImages(home: paths.home, sdkRoots: androidSDKRoots)
+        return await Task.detached(priority: .utility) { images.list() }.value
+    }
+
+    public func deleteSystemImage(_ id: String, confirmed: Bool, initiator: Initiator) async -> String? {
+        switch initiator {
+        case .agent: return "Agents cannot delete system images."
+        case .automatic: guard settings.cleanUnusedSystemImages, !settings.paused else { return "Deleting unused system images is not enabled." }
+        case .user, .cli: guard confirmed else { return "This needs your confirmation." }
+        }
+        let images = AndroidSystemImages(home: paths.home, sdkRoots: androidSDKRoots)
+        let bytes = images.list().first { $0.id == id }?.bytes ?? 0
+        if let refusal = await Task.detached(priority: .utility, operation: { images.delete(id) }).value { return refusal }
+        store.appendAudit(AuditEntry(kind: .cleanup, initiator: initiator.rawValue, subject: "Android system image \(id)", outcome: "removed", bytes: bytes))
+        return nil
+    }
+
+    func autoCleanSystemImages(now: Date = Date()) async {
+        guard settings.cleanUnusedSystemImages, !settings.paused, dueDaily("sysimages.lastAutoClean", now: now) else { return }
+        for image in await androidSystemImages() where image.usedBy.isEmpty {
+            _ = await deleteSystemImage(image.id, confirmed: false, initiator: .automatic)
+        }
+    }
+}
+
+
+extension PepelEngine {
+    /// Named volumes no container mounts, with whether their project is still on this Mac.
+    public func namedVolumes() async -> [NamedVolumeReport]? {
+        guard let (report, _) = await dockerCleanupPlan() else { return nil }
+        var folders: [String: String] = [:]
+        for project in projects { folders[(project.id as NSString).lastPathComponent.lowercased()] = project.id }
+        return NamedVolumeReport.make(report, projectFolders: folders)
+    }
+}

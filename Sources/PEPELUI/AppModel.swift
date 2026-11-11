@@ -654,7 +654,10 @@ public final class AppModel {
         let days = settings.logDays
         diskForecast = engine.diskForecast()
         measureTemp()
-        Task { androidEmulators = await engine.androidEmulators() }
+        Task {
+            androidEmulators = await engine.androidEmulators()
+            systemImages = await engine.androidSystemImages()
+        }
         Task {
             otherPlaces = await engine.otherPlaces()
             oldLogs = await engine.oldLogs(days: days)
@@ -664,6 +667,18 @@ public final class AppModel {
 
     public var tempEntries: [TempEntry]?
     public var androidEmulators: [AndroidEmulator] = []
+    public var systemImages: [AndroidSystemImage] = []
+
+    public func deleteUnusedSystemImages() {
+        Task {
+            var deleted = 0
+            for image in systemImages where image.usedBy.isEmpty {
+                if await engine.deleteSystemImage(image.id, confirmed: true, initiator: .user) == nil { deleted += 1 }
+            }
+            message = "Deleted \(deleted) unused system image\(deleted == 1 ? "" : "s")."
+            systemImages = await engine.androidSystemImages()
+        }
+    }
     public var largeFiles: LargeFilesReport?
     public var isFindingLargeFiles = false
 
@@ -842,6 +857,12 @@ public final class AppModel {
             }
             isReadingDocker = false
         }
+    }
+
+    public var namedVolumes: [NamedVolumeReport]?
+
+    public func refreshNamedVolumes() {
+        Task { namedVolumes = await engine.namedVolumes() }
     }
 
     public func cleanDocker(_ kinds: Set<DockerCleanKind>) {

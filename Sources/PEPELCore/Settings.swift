@@ -150,6 +150,8 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     public var emulatorUnusedDays = 30
     /// Emulators never deleted by the rule, by name.
     public var keepEmulators: [String] = []
+    /// Once a day, delete Android system images that no emulator starts from.
+    public var cleanUnusedSystemImages = false
     public var freezeIdleAgents = false
     public var freezeAfterMinutes = 20
     /// How often a frozen session is woken for a moment to see whether work is waiting.

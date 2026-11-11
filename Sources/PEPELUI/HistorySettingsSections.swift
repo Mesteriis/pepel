@@ -304,6 +304,7 @@ struct SettingsSection: View {
             group("Disk: Android emulators", "Virtual devices in ~/.android/avd. Deleting one removes the apps and data inside it; the system images stay, so it can be created again.") {
                 toggle("Once a day, delete emulators that have not been started", s.cleanAndroidEmulators) { v in model.updateSettings { $0.cleanAndroidEmulators = v } }
                 stepper("Not started means no start for", s.emulatorUnusedDays, 7...365, suffix: " days") { v in model.updateSettings { $0.emulatorUnusedDays = v } }
+                toggle("Once a day, delete system images that no emulator starts from", s.cleanUnusedSystemImages) { v in model.updateSettings { $0.cleanUnusedSystemImages = v } }
                 Text("Never delete these emulators:").font(.system(size: 11)).foregroundStyle(Theme.secondary)
                 ForEach(s.keepEmulators, id: \.self) { name in
                     HStack {

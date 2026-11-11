@@ -16,6 +16,7 @@ struct StorageSection: View {
     @State private var confirmTemp = false
     @State private var chosenEmulators = Set<String>()
     @State private var confirmEmulators = false
+    @State private var confirmImages = false
 
     private func matches(_ item: StorageItem) -> Bool {
         if let filter, item.safety != filter { return false }
@@ -35,7 +36,9 @@ struct StorageSection: View {
                 Spacer()
                 if model.isReadingDocker || model.isCleaningDocker { ProgressView().controlSize(.small) }
                 if let report = model.dockerDisk {
-                    Text("disk image \(Bytes.format(report.diskImageBytes))").font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(Theme.secondary)
+                    Text("disk image \(Bytes.format(report.diskImageBytes))" + (report.diskImageLimitBytes > 0 ? " of up to \(Bytes.format(report.diskImageLimitBytes))" : ""))
+                        .font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(Theme.secondary)
+                        .help("Docker's disk image grows up to its limit and shrinks only when trimmed. Lowering the limit in Docker Desktop deletes the disk image with every image, container and volume in it, so PEPEL leaves it alone.")
                 }
                 Button("Read again") { model.refreshDocker() }.buttonStyle(QuietButtonStyle()).disabled(model.isReadingDocker || model.isCleaningDocker)
             }
@@ -58,6 +61,26 @@ struct StorageSection: View {
                 ForEach(plan.skipped, id: \.self) { line in
                     Text(line).font(.system(size: 11)).foregroundStyle(Theme.tertiary)
                 }
+                if let volumes = model.namedVolumes, !volumes.isEmpty {
+                    let gone = volumes.filter { $0.projectState == .gone }
+                    DisclosureGroup {
+                        ForEach(volumes) { volume in
+                            HStack(spacing: 10) {
+                                Text(volume.name).font(Theme.mono).lineLimit(1).truncationMode(.middle)
+                                if volume.projectState == .gone { Badge(text: "project folder gone", tint: Theme.amber) }
+                                Spacer()
+                                Text(volume.createdAt.map { "created \(TimeFormat.ago($0))" } ?? "").font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                                Text(Bytes.format(volume.bytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)
+                            }
+                            .help(volume.projectFolder.map { "Project \(volume.project ?? ""): \($0)" } ?? "No compose project recorded.")
+                        }
+                        Text("PEPEL never removes named volumes: they hold data rebuilding does not bring back. Remove one yourself with docker volume rm.")
+                            .font(.system(size: 11)).foregroundStyle(Theme.tertiary)
+                    } label: {
+                        Text("\(volumes.count) named volumes no container mounts · \(Bytes.format(volumes.reduce(0) { $0 + $1.bytes }))" + (gone.isEmpty ? "" : " · \(gone.count) from projects whose folder is gone"))
+                            .font(.system(size: 12))
+                    }
+                }
                 HStack(spacing: 8) {
                     Button("Remove unused containers, images and cache · \(Bytes.format(plan.reproducibleBytes))…") { confirmDocker = true }
                         .buttonStyle(CopperButtonStyle(prominent: false)).disabled(plan.reproducibleBytes == 0 || model.isCleaningDocker)
@@ -78,7 +101,10 @@ struct StorageSection: View {
             }
         }
         .panel()
-        .onAppear { if model.dockerDisk == nil { model.refreshDocker() } }
+        .onAppear {
+            if model.dockerDisk == nil { model.refreshDocker() }
+            if model.namedVolumes == nil { model.refreshNamedVolumes() }
+        }
         .confirmationDialog("Remove what Docker has not used for \(days) days?", isPresented: $confirmDocker, titleVisibility: .visible) {
             Button("Remove containers, images and build cache") { model.cleanDocker([.containers, .images, .buildCache, .networks]) }
             Button("Cancel", role: .cancel) {}
@@ -269,6 +295,23 @@ struct StorageSection: View {
                         Text(emulator.lastUse.map { "used \(TimeFormat.ago($0))" } ?? "").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
                         Text(Bytes.format(emulator.bytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)
                     }
+                }
+                let unusedImages = model.systemImages.filter { $0.usedBy.isEmpty }
+                HStack(spacing: 10) {
+                    Text("System images").font(.system(size: 12, weight: .semibold))
+                    Text("\(model.systemImages.count) · \(Bytes.format(model.systemImages.reduce(0) { $0 + $1.bytes })) · \(unusedImages.count) not used by any emulator")
+                        .font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
+                    Spacer()
+                    if !unusedImages.isEmpty {
+                        Button("Delete unused · \(Bytes.format(unusedImages.reduce(0) { $0 + $1.bytes }))…") { confirmImages = true }.buttonStyle(QuietButtonStyle())
+                    }
+                }
+                .help(model.systemImages.map { "\(Bytes.format($0.bytes))  \($0.id)  \($0.usedBy.isEmpty ? "no emulator" : $0.usedBy.joined(separator: ", "))" }.joined(separator: "\n"))
+                .confirmationDialog("Delete system images no emulator uses?", isPresented: $confirmImages, titleVisibility: .visible) {
+                    Button("Delete") { model.deleteUnusedSystemImages() }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text(unusedImages.map(\.id).joined(separator: "\n") + "\n\nAndroid Studio or sdkmanager downloads one again when a new emulator needs it.")
                 }
                 Divider().overlay(Theme.stroke)
             }

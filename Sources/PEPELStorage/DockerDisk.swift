@@ -68,6 +68,13 @@ public struct DockerDisk: Sendable {
         return result
     }
 
+    /// The disk image is a sparse file whose length is the limit it may grow to.
+    func diskImageLimitBytes() -> Int64 {
+        guard let diskImagePath else { return 0 }
+        var info = stat()
+        return stat(diskImagePath, &info) == 0 ? Int64(info.st_size) : 0
+    }
+
     func diskImageBytes() -> Int64 {
         guard let diskImagePath else { return 0 }
         var info = stat()
@@ -99,7 +106,8 @@ public struct DockerDisk: Sendable {
             return DockerDiskReport.Container(
                 id: id, name: text(row, "Names") ?? String(id.prefix(12)), imageID: text(row, "Image") ?? "", state: text(row, "State") ?? "",
                 createdAt: Self.date(text(row, "CreatedAt")), finishedAt: finished[id], sizeBytes: Self.size(text(row, "Size")?.components(separatedBy: " ").first),
-                composeProject: labels["com.docker.compose.project"], keepLabel: ["true", "1", "yes"].contains((labels["pepel.keep"] ?? "").lowercased()))
+                composeProject: labels["com.docker.compose.project"], keepLabel: ["true", "1", "yes"].contains((labels["pepel.keep"] ?? "").lowercased()),
+                workingDirectory: labels["com.docker.compose.project.working_dir"])
         }
 
         var arrived: [String: Date] = [:]
@@ -140,7 +148,9 @@ public struct DockerDisk: Sendable {
         let cache = rows("BuildCache").map { row in
             DockerDiskReport.CacheEntry(sizeBytes: Self.size(text(row, "Size")), lastUsedAt: Self.date(text(row, "LastUsedAt")), inUse: text(row, "InUse") == "true")
         }
-        return DockerDiskReport(containers: containers, images: images, volumes: volumes, buildCache: cache, diskImageBytes: diskImageBytes())
+        var report = DockerDiskReport(containers: containers, images: images, volumes: volumes, buildCache: cache, diskImageBytes: diskImageBytes())
+        report.diskImageLimitBytes = diskImageLimitBytes()
+        return report
     }
 
     /// Docker's own total across images, containers, volumes and build cache.

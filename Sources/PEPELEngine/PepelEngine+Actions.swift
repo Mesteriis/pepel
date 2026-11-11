@@ -92,6 +92,8 @@ extension PepelEngine {
         await autoRemoveOldLogs()
         await autoCleanTemp()
         await autoCleanEmulators()
+        // After emulators, so that an image freed by one deleted today goes too.
+        await autoCleanSystemImages()
         if let stale = await autoCleanStaleProjects(), stale.succeededCount > 0 { cleanup = stale }
         if settings.monitoringMode == .automaticSafe, let storage {
             let safe = Set(storage.items.filter { $0.safety == .safe }.map(\.id))

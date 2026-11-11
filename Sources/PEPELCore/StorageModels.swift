@@ -519,3 +519,19 @@ public struct LargeFilesReport: Codable, Sendable, Hashable {
     public var duplicateBytes: Int64 { duplicates.reduce(0) { $0 + $1.dropFirst().reduce(0) { $0 + $1.bytes } } }
     public var oldBytes: Int64 { old.reduce(0) { $0 + $1.bytes } }
 }
+
+/// An Android system image in the SDK, and the emulators that start from it.
+public struct AndroidSystemImage: Codable, Sendable, Identifiable, Hashable {
+    /// `android-36/google_apis/arm64-v8a`
+    public var id: String
+    public var path: String
+    public var bytes: Int64
+    public var usedBy: [String]
+
+    public init(id: String, path: String, bytes: Int64, usedBy: [String]) {
+        self.id = id
+        self.path = path
+        self.bytes = bytes
+        self.usedBy = usedBy
+    }
+}

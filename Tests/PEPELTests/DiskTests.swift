@@ -910,3 +910,64 @@ struct AndroidEmulatorRuleTests {
     }
 }
 
+@Suite("Android system images")
+struct AndroidSystemImageTests {
+    @Test("An image is unused when no emulator names it; only such an image is deleted, with the empty folders above it")
+    func images() async throws {
+        let f = Fixture()
+        let sdk = f.home + "/Library/Android/sdk/system-images"
+        for id in ["android-29/google_apis/arm64-v8a", "android-36/google_apis/arm64-v8a", "android-36/google_apis_playstore/arm64-v8a"] {
+            f.file(sdk + "/\(id)/system.img", bytes: 1 << 20)
+        }
+        f.file(f.home + "/.android/avd/phone.avd/config.ini", text: "hw.ramSize=2048\nimage.sysdir.1=system-images/android-36/google_apis/arm64-v8a/\n")
+        f.file(f.home + "/.android/avd/phone.ini", text: "path=x")
+        let store = try PepelStore.inMemory()
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: FakeProcessSource(processes: []), telemetry: { SystemTelemetry() })
+        let images = await engine.androidSystemImages()
+        #expect(images.count == 3)
+        #expect(images.first { $0.id == "android-36/google_apis/arm64-v8a" }?.usedBy == ["phone"])
+        #expect(Set(images.filter { $0.usedBy.isEmpty }.map(\.id)) == ["android-29/google_apis/arm64-v8a", "android-36/google_apis_playstore/arm64-v8a"])
+
+        #expect(await engine.deleteSystemImage("android-36/google_apis/arm64-v8a", confirmed: true, initiator: .user)?.contains("phone") == true)
+        #expect(await engine.deleteSystemImage("android-29/google_apis/arm64-v8a", confirmed: true, initiator: .agent) != nil)
+        #expect(await engine.deleteSystemImage("../../etc/x", confirmed: true, initiator: .user) != nil)
+        _ = await engine.automaticPass()
+        #expect(PathUtil.exists(sdk + "/android-29"), "off by default")
+        #expect(await engine.deleteSystemImage("android-29/google_apis/arm64-v8a", confirmed: true, initiator: .cli) == nil)
+        #expect(!PathUtil.exists(sdk + "/android-29"), "its emptied parents go too")
+        _ = try await engine.update { $0.cleanUnusedSystemImages = true }
+        _ = await engine.automaticPass()
+        #expect(!PathUtil.exists(sdk + "/android-36/google_apis_playstore") && PathUtil.exists(sdk + "/android-36/google_apis/arm64-v8a/system.img"))
+    }
+}
+
+@Suite("Named Docker volumes")
+struct NamedVolumeTests {
+    @Test("Named volumes nothing mounts are listed with their project's state; anonymous and mounted ones are not")
+    func report() {
+        let f = Fixture()
+        let present = f.dir(f.projects + "/shop")
+        let containers = [
+            DockerDiskReport.Container(id: "c1", name: "shop-db-1", imageID: "i", state: "exited", createdAt: nil, finishedAt: nil, sizeBytes: 0, composeProject: "shop", keepLabel: false, workingDirectory: present),
+            DockerDiskReport.Container(id: "c2", name: "old-db-1", imageID: "i", state: "exited", createdAt: nil, finishedAt: nil, sizeBytes: 0, composeProject: "old", keepLabel: false, workingDirectory: f.projects + "/deleted-long-ago"),
+        ]
+        let volumes = [
+            DockerDiskReport.Volume(name: "shop_pgdata", sizeBytes: 3_000_000, links: 0, createdAt: nil, composeProject: "shop", isAnonymous: false),
+            DockerDiskReport.Volume(name: "old_pgdata", sizeBytes: 1_000_000, links: 0, createdAt: nil, composeProject: "old", isAnonymous: false),
+            DockerDiskReport.Volume(name: "blog_data", sizeBytes: 2_000_000, links: 0, createdAt: nil, composeProject: "blog", isAnonymous: false),
+            DockerDiskReport.Volume(name: "loose", sizeBytes: 5_000_000, links: 0, createdAt: nil, composeProject: nil, isAnonymous: false),
+            DockerDiskReport.Volume(name: "in-use", sizeBytes: 9_000_000, links: 1, createdAt: nil, composeProject: "shop", isAnonymous: false),
+            DockerDiskReport.Volume(name: String(repeating: "a", count: 64), sizeBytes: 9_000_000, links: 0, createdAt: nil, composeProject: nil, isAnonymous: true),
+        ]
+        let blog = f.dir(f.projects + "/Blog")
+        let rows = NamedVolumeReport.make(DockerDiskReport(containers: containers, images: [], volumes: volumes, buildCache: []), projectFolders: ["blog": blog])
+        #expect(rows.map(\.name) == ["old_pgdata", "loose", "shop_pgdata", "blog_data"], "the gone project first, then by size")
+        #expect(rows.first { $0.name == "old_pgdata" }?.projectState == .gone)
+        #expect(rows.first { $0.name == "shop_pgdata" }?.projectState == .present)
+        #expect(rows.first { $0.name == "blog_data" }?.projectFolder == blog && rows.first { $0.name == "blog_data" }?.projectState == .present, "found by the folder Compose named it after")
+        #expect(rows.first { $0.name == "loose" }?.projectState == .unknown)
+    }
+}
+

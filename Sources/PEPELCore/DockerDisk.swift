@@ -14,10 +14,16 @@ public struct DockerDiskReport: Codable, Sendable, Hashable {
         public var sizeBytes: Int64
         public var composeProject: String?
         public var keepLabel: Bool
+        /// Folder the compose project was started from, as Docker recorded it.
+        public var workingDirectory: String?
 
         public var isRunning: Bool { state == "running" || state == "paused" || state == "restarting" }
 
-        public init(id: String, name: String, imageID: String, state: String, createdAt: Date?, finishedAt: Date?, sizeBytes: Int64, composeProject: String?, keepLabel: Bool) {
+        public init(
+            id: String, name: String, imageID: String, state: String, createdAt: Date?, finishedAt: Date?, sizeBytes: Int64, composeProject: String?, keepLabel: Bool,
+            workingDirectory: String? = nil
+        ) {
+            self.workingDirectory = workingDirectory
             self.id = id
             self.name = name
             self.imageID = imageID
@@ -90,6 +96,8 @@ public struct DockerDiskReport: Codable, Sendable, Hashable {
     public var buildCache: [CacheEntry]
     /// What Docker's disk image occupies on the Mac; 0 when it could not be read.
     public var diskImageBytes: Int64
+    /// How large the disk image may grow (Docker Desktop's disk usage limit); 0 when unknown.
+    public var diskImageLimitBytes: Int64 = 0
     public var measuredAt: Date
 
     public init(containers: [Container], images: [Image], volumes: [Volume], buildCache: [CacheEntry], diskImageBytes: Int64 = 0, measuredAt: Date = Date()) {
@@ -250,4 +258,44 @@ public struct DockerCleanupReport: Codable, Sendable, Hashable {
     }
 
     public var freedOnDisk: Int64 { diskImageBefore - diskImageAfter }
+}
+
+/// A named volume that no container, running or stopped, mounts, with what PEPEL can tell
+/// about the project it came from. PEPEL never removes named volumes; this is for the user.
+public struct NamedVolumeReport: Codable, Sendable, Identifiable, Hashable {
+    public enum ProjectState: String, Codable, Sendable {
+        /// The compose project's folder is on this Mac.
+        case present
+        /// The folder Docker recorded for the project no longer exists.
+        case gone
+        /// No compose project, or no record of where it lived.
+        case unknown
+    }
+
+    public var name: String
+    public var bytes: Int64
+    public var createdAt: Date?
+    public var project: String?
+    public var projectFolder: String?
+    public var projectState: ProjectState
+    public var id: String { name }
+
+    /// - Parameter projectFolders: folders of projects PEPEL knows, by compose project name
+    ///   (Compose names a project after its folder, lower-cased).
+    public static func make(_ report: DockerDiskReport, projectFolders: [String: String]) -> [NamedVolumeReport] {
+        var recorded: [String: String] = [:]
+        for container in report.containers {
+            if let project = container.composeProject, let folder = container.workingDirectory { recorded[project] = folder }
+        }
+        return report.volumes.filter { $0.links == 0 && !$0.isAnonymous }.map { volume in
+            var folder: String?
+            var state = ProjectState.unknown
+            if let project = volume.composeProject {
+                folder = recorded[project] ?? projectFolders[project.lowercased()]
+                if let folder { state = FileManager.default.fileExists(atPath: folder) ? .present : .gone }
+            }
+            return NamedVolumeReport(name: volume.name, bytes: volume.sizeBytes, createdAt: volume.createdAt, project: volume.composeProject, projectFolder: folder, projectState: state)
+        }
+        .sorted { ($0.projectState == .gone ? 1 : 0, $0.bytes) > ($1.projectState == .gone ? 1 : 0, $1.bytes) }
+    }
 }
