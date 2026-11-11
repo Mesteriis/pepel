@@ -447,6 +447,48 @@ struct ProjectsSection: View {
     @Environment(AppModel.self) private var model
     @State private var search = ""
     @State private var confirmStale = false
+    @State private var trashing: IgnoredFolder?
+
+    /// Large folders git ignores that PEPEL does not recognise as build output.
+    @ViewBuilder private var ignored: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Caption("Large folders git ignores")
+                Spacer()
+                if model.isFindingIgnored { ProgressView().controlSize(.small) }
+                Button(model.ignoredFolders == nil ? "Find" : "Find again") { model.findIgnoredFolders() }.buttonStyle(QuietButtonStyle()).disabled(model.isFindingIgnored)
+            }
+            if let folders = model.ignoredFolders {
+                if folders.isEmpty { Text("None of 500 MB or more.").font(.system(size: 12)).foregroundStyle(Theme.secondary) }
+                ForEach(folders.prefix(12)) { folder in
+                    HStack(spacing: 10) {
+                        Text(folder.projectName).font(.system(size: 12, weight: .medium)).lineLimit(1).frame(width: 160, alignment: .leading)
+                        if folder.looksLikeData { Badge(text: "looks like data", tint: Theme.amber) }
+                        PathText(path: folder.path)
+                        Spacer()
+                        Text(folder.lastUse.map { "changed \(TimeFormat.ago($0))" } ?? "").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
+                        Text(Bytes.format(folder.bytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)
+                        Button("Move to Trash…") { trashing = folder }.buttonStyle(QuietButtonStyle())
+                    }
+                }
+            } else {
+                Text("Asks git which folders each project ignores and measures the ones PEPEL does not already know: scratch data, local state, downloads.")
+                    .font(.system(size: 12)).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Text("These may be data rather than output, so PEPEL never removes them on its own and only ever moves one to the Trash. Linked worktrees are left out.")
+                .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+        }
+        .panel()
+        .confirmationDialog(
+            trashing.map { "Move \(($0.path as NSString).lastPathComponent) of \($0.projectName) to the Trash?" } ?? "",
+            isPresented: Binding(get: { trashing != nil }, set: { if !$0 { trashing = nil } }), titleVisibility: .visible
+        ) {
+            Button("Move to Trash") { if let folder = trashing { model.trashIgnoredFolder(folder) } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(trashing.map { ($0.looksLikeData ? "Its name suggests it holds data (a database, dumps, backups or configuration). " : "") + "\(Bytes.format($0.bytes)). It can be taken back from the Trash; the space is freed when the Trash is emptied." } ?? "")
+        }
+    }
 
     /// Projects nobody has touched for the configured time, with what can be removed from them.
     @ViewBuilder private var stale: some View {
@@ -492,6 +534,7 @@ struct ProjectsSection: View {
         VStack(alignment: .leading, spacing: 14) {
             SectionTitle(title: "Projects", subtitle: "Repositories found under your project roots. Worktrees of one repository are grouped; artifact sizes cover only what PEPEL recognises as generated.")
             stale
+            ignored
             if let usage = model.storage?.projectUsage, !usage.isEmpty {
                 TextField("Filter projects", text: $search).textFieldStyle(.roundedBorder).font(.system(size: 12)).frame(maxWidth: 280)
                 let rows = usage.filter { search.isEmpty || $0.name.lowercased().contains(search.lowercased()) }

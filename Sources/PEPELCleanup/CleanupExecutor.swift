@@ -118,7 +118,7 @@ public struct CleanupExecutor: Sendable {
 
     /// Bounded look for writes newer than `within`. Checks the top of the tree, where build tools
     /// touch files first; the full-tree timestamp from the scan was already checked by the policy.
-    static func hasRecentWrites(_ path: String, within: TimeInterval, now: Date, limit: Int = 20_000) -> Bool {
+    public static func hasRecentWrites(_ path: String, within: TimeInterval, now: Date, limit: Int = 20_000) -> Bool {
         guard within > 0, let cPath = strdup(path) else { return false }
         defer { free(cPath) }
         var argv: [UnsafeMutablePointer<CChar>?] = [cPath, nil]

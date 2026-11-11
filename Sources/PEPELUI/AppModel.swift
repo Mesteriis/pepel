@@ -749,6 +749,31 @@ public final class AppModel {
         }
     }
 
+    // MARK: Large ignored folders
+
+    public var ignoredFolders: [IgnoredFolder]?
+    public var isFindingIgnored = false
+
+    public func findIgnoredFolders() {
+        guard !isFindingIgnored else { return }
+        isFindingIgnored = true
+        Task {
+            ignoredFolders = await engine.ignoredFolders()
+            isFindingIgnored = false
+        }
+    }
+
+    public func trashIgnoredFolder(_ folder: IgnoredFolder) {
+        Task {
+            if let refusal = await engine.trashIgnoredFolder(folder.path, confirmed: true, initiator: .user) {
+                message = "Not moved: \(refusal)"
+            } else {
+                message = "\(folder.projectName) · \((folder.path as NSString).lastPathComponent) moved to the Trash (\(Bytes.format(folder.bytes)))."
+                ignoredFolders?.removeAll { $0.id == folder.id }
+            }
+        }
+    }
+
     // MARK: Untouched projects
 
     public var staleProjects: [StaleProject] = []

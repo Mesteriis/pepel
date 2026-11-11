@@ -85,7 +85,7 @@ public struct ApplicationDataScanner: Sendable {
         return managed.contains(name) || name.lowercased().hasPrefix("com.apple.") || name.lowercased().contains("pepel") || name.hasPrefix(".")
     }
 
-    static func measure(_ path: String) -> (bytes: Int64, lastUse: Date?) {
+    public static func measure(_ path: String) -> (bytes: Int64, lastUse: Date?) {
         var bytes: Int64 = 0
         var newest = 0
         CacheTrimmer.walk(path) { _, size, lastUse in

@@ -431,3 +431,34 @@ public struct TempEntry: Codable, Sendable, Identifiable, Hashable {
         self.keptBecause = keptBecause
     }
 }
+
+/// A large folder inside a project that git ignores and PEPEL does not recognise as a build
+/// artifact: scratch data, local state, downloads. It may be data, so it is only ever moved to
+/// the Trash, and only when the user asks.
+public struct IgnoredFolder: Codable, Sendable, Identifiable, Hashable {
+    public var path: String
+    public var projectID: String
+    public var projectName: String
+    public var bytes: Int64
+    public var lastUse: Date?
+    /// Its name says it holds data (a database, dumps, backups, configuration), not output.
+    public var looksLikeData = false
+    public var id: String { path }
+
+    public init(path: String, projectID: String, projectName: String, bytes: Int64, lastUse: Date?) {
+        self.path = path
+        self.projectID = projectID
+        self.projectName = projectName
+        self.bytes = bytes
+        self.lastUse = lastUse
+    }
+
+    static let dataWords: Set<String> = [
+        "data", "db", "database", "databases", "postgres", "pgdata", "postgresql", "mysql", "mariadb", "redis", "mongo", "mongodb", "sqlite", "volumes",
+        "backup", "backups", "dumps", "dump", "config", "uploads", "storage", "mail", "minio", "elasticsearch", "opensearch",
+    ]
+
+    public static func looksLikeData(_ relativePath: String) -> Bool {
+        relativePath.lowercased().split(separator: "/").contains { dataWords.contains(String($0)) }
+    }
+}

@@ -85,6 +85,7 @@ enum Out {
           pepel status                     Disk, memory, builds and reclaimable storage at a glance
           pepel scan                       Scan developer storage now (nothing is removed)
           pepel projects                   Discovered projects and their artifact usage
+          pepel projects ignored [trash …] Large folders git ignores that PEPEL does not recognise; move one to the Trash
           pepel projects stale [clean]     Projects left untouched for N days and what their artifacts hold; remove them
           pepel builds                     Build generations, retention verdicts and budgets
           pepel free [--all] [--no-cache]  Free memory: show what would be stopped and flushed, then do it (--yes) and measure

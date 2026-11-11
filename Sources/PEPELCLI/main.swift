@@ -114,6 +114,23 @@ case "scan":
     if state.items.contains(where: { state.inUse[$0.id] != nil }) { print("* in use right now") }
     for issue in state.scan.issues { print("note [\(issue.analyzerID)]: \(issue.message)") }
 
+case "projects" where arguments.positional.first == "ignored":
+    _ = await currentStorage()
+    if arguments.positional.dropFirst().first == "trash" {
+        guard let given = arguments.positional.dropFirst(2).first else { Out.error("usage: pepel projects ignored trash <path> [--yes]"); exit(2) }
+        let path = PathUtil.canonical(PathUtil.expand(given))
+        guard arguments.flags.contains("yes") || Out.confirm("Move \(PathUtil.display(path, home: appPaths.home)) to the Trash?") else { print("Nothing was moved."); break }
+        if let refusal = await engine.trashIgnoredFolder(path, confirmed: true, initiator: .cli) { print("Not moved: \(refusal)"); exit(3) }
+        print("Moved to the Trash. Space is freed when the Trash is emptied.")
+        break
+    }
+    print("Asking git about each project…")
+    let found = await engine.ignoredFolders()
+    if arguments.json { Out.json(found); break }
+    guard !found.isEmpty else { print("No folder of 500 MB or more that git ignores and PEPEL does not already know."); break }
+    Out.table(["SIZE", "CHANGED", "", "PROJECT", "WHERE"], found.prefix(40).map { [Bytes.format($0.bytes), $0.lastUse.map { TimeFormat.ago($0) } ?? "—", $0.looksLikeData ? "data?" : "", Out.truncate($0.projectName, 24), PathUtil.display($0.path, home: appPaths.home)] })
+    print("\n\(found.count) folders, \(Bytes.format(found.reduce(0) { $0 + $1.bytes })). Git ignores them, but they may be data rather than output: `pepel projects ignored trash <path>` moves one to the Trash.")
+
 case "projects" where arguments.positional.first == "stale":
     _ = await currentStorage()
     let settings = await engine.currentSettings()

@@ -374,3 +374,77 @@ extension PepelEngine {
         _ = await cleanTemp(confirmed: false, initiator: .automatic)
     }
 }
+
+/// Large folders that git ignores inside projects and no analyzer recognises.
+extension PepelEngine {
+    /// Names that hold secrets or the repository itself; never listed, whatever their size.
+    static let neverIgnoredCandidates: Set<String> = [".git", ".env", ".envrc", ".ssh", ".gnupg", ".aws", ".kube", "secrets", ".secrets"]
+    /// Agents' own working state and worktrees: never offered, per the owner's rules.
+    static let agentFolders: Set<String> = [".claude", ".codex", ".hermes", ".opencode", ".superset", "worktrees", ".worktrees"]
+
+    /// Asks git, per project, which folders it ignores, and measures those that no analyzer
+    /// accounts for. Linked worktrees are left out: they are someone's parallel line of work.
+    public func ignoredFolders(minimumBytes: Int64 = 500 * Bytes.mb) async -> [IgnoredFolder] {
+        if projects.isEmpty { _ = await refreshProjects() }
+        guard tools.locate("git") != nil else { return [] }
+        let known = (storage?.items ?? []).filter { !$0.hasPseudoPath }.map(\.path)
+        let candidates = projects.filter { $0.git != nil && $0.git?.isLinkedWorktree != true }
+        let tools = tools
+        return await Task.detached(priority: .utility) { () -> [IgnoredFolder] in
+            var result: [IgnoredFolder] = []
+            var seen = Set<String>()
+            let sizer = DirectorySizer(), ledger = HardLinkLedger()
+            for project in candidates {
+                guard let listed = tools.run("git", ["-C", project.id, "ls-files", "--others", "--ignored", "--exclude-standard", "--directory"], timeout: 30), listed.status == 0 else { continue }
+                // Outermost folders only: a folder inside another listed one is part of it.
+                let relatives = listed.output.split(separator: "\n").filter { $0.hasSuffix("/") }.map { String($0.dropLast()) }.sorted()
+                var outermost: [String] = []
+                for relative in relatives where !outermost.contains(where: { relative.hasPrefix($0 + "/") }) { outermost.append(relative) }
+                for relative in outermost {
+                    let path = project.id + "/" + relative
+                    let name = (relative as NSString).lastPathComponent
+                    let parts = Set(relative.lowercased().split(separator: "/").map(String.init))
+                    guard !Self.neverIgnoredCandidates.contains(name.lowercased()), !name.lowercased().hasPrefix(".env"), parts.isDisjoint(with: Self.agentFolders), seen.insert(path).inserted
+                    else { continue }
+                    // Something PEPEL already knows (node_modules, .venv, build output) has its own rules.
+                    guard !known.contains(where: { $0 == path || path.hasPrefix($0 + "/") }) else { continue }
+                    var info = stat()
+                    guard lstat(path, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR else { continue }
+                    // Files with several names are counted once, as everywhere else in PEPEL.
+                    let measured = sizer.measure(path, ledger: ledger)
+                    guard measured.allocatedBytes >= minimumBytes else { continue }
+                    var folder = IgnoredFolder(path: path, projectID: project.id, projectName: project.groupName, bytes: measured.allocatedBytes, lastUse: measured.newestModification)
+                    folder.looksLikeData = IgnoredFolder.looksLikeData(relative)
+                    result.append(folder)
+                }
+            }
+            return result.sorted { $0.bytes > $1.bytes }
+        }.value
+    }
+
+    /// Moves one such folder to the Trash after checking it again. In a redirected PEPEL (tests,
+    /// `PEPEL_HOME`) the "Trash" is the redirected home's, never the real one.
+    public func trashIgnoredFolder(_ path: String, confirmed: Bool, initiator: Initiator) async -> String? {
+        guard initiator == .user || initiator == .cli else { return "Only you can have this moved to the Trash." }
+        guard confirmed else { return "This needs your confirmation." }
+        var info = stat()
+        guard lstat(path, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR else { return "It is not a folder any more." }
+        guard projects.contains(where: { path.hasPrefix($0.id + "/") }) else { return "It is not inside a known project." }
+        let context = await policyContext(for: [])
+        if let violation = policy.pathViolation(path, context: context) { return violation }
+        if let lease = context.leases.first(where: { $0.isActive(at: Date()) && $0.covers(path) }) { return "Leased by \(lease.owner)." }
+        if lastProcesses.contains(where: { ($0.workingDirectory ?? "") == path || ($0.workingDirectory ?? "").hasPrefix(path + "/") }) { return "A running program works in it." }
+        let window = TimeInterval(settings.recentWriteProtectionMinutes) * 60
+        if CleanupExecutor.hasRecentWrites(path, within: window, now: Date()) { return "Something was written in it in the last \(settings.recentWriteProtectionMinutes) minutes." }
+        let bytes = ApplicationDataScanner.measure(path).bytes
+        if paths.isRedirected {
+            let trash = paths.home + "/.Trash"
+            try? FileManager.default.createDirectory(atPath: trash, withIntermediateDirectories: true)
+            guard (try? FileManager.default.moveItem(atPath: path, toPath: trash + "/" + (path as NSString).lastPathComponent + "-" + UUID().uuidString.prefix(6))) != nil else { return "It could not be moved." }
+        } else {
+            guard (try? FileManager.default.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: nil)) != nil else { return "It could not be moved to the Trash." }
+        }
+        store.appendAudit(AuditEntry(kind: .cleanup, initiator: initiator.rawValue, subject: "Ignored folder \((path as NSString).lastPathComponent)", outcome: "trashed", bytes: bytes, detail: ["path": path]))
+        return nil
+    }
+}

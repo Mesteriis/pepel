@@ -721,3 +721,63 @@ struct TempCleanerTests {
         #expect(!PathUtil.exists(temp + "/another-old") && PathUtil.exists(temp + "/build-work"))
     }
 }
+
+@Suite("Large ignored folders")
+struct IgnoredFolderTests {
+    @Test("Folders git ignores and no analyzer knows are listed; secrets, known artifacts and worktrees are not; only a person moves one, and only to the Trash")
+    func ignoredFolders() async throws {
+        let f = Fixture()
+        // A real repository: git itself is asked what it ignores.
+        let root = f.dir(f.projects + "/app")
+        let initialise = Process()
+        initialise.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        initialise.arguments = ["init", "-q", "-b", "main", root]
+        try initialise.run()
+        initialise.waitUntilExit()
+        #expect(initialise.terminationStatus == 0)
+        f.file(root + "/.gitignore", text: ".local/\nnode_modules/\n.env.d/\nsmall/\n.claude/\ndocker/data/\n")
+        f.file(root + "/.claude/worktrees/x/blob.bin", bytes: 3 << 20)
+        f.file(root + "/docker/data/postgres/base.bin", bytes: 3 << 20)
+        // The same file under two names is counted once.
+        f.file(root + "/.local/state/linked.bin", bytes: 3 << 20)
+        #expect(link(root + "/.local/state/linked.bin", root + "/.local/state/linked-again.bin") == 0)
+        // docker/ itself is part of the project: one tracked file in it.
+        f.file(root + "/docker/compose.yml", text: "services: {}")
+        let add = Process()
+        add.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        add.arguments = ["-C", root, "add", "docker/compose.yml", ".gitignore"]
+        try add.run()
+        add.waitUntilExit()
+        f.file(root + "/package.json", text: "{}")
+        f.file(root + "/.local/state/blob.bin", bytes: 3 << 20)
+        f.file(root + "/node_modules/pkg/index.js", bytes: 3 << 20)
+        f.file(root + "/.env.d/keys", bytes: 3 << 20)
+        f.file(root + "/small/x", bytes: 4096)
+        f.age(root, hours: 48)
+        let tree = f.worktree(of: root, at: f.projects + "/app-feature", branch: "feature")
+        f.file(tree + "/.local/state/blob.bin", bytes: 3 << 20)
+        var settings = PepelSettings()
+        settings.projectRoots = [f.projects]
+        let store = try PepelStore.inMemory()
+        try store.saveSettings(settings)
+        // Default tools: a redirected engine may run git and nothing else.
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, analyzers: [NodeAnalyzer()],
+            processSource: FakeProcessSource(processes: []), telemetry: { SystemTelemetry() })
+        _ = await engine.scan()
+        let found = await engine.ignoredFolders(minimumBytes: 1 << 20)
+        #expect(Set(found.map(\.path)) == [root + "/.local", root + "/docker/data"], "not node_modules (known), .env.d (secrets), .claude (agents), the small one or the worktree's")
+        let local = try #require(found.first { $0.path == root + "/.local" })
+        #expect(local.bytes >= 6 << 20 && local.bytes < 9 << 20 && local.projectName == "app" && !local.looksLikeData, "the hard link is not counted twice")
+        #expect(found.first { $0.path == root + "/docker/data" }?.looksLikeData == true)
+
+        #expect(await engine.trashIgnoredFolder(root + "/.local", confirmed: true, initiator: .agent) != nil)
+        #expect(await engine.trashIgnoredFolder(root + "/.local", confirmed: false, initiator: .user) != nil)
+        #expect(await engine.trashIgnoredFolder(root, confirmed: true, initiator: .user) != nil, "never the project itself")
+        #expect(await engine.trashIgnoredFolder(f.home + "/elsewhere", confirmed: true, initiator: .user) != nil)
+        #expect(await engine.trashIgnoredFolder(root + "/.local", confirmed: true, initiator: .cli) == nil)
+        #expect(!PathUtil.exists(root + "/.local") && PathUtil.exists(root + "/node_modules") && PathUtil.exists(root + "/.git"))
+        let trash = (try? FileManager.default.contentsOfDirectory(atPath: f.home + "/.Trash")) ?? []
+        #expect(trash.count == 1 && trash[0].hasPrefix(".local-"), "a redirected PEPEL uses the redirected home's Trash")
+    }
+}
