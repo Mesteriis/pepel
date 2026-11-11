@@ -36,7 +36,10 @@ public enum Snapshotter {
         // The disk map of a chosen folder, measured before the pictures are taken.
         if let mapRoot = ProcessInfo.processInfo.environment["PEPEL_SNAPSHOT_MAP"] {
             model.setDiskMapRoot(mapRoot)
-            while model.isMeasuringDiskMap { try? await Task.sleep(for: .milliseconds(200)) }
+            // PEPEL_SNAPSHOT_MAP_SECONDS stops the wait early, to picture the map while it fills in.
+            let limit = ProcessInfo.processInfo.environment["PEPEL_SNAPSHOT_MAP_SECONDS"].flatMap(Double.init) ?? 1800
+            let started = Date()
+            while model.isMeasuringDiskMap, Date().timeIntervalSince(started) < limit { try? await Task.sleep(for: .milliseconds(200)) }
         }
 
         render(MenuBarLabel().padding(.horizontal, 10).padding(.vertical, 4).background(Color.black), model: model, size: nil, to: directory + "/menubar.png")

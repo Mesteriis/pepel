@@ -300,7 +300,12 @@ Model weights are protected and are not offered for removal anywhere.
 
 The Disk map (`pepel disk map`, the Disk map section) only measures: it reads file sizes with
 `lstat`, never file contents, never follows a link below the starting folder and never leaves
-the volume. Folders macOS guards (Documents, Desktop, Downloads, Pictures, the Trash, Mail,
+the volume. It starts at the whole disk and measures folder by folder: each folder directly
+inside the one on screen is walked on its own and its tile appears when it is done. Other
+volumes, device nodes and the data volume's second mount point under `/System/Volumes` are
+skipped, so nothing is counted twice. At the top of the disk the space the disk reports as used
+but no readable folder accounts for (system data, other users, guarded folders, snapshots) is
+shown as one "Not measured" tile; PEPEL does not ask for Full Disk Access to resolve it. Folders macOS guards (Documents, Desktop, Downloads, Pictures, the Trash, Mail,
 Messages, Safari, iCloud and application containers) are shown as closed tiles and are not read
 until the user opens one, because reading them makes macOS ask for access. The measured sizes
 of the largest folders are kept in PEPEL's database so the map opens at once next time.

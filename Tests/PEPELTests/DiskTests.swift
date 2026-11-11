@@ -609,4 +609,49 @@ struct DiskMapTests {
         #expect(withLocked.nodes.first?.name == "big.bin" && withLocked.nodes.contains { $0.name == "app" })
         #expect(DiskMapScanner(home: f.home).scan(root, isCancelled: { true }).allSatisfy(\.complete) == true, "a walk too short to be interrupted finishes")
     }
+
+    final class Updates: @unchecked Sendable {
+        private let lock = NSLock()
+        private var seen: [DiskLevel] = []
+        func add(_ level: DiskLevel) { lock.lock(); seen.append(level); lock.unlock() }
+        var all: [DiskLevel] { lock.lock(); defer { lock.unlock() }; return seen }
+    }
+
+    @Test("A folder is measured folder by folder: each one is reported as it finishes, and nothing outside it is walked")
+    func folderByFolder() async throws {
+        let f = Fixture()
+        let root = f.dir(f.home + "/disk")
+        f.file(root + "/alpha/a.bin", bytes: 3 << 20)
+        f.file(root + "/alpha/sub/b.bin", bytes: 1 << 20)
+        f.file(root + "/beta/c.bin", bytes: 2 << 20)
+        f.file(root + "/gamma/d.txt", bytes: 4096)
+        f.file(root + "/top.bin", bytes: 9 << 20)
+        f.file(root + "/small.txt", bytes: 4096)
+        f.file(f.root + "/elsewhere/huge.bin", bytes: 30 << 20)
+        try FileManager.default.createSymbolicLink(atPath: root + "/shortcut", withDestinationPath: f.root + "/elsewhere")
+
+        let updates = Updates()
+        let levels = await DiskMapScanner(home: f.home).measure(root, concurrency: 2) { updates.add($0) }
+        let top = try #require(levels.first { $0.path == root })
+        #expect(top.complete && top.pending == 0)
+        #expect(top.nodes.prefix(3).map(\.name) == ["top.bin", "alpha", "beta"] && Set(top.nodes.map(\.name)) == ["top.bin", "alpha", "beta", "gamma", "2 smaller files"], "the link is not followed: it counts as a small file")
+        #expect(top.bytes < 20 << 20)
+        #expect(top.nodes.first { $0.name == "alpha" }?.fileCount == 2)
+        // What is directly inside each folder comes with it, and nothing deeper.
+        #expect(Set(levels.map(\.path)) == [root, root + "/alpha", root + "/beta", root + "/gamma"])
+        #expect(levels.first { $0.path == root + "/alpha" }?.nodes.map(\.name) == ["1 smaller files", "sub"] || levels.first { $0.path == root + "/alpha" }?.nodes.count == 2)
+        // It filled in step by step: first the files at once with three folders pending, then one folder at a time.
+        let seen = updates.all
+        #expect(seen.first?.pending == 3 && seen.first?.nodes.contains { $0.kind == .folder } == false && seen.first?.complete == false)
+        #expect(seen.map(\.pending).contains(2) && seen.map(\.pending).contains(1) && seen.last?.pending == 0 && seen.last?.complete == true)
+
+        // Guarded folders: closed by default, read when asked.
+        f.file(f.home + "/Documents/letter.doc", bytes: 1 << 20)
+        let closed = try #require(await DiskMapScanner(home: f.home).measure(f.home).first { $0.path == f.home })
+        #expect(closed.nodes.first { $0.name == "Documents" }?.kind == .restricted)
+        let open = try #require(await DiskMapScanner(home: f.home).measure(f.home, includeGuarded: true).first { $0.path == f.home })
+        #expect(open.nodes.first { $0.name == "Documents" }?.kind == .folder && (open.nodes.first { $0.name == "Documents" }?.bytes ?? 0) >= 1 << 20)
+        #expect(await DiskMapScanner(home: f.home).measure(f.root + "/missing").isEmpty)
+        #expect(DiskMapScanner.notFolders.contains("/Volumes") && DiskMapScanner.notFolders.contains("/dev"))
+    }
 }

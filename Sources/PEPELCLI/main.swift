@@ -844,9 +844,15 @@ case "roots":
 case "disk":
     let settings = await engine.currentSettings()
     if arguments.positional.first == "map" {
-        let target = PathUtil.canonical(arguments.positional.dropFirst().first.map { PathUtil.expand($0) } ?? appPaths.home)
+        // The whole disk by default, measured folder by folder like the dashboard's map.
+        let given = arguments.positional.dropFirst().first.map { PathUtil.expand($0) }
+        let target = given.map { $0 == "/" ? "/" : PathUtil.canonical($0) } ?? "/"
         let scanner = DiskMapScanner(home: appPaths.home)
-        guard let level = scanner.scan(target, depth: 1).first(where: { $0.path == target }) else { Out.error("'\(target)' could not be read"); exit(1) }
+        let quiet = arguments.json
+        guard let level = await scanner.measure(target, includeGuarded: arguments.flags.contains("guarded"), update: { partial in
+            if !quiet, partial.pending > 0 { FileHandle.standardError.write(Data("\r\(partial.pending) folders left, \(Bytes.format(partial.bytes)) so far   ".utf8)) }
+        }).first(where: { $0.path == target }) else { Out.error("'\(target)' could not be read"); exit(1) }
+        if !quiet { FileHandle.standardError.write(Data("\r                                              \r".utf8)) }
         if arguments.json { Out.json(level); break }
         let limit = Int(arguments.options["limit"] ?? "") ?? 30
         print("\(PathUtil.display(target, home: appPaths.home)): \(Bytes.format(level.bytes)) in \(level.nodes.count) items\n")
@@ -859,7 +865,7 @@ case "disk":
                     Out.truncate(node.name, 60),
                 ]
             })
-        print("\n`pepel disk map <folder>` opens one. Folders macOS guards are not read until named explicitly.")
+        print("\n`pepel disk map <folder>` opens one. Folders macOS guards are not read unless named or --guarded is given.")
         break
     }
     if arguments.positional.first == "logs" {

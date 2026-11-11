@@ -52,6 +52,8 @@ public struct DiskMapScanner: Sendable {
         }
         var stack: [Frame] = []
         var levels: [DiskLevel] = []
+        var rootInfo = stat()
+        let rootDevice: Int32? = stat(root, &rootInfo) == 0 ? rootInfo.st_dev : nil
         let guarded = restricted
         let ledger = HardLinkLedger()
         var visited = 0
@@ -72,6 +74,12 @@ public struct DiskMapScanner: Sendable {
             switch Int32(entry.pointee.fts_info) {
             case FTS_D:
                 let path = String(cString: entry.pointee.fts_path)
+                // Other volumes mounted inside this one (the data volume under /System/Volumes, external
+                // disks) hold files that are counted where they are reached by their own names.
+                if level > 0, Self.notFolders.contains(path) || Self.isOtherVolume(path, entry.pointee.fts_statp?.pointee.st_dev, rootDevice) {
+                    fts_set(stream, entry, FTS_SKIP)
+                    continue
+                }
                 // A guarded folder is shown closed, unless the walk was started on it.
                 if level > 0, guarded.contains(path) {
                     fts_set(stream, entry, FTS_SKIP)
@@ -140,5 +148,95 @@ public struct DiskMapScanner: Sendable {
             }
         }
         return levels
+    }
+
+    /// True for a folder that is the mount point of another volume.
+    static func isOtherVolume(_ path: String, _ device: Int32?, _ rootDevice: Int32?) -> Bool {
+        guard let device, let rootDevice else { return false }
+        return device != rootDevice
+    }
+
+    /// Entries at the top of the disk that are not folders of files: other disks, device nodes
+    /// and the kernel's own views of the file system. Walking them would count things twice or forever.
+    static let notFolders: Set<String> = ["/Volumes", "/dev", "/.vol", "/.nofollow", "/.resolve", "/net", "/home", "/Network", "/System/Volumes"]
+
+    /// Measures one folder, folder by folder: each folder inside it is walked on its own, a few
+    /// at a time, and reported as soon as it is done, so the map fills in instead of making the
+    /// user wait for the whole tree. Nothing is measured below what is needed to size each
+    /// folder and to show what is directly inside it.
+    /// - Parameters:
+    ///   - includeGuarded: also read the folders macOS guards (macOS then asks the user for access).
+    ///   - update: called with the level as it stands after each folder finishes.
+    /// - Returns: the finished level and the levels of the folders inside it.
+    public func measure(
+        _ path: String, includeGuarded: Bool = false, concurrency: Int = 4, update: (@Sendable (DiskLevel) -> Void)? = nil
+    ) async -> [DiskLevel] {
+        var nodes: [DiskNode] = []
+        var folders: [String] = []
+        var smallBytes: Int64 = 0
+        var smallCount = 0
+        let guarded = includeGuarded ? [] : restricted
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: path) else { return [] }
+        for name in names {
+            let child = path == "/" ? "/" + name : path + "/" + name
+            var info = stat()
+            guard lstat(child, &info) == 0, !Self.notFolders.contains(child) else { continue }
+            switch info.st_mode & S_IFMT {
+            case S_IFDIR:
+                if guarded.contains(child) {
+                    nodes.append(DiskNode(path: child, name: name, kind: .restricted, bytes: 0))
+                } else {
+                    folders.append(child)
+                }
+            case S_IFREG:
+                let size = Int64(info.st_blocks) * 512
+                if size >= Self.ownTile {
+                    nodes.append(DiskNode(path: child, name: name, kind: .file, bytes: size, fileCount: 1))
+                } else {
+                    smallBytes += size
+                    smallCount += 1
+                }
+            default:
+                // Links are not followed; what they point to is counted where it lives.
+                smallCount += 1
+            }
+        }
+        if smallCount > 0 { nodes.append(DiskNode(path: path, name: "\(smallCount) smaller files", kind: .smallFiles, bytes: smallBytes, fileCount: smallCount)) }
+
+        var level = DiskLevel(path: path, nodes: nodes.sorted { $0.bytes > $1.bytes }, complete: false)
+        level.pending = folders.count
+        update?(level)
+        var inner: [DiskLevel] = []
+        let scanner = self
+        await withTaskGroup(of: (String, [DiskLevel]).self) { group in
+            var next = 0
+            func start() {
+                guard next < folders.count else { return }
+                let folder = folders[next]
+                next += 1
+                group.addTask { (folder, scanner.scan(folder, depth: 1)) }
+            }
+            for _ in 0..<max(1, concurrency) { start() }
+            for await (folder, levels) in group {
+                if let measured = levels.first(where: { $0.path == folder }) {
+                    inner.append(measured)
+                    level.nodes.append(
+                        DiskNode(
+                            path: folder, name: (folder as NSString).lastPathComponent, kind: .folder, bytes: measured.bytes,
+                            fileCount: measured.nodes.reduce(0) { $0 + $1.fileCount }, unreadable: measured.nodes.reduce(0) { $0 + $1.unreadable }))
+                } else {
+                    // Could not be opened at all.
+                    level.nodes.append(DiskNode(path: folder, name: (folder as NSString).lastPathComponent, kind: .folder, bytes: 0, unreadable: 1))
+                }
+                level.nodes.sort { $0.bytes > $1.bytes }
+                level.pending -= 1
+                if Task.isCancelled { group.cancelAll() } else { start() }
+                update?(level)
+            }
+        }
+        level.complete = !Task.isCancelled && level.pending == 0
+        level.measuredAt = Date()
+        update?(level)
+        return [level] + inner
     }
 }

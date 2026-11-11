@@ -10,6 +10,8 @@ public struct DiskNode: Codable, Sendable, Identifiable, Hashable {
         case smallFiles
         /// A folder macOS guards (Documents, Photos, Mail…). It is not read until the user opens it.
         case restricted
+        /// Space the disk reports as used that PEPEL could not attribute to any folder it may read.
+        case unmeasured
     }
 
     public var path: String
@@ -40,6 +42,8 @@ public struct DiskLevel: Codable, Sendable, Hashable {
     public var measuredAt: Date
     /// False when measuring was stopped before it finished.
     public var complete: Bool
+    /// Folders of this level that are still being measured; their tiles appear as they finish.
+    public var pending: Int = 0
 
     public var bytes: Int64 { nodes.reduce(0) { $0 + $1.bytes } }
 

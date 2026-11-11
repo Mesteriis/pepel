@@ -519,19 +519,41 @@ public final class AppModel {
 
     // MARK: Disk map
 
-    public var diskMapRoot = NSHomeDirectory()
-    public var diskMapPath = NSHomeDirectory()
+    /// Where the map starts. The whole disk by default.
+    public var diskMapRoot = "/"
+    public var diskMapPath = "/"
     /// Measured folders by path. A folder that is not here yet is measured when it is opened.
     public var diskMapLevels: [String: DiskLevel] = [:]
     var diskMapFacts: [String: DiskTileFacts] = [:]
     public var isMeasuringDiskMap = false
-    public var diskMapProgress: DiskMapScanner.Progress?
+    /// Whether folders macOS guards are read too. Reading them makes macOS ask for access.
+    public var diskMapReadsGuarded = UserDefaults.standard.bool(forKey: "PEPELDiskMapReadsGuarded") {
+        didSet { UserDefaults.standard.set(diskMapReadsGuarded, forKey: "PEPELDiskMapReadsGuarded") }
+    }
     private var diskMapTask: Task<Void, Never>?
     /// Counts measurements, so a stopped one cannot overwrite the state of the one that replaced it.
     private var diskMapRun = 0
     private static let diskMapKey = "diskmap.levels"
 
     public var diskMapLevel: DiskLevel? { diskMapLevels[diskMapPath] }
+
+    /// The name of the disk, for the first crumb.
+    public var diskName: String {
+        (try? URL(fileURLWithPath: "/").resourceValues(forKeys: [.volumeNameKey]).volumeName) ?? "This Mac"
+    }
+
+    /// The folder on screen with, at the top of the disk, one more tile for the space the disk
+    /// reports as used but that no folder PEPEL may read accounts for.
+    public var diskMapDisplayLevel: DiskLevel? {
+        guard var level = diskMapLevel else { return nil }
+        if level.path == "/", level.pending == 0, let t = live?.telemetry, t.diskTotalBytes > 0 {
+            let rest = (t.diskTotalBytes - t.diskFreeBytes) - level.bytes
+            if rest > max(Bytes.gb, level.bytes / 100) {
+                level.nodes.append(DiskNode(path: "/", name: "Not measured", kind: .unmeasured, bytes: rest))
+            }
+        }
+        return level
+    }
 
     /// First time the section is shown: what was measured last time, or a fresh measurement.
     public func openDiskMapIfNeeded() {
@@ -545,44 +567,52 @@ public final class AppModel {
     }
 
     public func setDiskMapRoot(_ path: String) {
-        diskMapRoot = PathUtil.canonical(path)
+        diskMapRoot = path == "/" ? "/" : PathUtil.canonical(path)
         showDiskMap(diskMapRoot)
     }
 
-    /// Shows a folder: at once when it has been measured, otherwise after measuring it.
-    public func showDiskMap(_ path: String) {
-        guard path == diskMapRoot || path.hasPrefix(diskMapRoot + "/") else { return }
-        diskMapPath = path
-        if diskMapLevels[path] == nil { measureDiskMap(path) } else { refreshDiskMapFacts() }
+    private func isInsideDiskMapRoot(_ path: String) -> Bool {
+        path == diskMapRoot || diskMapRoot == "/" || path.hasPrefix(diskMapRoot + "/")
     }
 
-    public func cancelDiskMap() { diskMapTask?.cancel() }
+    /// Shows a folder: at once when it has been measured, otherwise measuring what is in it.
+    public func showDiskMap(_ path: String) {
+        let target = path.isEmpty ? "/" : path
+        guard isInsideDiskMapRoot(target) else { return }
+        diskMapPath = target
+        if diskMapLevels[target]?.complete == true { refreshDiskMapFacts() } else { measureDiskMap(target) }
+    }
 
+    public func cancelDiskMap() {
+        diskMapTask?.cancel()
+        isMeasuringDiskMap = false
+    }
+
+    /// Measures the folders directly inside `path`, one by one; tiles appear as each finishes.
     public func measureDiskMap(_ path: String) {
         diskMapTask?.cancel()
         isMeasuringDiskMap = true
-        diskMapProgress = nil
         diskMapRun += 1
         let run = diskMapRun
         let scanner = DiskMapScanner(home: engine.paths.home)
-        // Detached, so the walk runs off the main thread and stops when the task is cancelled.
+        let guarded = diskMapReadsGuarded
         diskMapTask = Task.detached(priority: .userInitiated) { [weak self] in
-            let levels = scanner.scan(path, progress: { progress in
-                Task { @MainActor in if self?.diskMapRun == run, self?.isMeasuringDiskMap == true { self?.diskMapProgress = progress } }
-            })
-            await self?.adoptDiskMap(levels, for: path, run: run)
+            let levels = await scanner.measure(path, includeGuarded: guarded) { level in
+                Task { @MainActor in self?.adoptDiskMap([level], run: run, finished: false) }
+            }
+            await self?.adoptDiskMap(levels, run: run, finished: true)
         }
     }
 
-    private func adoptDiskMap(_ levels: [DiskLevel], for path: String, run: Int) {
-        for level in levels { diskMapLevels[level.path] = level }
+    private func adoptDiskMap(_ levels: [DiskLevel], run: Int, finished: Bool) {
         guard run == diskMapRun else { return }
-        if diskMapLevels[path] == nil { diskMapLevels[path] = DiskLevel(path: path, nodes: []) }
-        isMeasuringDiskMap = false
-        diskMapProgress = nil
+        // An earlier, complete measurement of a folder is not replaced by a partial one of the same folder's contents.
+        for level in levels where finished || level.path == diskMapPath || diskMapLevels[level.path] == nil { diskMapLevels[level.path] = level }
         refreshDiskMapFacts()
+        guard finished else { return }
+        isMeasuringDiskMap = false
         // The largest folders are kept, so the map opens at once next time.
-        let kept = diskMapLevels.values.sorted { $0.bytes > $1.bytes }.prefix(600)
+        let kept = diskMapLevels.values.filter(\.complete).sorted { $0.bytes > $1.bytes }.prefix(600)
         try? engine.store.saveCodable(Dictionary(uniqueKeysWithValues: kept.map { ($0.path, $0) }), key: Self.diskMapKey)
     }
 

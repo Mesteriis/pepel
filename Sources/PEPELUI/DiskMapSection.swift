@@ -14,7 +14,26 @@ struct DiskTileFacts: Sendable {
 /// opens it. Colour says what PEPEL knows: copper is what it could clean, green is what is kept.
 struct DiskMapSection: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var hovered: DiskNode?
+    /// Where on the map the folder being opened sits, so the new view grows out of it.
+    @State private var zoomAnchor = UnitPoint.center
+    /// True while going back up, so the view settles from slightly larger instead.
+    @State private var goingUp = false
+
+    /// Quick and decelerating: felt, not watched.
+    static let motion = Animation.timingCurve(0.23, 1, 0.32, 1, duration: 0.32)
+
+    /// Opens a folder with the map growing out of the tile that was clicked.
+    private func open(_ path: String, from rect: CGRect?, in size: CGSize) {
+        if let rect, size.width > 0, size.height > 0 {
+            zoomAnchor = UnitPoint(x: rect.midX / size.width, y: rect.midY / size.height)
+        } else {
+            zoomAnchor = .center
+        }
+        goingUp = rect == nil
+        withAnimation(reduceMotion ? .easeOut(duration: 0.15) : Self.motion) { model.showDiskMap(path) }
+    }
 
     /// Tiles smaller than this share of the folder are shown together as one.
     private static let smallest = 0.004
@@ -24,7 +43,7 @@ struct DiskMapSection: View {
         VStack(alignment: .leading, spacing: 12) {
             SectionTitle(
                 title: "Disk map",
-                subtitle: "Each tile is a folder or a file; its area is its size on disk. Click a folder to open it.")
+                subtitle: "The whole disk as tiles: each is a folder or a file, and its area is its size. Click a folder to open it. Folders are measured one by one and appear as they finish.")
             navigation
             summary
             map
@@ -37,10 +56,11 @@ struct DiskMapSection: View {
 
     private var crumbs: [(name: String, path: String)] {
         let root = model.diskMapRoot
-        var result = [(name: PathUtil.display(root), path: root)]
-        guard model.diskMapPath.hasPrefix(root + "/") else { return result }
-        var current = root
-        for part in model.diskMapPath.dropFirst(root.count + 1).split(separator: "/") {
+        var result = [(name: root == "/" ? model.diskName : PathUtil.display(root), path: root)]
+        let prefix = root == "/" ? "/" : root + "/"
+        guard model.diskMapPath != root, model.diskMapPath.hasPrefix(prefix) else { return result }
+        var current = root == "/" ? "" : root
+        for part in model.diskMapPath.dropFirst(prefix.count).split(separator: "/") {
             current += "/" + part
             result.append((String(part), current))
         }
@@ -50,6 +70,7 @@ struct DiskMapSection: View {
     private var navigation: some View {
         HStack(spacing: 6) {
             Menu {
+                Button("Whole disk") { model.setDiskMapRoot("/") }
                 Button("Home folder") { model.setDiskMapRoot(NSHomeDirectory()) }
                 ForEach(model.settings.projectRoots, id: \.self) { root in
                     Button(PathUtil.display(PathUtil.expand(root))) { model.setDiskMapRoot(PathUtil.expand(root)) }
@@ -57,6 +78,8 @@ struct DiskMapSection: View {
                 Button("Applications") { model.setDiskMapRoot("/Applications") }
                 Divider()
                 Button("Choose a folder…") { chooseFolder() }
+                Divider()
+                Toggle("Read folders macOS guards (Documents, Downloads, Photos…)", isOn: Binding(get: { model.diskMapReadsGuarded }, set: { model.diskMapReadsGuarded = $0; model.measureDiskMap(model.diskMapPath) }))
             } label: {
                 Image(systemName: "folder").font(.system(size: 11))
             }
@@ -67,14 +90,14 @@ struct DiskMapSection: View {
             ForEach(Array(crumbs.enumerated()), id: \.offset) { index, crumb in
                 if index > 0 { Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).foregroundStyle(Theme.tertiary) }
                 let last = index == crumbs.count - 1
-                Button(crumb.name) { model.showDiskMap(crumb.path) }
+                Button(crumb.name) { open(crumb.path, from: nil, in: .zero) }
                     .buttonStyle(.plain).font(.system(size: 12, weight: last ? .semibold : .regular))
                     .foregroundStyle(last ? Theme.text : Theme.secondary).lineLimit(1).disabled(last)
             }
             Spacer(minLength: 8)
             if model.diskMapPath != model.diskMapRoot {
                 Button {
-                    model.showDiskMap((model.diskMapPath as NSString).deletingLastPathComponent)
+                    open(crumbs.dropLast().last?.path ?? model.diskMapRoot, from: nil, in: .zero)
                 } label: {
                     Label("Up", systemImage: "arrow.up")
                 }
@@ -97,9 +120,10 @@ struct DiskMapSection: View {
     private var summary: some View {
         HStack(alignment: .firstTextBaseline, spacing: 14) {
             if let level = model.diskMapLevel {
-                Text(Bytes.format(level.bytes)).font(.system(size: 28, weight: .semibold, design: .rounded)).monospacedDigit().foregroundStyle(Theme.text)
-                Text("\(level.nodes.count) items · measured \(TimeFormat.ago(level.measuredAt))" + (level.complete ? "" : " · stopped early, sizes are partial"))
-                    .font(.system(size: 12)).foregroundStyle(level.complete ? Theme.secondary : Theme.amber)
+                Text(Bytes.format(headline(level))).font(.system(size: 28, weight: .semibold, design: .rounded)).monospacedDigit().foregroundStyle(Theme.text)
+                    .contentTransition(.numericText())
+                    .animation(.easeOut(duration: 0.3), value: headline(level))
+                Text(caption(level)).font(.system(size: 12)).foregroundStyle(level.complete || level.pending > 0 ? Theme.secondary : Theme.amber)
             } else {
                 Text("—").font(.system(size: 28, weight: .semibold, design: .rounded)).foregroundStyle(Theme.tertiary)
             }
@@ -108,6 +132,25 @@ struct DiskMapSection: View {
             legend("Kept", Theme.forestDim)
             legend("Everything else", Theme.raised)
         }
+    }
+
+    /// At the top of the disk the figure is what the disk itself reports as used; elsewhere, what was measured.
+    private func headline(_ level: DiskLevel) -> Int64 {
+        if level.path == "/", let t = model.live?.telemetry, t.diskTotalBytes > 0 { return t.diskTotalBytes - t.diskFreeBytes }
+        return level.bytes
+    }
+
+    private func caption(_ level: DiskLevel) -> String {
+        var parts: [String] = []
+        if level.path == "/", let t = model.live?.telemetry, t.diskTotalBytes > 0 {
+            parts.append("used of \(Bytes.format(t.diskTotalBytes)) · \(Bytes.format(t.diskAvailableBytes)) available")
+        }
+        if level.pending > 0 {
+            parts.append("measuring, \(level.pending) folder\(level.pending == 1 ? "" : "s") left · \(Bytes.format(level.bytes)) so far")
+        } else {
+            parts.append("\(level.nodes.count) items · measured \(TimeFormat.ago(level.measuredAt))" + (level.complete ? "" : " · stopped early, sizes are partial"))
+        }
+        return parts.joined(separator: " · ")
     }
 
     private func legend(_ text: String, _ color: Color) -> some View {
@@ -132,7 +175,7 @@ struct DiskMapSection: View {
     }
 
     @ViewBuilder private var map: some View {
-        if let level = model.diskMapLevel, !level.nodes.isEmpty {
+        if let level = model.diskMapDisplayLevel, !level.nodes.isEmpty {
             let nodes = Self.tiles(level)
             // A folder that was not read has no size; it gets a small fixed share so it can be seen and opened.
             let floor = Double(max(1, level.bytes)) * 0.012
@@ -145,22 +188,28 @@ struct DiskMapSection: View {
                         if rect.width >= 3, rect.height >= 3 {
                             DiskTile(
                                 node: node, facts: model.diskMapFacts, inside: node.kind == .folder ? model.diskMapLevels[node.path] : nil, size: rect.size,
-                                hoveredID: hovered?.id, open: { model.showDiskMap($0) }, reveal: { model.reveal($0) }, hover: { hovered = $0 })
+                                hoveredID: hovered?.id, open: { open($0, from: rect, in: geometry.size) }, reveal: { model.reveal($0) }, hover: { hovered = $0 })
                                 .frame(width: rect.width, height: rect.height)
                                 .offset(x: rect.minX, y: rect.minY)
+                                // A folder that has just been measured fades in; the others slide and resize to make room.
+                                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.94)))
                         }
                     }
                 }
+                .animation(reduceMotion ? .easeOut(duration: 0.15) : Self.motion, value: nodes.map { "\($0.id):\($0.bytes)" })
+                // Opening a folder: the new map grows out of the tile that was clicked; going back, it settles from slightly larger.
+                .id(level.path)
+                .transition(
+                    reduceMotion
+                        ? .opacity
+                        : .asymmetric(insertion: .scale(scale: goingUp ? 1.05 : 0.9, anchor: goingUp ? .center : zoomAnchor).combined(with: .opacity), removal: .opacity))
             }
             .frame(height: Self.mapHeight)
             .overlay(alignment: .bottomLeading) {
                 if model.isMeasuringDiskMap { measuring.padding(10) }
             }
         } else if model.isMeasuringDiskMap {
-            VStack(spacing: 10) {
-                ProgressView().controlSize(.small)
-                measuring
-            }
+            measuring
             .frame(maxWidth: .infinity).frame(height: Self.mapHeight).panel(padding: 0)
         } else {
             EmptyState(symbol: "square.grid.2x2", title: "Nothing to show", message: "This folder is empty, or it could not be read.")
@@ -170,11 +219,9 @@ struct DiskMapSection: View {
 
     private var measuring: some View {
         HStack(spacing: 8) {
-            Text("Measuring").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.text)
-            if let progress = model.diskMapProgress {
-                Text("\(Bytes.format(progress.bytes)) in \(progress.files.formatted()) files · \(PathUtil.display(progress.current))")
-                    .font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary).lineLimit(1).truncationMode(.middle)
-            }
+            ProgressView().controlSize(.mini)
+            Text(model.diskMapLevel.map { $0.pending > 0 ? "Measuring folder by folder: \($0.pending) left" : "Measuring" } ?? "Measuring")
+                .font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(Theme.text)
         }
         .padding(.horizontal, 10).padding(.vertical, 6)
         .background(Theme.surface, in: Capsule())
@@ -187,11 +234,11 @@ struct DiskMapSection: View {
         if let node = hovered, let level = model.diskMapLevel {
             let facts = model.diskMapFacts[node.id] ?? DiskTileFacts()
             HStack(spacing: 12) {
-                Image(systemName: node.kind == .file ? "doc" : node.kind == .restricted ? "lock" : node.kind == .smallFiles ? "square.stack.3d.up" : "folder")
+                Image(systemName: node.kind == .file ? "doc" : node.kind == .restricted ? "lock" : node.kind == .unmeasured ? "questionmark.square.dashed" : node.kind == .smallFiles ? "square.stack.3d.up" : "folder")
                     .foregroundStyle(Theme.secondary).frame(width: 16)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(node.name).font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text).lineLimit(1)
-                    if node.kind != .smallFiles { PathText(path: node.path) }
+                    if node.kind != .smallFiles, node.kind != .unmeasured { PathText(path: node.path) }
                 }
                 Spacer()
                 Text(explanation(node, facts)).font(.system(size: 11)).foregroundStyle(facts.reclaimable > 0 ? Theme.copper : Theme.secondary)
@@ -213,6 +260,7 @@ struct DiskMapSection: View {
 
     private func explanation(_ node: DiskNode, _ facts: DiskTileFacts) -> String {
         if node.kind == .restricted { return "Not read: macOS guards this folder. Open it to measure it; macOS may ask for access." }
+        if node.kind == .unmeasured { return "Used according to the disk, but in no folder PEPEL may read: system data, other users, guarded folders, snapshots and swap." }
         if facts.kept { return "Kept: marked as not to be cleaned, or protected by PEPEL's rules." }
         if facts.reclaimable > 0 { return "PEPEL can clean \(Bytes.format(min(facts.reclaimable, node.bytes))) of this." }
         if node.unreadable > 0 { return "\(node.unreadable) entries inside could not be read; the size is a lower bound." }
@@ -293,7 +341,7 @@ private struct Leaf: View {
     private var cleanable: Double { node.bytes > 0 ? min(1, Double(fact.reclaimable) / Double(node.bytes)) : 0 }
 
     private var fill: Color {
-        if node.kind == .restricted { return Theme.background }
+        if node.kind == .restricted || node.kind == .unmeasured { return Theme.background }
         if fact.kept { return Theme.forestDim }
         // Copper in proportion to what could be cleaned: a folder with a little of it stays neutral.
         if cleanable >= 0.02 { return Theme.copper.opacity(0.10 + 0.5 * cleanable) }
@@ -308,10 +356,11 @@ private struct Leaf: View {
                 if !bare {
                     RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Theme.raised)
                     RoundedRectangle(cornerRadius: 4, style: .continuous).fill(fill)
-                    if node.kind == .restricted {
+                    if node.kind == .restricted || node.kind == .unmeasured {
                         RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Theme.stroke, style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
                     }
-                    if hovered { RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Theme.text.opacity(0.55), lineWidth: 1) }
+                    RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Theme.text.opacity(hovered && node.canOpen ? 0.05 : 0))
+                    RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Theme.text.opacity(hovered ? 0.55 : 0), lineWidth: 1)
                 }
                 if bare {
                     HStack(spacing: 6) {
@@ -328,7 +377,7 @@ private struct Leaf: View {
                         HStack(spacing: 4) {
                             if node.kind == .restricted { Image(systemName: "lock.fill").font(.system(size: 8)).foregroundStyle(Theme.tertiary) }
                             Text(node.name).font(.system(size: size.width >= 200 && size.height >= 90 ? 13 : 11, weight: .medium))
-                                .foregroundStyle(node.kind == .restricted || node.kind == .smallFiles ? Theme.secondary : Theme.text).lineLimit(1).truncationMode(.middle)
+                                .foregroundStyle(node.kind == .restricted || node.kind == .smallFiles || node.kind == .unmeasured ? Theme.secondary : Theme.text).lineLimit(1).truncationMode(.middle)
                         }
                         if size.height >= 38 {
                             Text(node.kind == .restricted ? "not read" : Bytes.format(node.bytes)).font(.system(size: 11)).monospacedDigit()
@@ -343,12 +392,13 @@ private struct Leaf: View {
             }
             .padding(bare ? 0 : 1)
             .contentShape(Rectangle())
+            .animation(.easeOut(duration: 0.12), value: hovered)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TilePress(enabled: node.canOpen))
         .onHover { inside in hover(inside ? node : nil) }
         .contextMenu {
             if node.canOpen { Button("Open") { open(node.path) } }
-            if node.kind != .smallFiles {
+            if node.kind != .smallFiles, node.kind != .unmeasured {
                 Button("Show in Finder") { reveal(node.path) }
                 Button("Copy path") {
                     NSPasteboard.general.clearContents()
@@ -358,5 +408,17 @@ private struct Leaf: View {
         }
         .accessibilityLabel("\(node.name), \(node.kind == .restricted ? "not read" : Bytes.format(node.bytes))")
         .accessibilityHint(node.canOpen ? "Opens this folder." : "")
+    }
+}
+
+/// A folder tile gives a little under the pointer when pressed, confirming the click before it opens.
+private struct TilePress: ButtonStyle {
+    let enabled: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(enabled && configuration.isPressed && !reduceMotion ? 0.985 : 1)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }
