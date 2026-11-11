@@ -5,13 +5,13 @@ public enum MemoryOwnerKind: String, Codable, Sendable, CaseIterable {
 
     public var displayName: String {
         switch self {
-        case .virtualMachine: "Virtual machines and containers"
-        case .agentSession: "Agent session"
-        case .application: "Application"
-        case .project: "Project processes"
-        case .developerTool: "Developer tool"
-        case .system: "System services"
-        case .other: "Other"
+        case .virtualMachine: L("Virtual machines and containers")
+        case .agentSession: L("Agent session")
+        case .application: L("Application")
+        case .project: L("Project processes")
+        case .developerTool: L("Developer tool")
+        case .system: L("System services")
+        case .other: L("Other")
         }
     }
 }
@@ -212,14 +212,16 @@ public struct ContainerReport: Codable, Sendable, Hashable {
     }
 
     public var explanation: String {
-        var text = "\(running) running container\(running == 1 ? " uses" : "s use") \(Bytes.format(usedByContainersBytes)) of a virtual machine limited to \(Bytes.format(vmLimitBytes))."
+        var text = L("\(running) running containers use \(Bytes.format(usedByContainersBytes)) of a virtual machine limited to \(Bytes.format(vmLimitBytes)).")
         if excessBytes > (2 << 30) {
-            text += " This Mac is charged \(Bytes.format(hostFootprintBytes)) for that machine: Linux keeps memory it once used as cache, and the virtual machine hands it back slowly or not at all. Restarting it would return about \(Bytes.format(excessBytes))."
+            text += " " + L("This Mac is charged \(Bytes.format(hostFootprintBytes)) for that machine: Linux keeps memory it once used as cache, and the virtual machine hands it back slowly or not at all. Restarting it would return about \(Bytes.format(excessBytes)).")
         } else if hostFootprintBytes > 0 {
-            text += " This Mac is charged \(Bytes.format(hostFootprintBytes)) for that machine, which is about what it costs right after a restart."
+            text += " " + L("This Mac is charged \(Bytes.format(hostFootprintBytes)) for that machine, which is about what it costs right after a restart.")
         }
         if let suggestedLimitBytes {
-            text += " A limit around \(Bytes.format(suggestedLimitBytes)) would still leave 1.5× headroom over the most the containers have used\(peakUsedBytes > usedByContainersBytes ? " (\(Bytes.format(peakUsedBytes)))" : "")."
+            text += " " + (peakUsedBytes > usedByContainersBytes
+                ? L("A limit around \(Bytes.format(suggestedLimitBytes)) would still leave 1.5× headroom over the most the containers have used (\(Bytes.format(peakUsedBytes))).")
+                : L("A limit around \(Bytes.format(suggestedLimitBytes)) would still leave 1.5× headroom over the most the containers have used."))
         }
         return text
     }
@@ -689,7 +691,7 @@ public struct MemoryForecast: Codable, Sendable, Hashable {
     }
 
     public func sentence(now: Date = Date()) -> String {
-        "Memory in use has risen by about \(Bytes.format(perHourBytes)) an hour over the last \(TimeFormat.age(basedOn)). At that rate it reaches \(Int(Self.thresholdShare * 100))% of this Mac's memory in about \(TimeFormat.age(max(60, reachesAt.timeIntervalSince(now)))), where macOS usually starts to struggle."
+        L("Memory in use has risen by about \(Bytes.format(perHourBytes)) an hour over the last \(TimeFormat.age(basedOn)). At that rate it reaches \(Int(Self.thresholdShare * 100))% of this Mac's memory in about \(TimeFormat.age(max(60, reachesAt.timeIntervalSince(now)))), where macOS usually starts to struggle.")
     }
 }
 
@@ -716,16 +718,16 @@ public struct SwapReport: Codable, Sendable, Hashable {
     public var slackBytes: Int64 { max(0, onDiskBytes - usedBytes) }
 
     public var explanation: String {
-        guard fileCount > 0 else { return "macOS has no swap files right now: nothing has been written out of memory." }
-        var text = "Swap takes \(Bytes.format(onDiskBytes)) on disk in \(fileCount) file\(fileCount == 1 ? "" : "s"); \(Bytes.format(usedBytes)) of that holds memory that was written out."
+        guard fileCount > 0 else { return L("macOS has no swap files right now: nothing has been written out of memory.") }
+        var text = L("Swap takes \(Bytes.format(onDiskBytes)) on disk in \(fileCount) files; \(Bytes.format(usedBytes)) of that holds memory that was written out.")
         if usedBytes * 5 < onDiskBytes, slackBytes >= Bytes.gb {
-            text += " Most of it is empty. macOS removes swap files it no longer needs by itself, usually within minutes of memory being freed; restarting the Mac removes all of them."
+            text += " " + L("Most of it is empty. macOS removes swap files it no longer needs by itself, usually within minutes of memory being freed; restarting the Mac removes all of them.")
         } else if usedBytes >= 4 * Bytes.gb {
-            text += " That much swap in use means memory was short at some point. Ending what lives in swap (`pepel memory swapped`) or freeing memory lets macOS read the rest back and shrink the files."
+            text += " " + L("That much swap in use means memory was short at some point. Ending what lives in swap (`pepel memory swapped`) or freeing memory lets macOS read the rest back and shrink the files.")
         } else {
-            text += " macOS grows and shrinks these by itself; there is nothing to do."
+            text += " " + L("macOS grows and shrinks these by itself; there is nothing to do.")
         }
-        if sleepImageBytes > 0 { text += " The hibernation image beside them takes another \(Bytes.format(sleepImageBytes)); macOS manages it." }
+        if sleepImageBytes > 0 { text += " " + L("The hibernation image beside them takes another \(Bytes.format(sleepImageBytes)); macOS manages it.") }
         return text
     }
 
@@ -776,11 +778,14 @@ public struct DailySummary: Codable, Sendable, Hashable {
     }
 
     public var headline: String {
-        if done.isEmpty { return "PEPEL did not need to do anything." }
-        var parts: [String] = []
-        if memoryFreedBytes > 0 { parts.append("\(Bytes.format(memoryFreedBytes)) of memory measured as given back") }
-        if diskFreedBytes > 0 { parts.append("\(Bytes.format(diskFreedBytes)) of disk cleaned") }
-        return parts.isEmpty ? "\(done.count) kind\(done.count == 1 ? "" : "s") of action, nothing measured as given back." : parts.joined(separator: ", ") + "."
+        if done.isEmpty { return L("PEPEL did not need to do anything.") }
+        let memory = Bytes.format(memoryFreedBytes), disk = Bytes.format(diskFreedBytes)
+        switch (memoryFreedBytes > 0, diskFreedBytes > 0) {
+        case (true, true): return L("\(memory) of memory measured as given back, \(disk) of disk cleaned.")
+        case (true, false): return L("\(memory) of memory measured as given back.")
+        case (false, true): return L("\(disk) of disk cleaned.")
+        case (false, false): return L("\(done.count) kinds of action, nothing measured as given back.")
+        }
     }
 
     /// Built from the audit log alone, so it says what was recorded, not what was intended.
@@ -789,33 +794,32 @@ public struct DailySummary: Codable, Sendable, Hashable {
         func count(_ kind: AuditKind, _ outcomes: Set<String>, subject: ((String) -> Bool)? = nil) -> [AuditEntry] {
             entries.filter { $0.kind == kind && outcomes.contains($0.outcome) && (subject?($0.subject) ?? true) }
         }
-        func plural(_ n: Int, _ one: String, _ many: String) -> String { "\(n) \(n == 1 ? one : many)" }
         var done: [String] = []
         let special: Set<String> = ["Free memory", "Free memory, standing instruction", "File cache permission"]
         let ended = count(.termination, ["terminated", "killed"]) { !special.contains($0) }
         if !ended.isEmpty {
             let own = ended.filter { $0.initiator == "automatic" }.count
-            done.append("Ended \(plural(ended.count, "process", "processes"))\(own > 0 ? ", \(own) of them by PEPEL's own rules" : "").")
+            done.append(own > 0 ? L("Ended \(ended.count) processes, \(own) of them by PEPEL's own rules.") : L("Ended \(ended.count) processes."))
         }
         let suspended = count(.termination, ["suspended"]), woken = count(.termination, ["woken"])
-        if !suspended.isEmpty || !woken.isEmpty { done.append("Suspended agent sessions \(plural(suspended.count, "time", "times")) and woke them \(plural(woken.count, "time", "times")).") }
+        if !suspended.isEmpty || !woken.isEmpty { done.append(L("Suspended agent sessions \(suspended.count) times and woke them \(woken.count) times.")) }
         let restarted = count(.termination, ["restarted"]), quit = count(.termination, ["quit"])
-        if !restarted.isEmpty { done.append("Restarted \(restarted.map(\.subject).joined(separator: ", ")).") }
-        if !quit.isEmpty { done.append("Quit \(quit.map(\.subject).joined(separator: ", ")).") }
+        if !restarted.isEmpty { done.append(L("Restarted \(restarted.map(\.subject).joined(separator: ", ")).")) }
+        if !quit.isEmpty { done.append(L("Quit \(quit.map(\.subject).joined(separator: ", ")).")) }
         let simulators = count(.termination, ["shut down"])
-        if !simulators.isEmpty { done.append("Shut down \(plural(simulators.count, "simulator", "simulators")).") }
+        if !simulators.isEmpty { done.append(L("Shut down \(simulators.count) simulators.")) }
         let stopped = entries.filter { $0.kind == .container && $0.outcome.hasPrefix("stopped") }, paused = entries.filter { $0.kind == .container && $0.outcome.hasPrefix("paused") }
-        if !stopped.isEmpty { done.append("Stopped the containers of \(plural(stopped.count, "project", "projects")).") }
-        if !paused.isEmpty { done.append("Paused the containers of \(plural(paused.count, "project", "projects")).") }
+        if !stopped.isEmpty { done.append(L("Stopped the containers of \(stopped.count) projects.")) }
+        if !paused.isEmpty { done.append(L("Paused the containers of \(paused.count) projects.")) }
         let vm = count(.container, ["measured"])
         let vmBytes = vm.reduce(Int64(0)) { $0 + $1.bytes }
-        if !vm.isEmpty { done.append("Restarted the Docker VM \(plural(vm.count, "time", "times")), which returned \(Bytes.format(vmBytes)).") }
+        if !vm.isEmpty { done.append(L("Restarted the Docker VM \(vm.count) times, which returned \(Bytes.format(vmBytes)).")) }
         let free = entries.filter { $0.kind == .termination && $0.subject == "Free memory" }
         let freeBytes = free.reduce(Int64(0)) { $0 + $1.bytes }
-        if !free.isEmpty { done.append("Ran Free memory \(plural(free.count, "time", "times")); memory in use fell by \(Bytes.format(freeBytes)) across them.") }
+        if !free.isEmpty { done.append(L("Ran Free memory \(free.count) times; memory in use fell by \(Bytes.format(freeBytes)) across them.")) }
         let cleanups = entries.filter { $0.kind == .cleanup }
         let disk = cleanups.reduce(Int64(0)) { $0 + $1.bytes }
-        if !cleanups.isEmpty { done.append("Cleaned \(plural(cleanups.count, "item", "items")) of developer storage, \(Bytes.format(disk)).") }
+        if !cleanups.isEmpty { done.append(L("Cleaned \(cleanups.count) items of developer storage, \(Bytes.format(disk)).")) }
         return DailySummary(from: from, to: to, done: done, open: open, memoryFreedBytes: vmBytes + freeBytes, diskFreedBytes: disk)
     }
 }

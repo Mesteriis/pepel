@@ -65,7 +65,7 @@ public struct FileCacheFlusher: Sendable {
         let installed: @Sendable () -> Bool = { FileManager.default.fileExists(atPath: rulePath) }
         @Sendable func asAdministrator(_ shell: String, prompt: String) -> FileCacheFlushOutcome {
             guard let result = tools.run("osascript", ["-e", appleScript(shell: shell, prompt: prompt)], timeout: 180) else {
-                return .failed("The administrator prompt was not answered in time.")
+                return .failed(L("The administrator prompt was not answered in time."))
             }
             // osascript reports a dismissed prompt as error -128; its text goes to stderr, which is not read.
             return result.status == 0 ? .flushed : .cancelled
@@ -76,11 +76,11 @@ public struct FileCacheFlusher: Sendable {
                 // -n: never ask on a terminal. Without the rule this fails at once and falls through.
                 if installed(), let result = tools.run("sudo", ["-n", purgePath], timeout: 60), result.status == 0 { return .flushed }
                 return asAdministrator(
-                    grantScript(uid: uid), prompt: "PEPEL wants to flush the file cache, and to be allowed to do so without asking again.")
+                    grantScript(uid: uid), prompt: L("PEPEL wants to flush the file cache, and to be allowed to do so without asking again."))
             },
             revoke: {
                 guard installed() else { return .flushed }
-                return asAdministrator("/bin/rm -f \(rulePath)", prompt: "PEPEL wants to remove its permission to flush the file cache without asking.")
+                return asAdministrator("/bin/rm -f \(rulePath)", prompt: L("PEPEL wants to remove its permission to flush the file cache without asking."))
             })
     }
 }

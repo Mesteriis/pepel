@@ -45,7 +45,7 @@ public actor ScanCoordinator {
         context: ScanContext, changes: ChangeSet? = nil, progress: (@Sendable (ScanProgress) -> Void)? = nil
     ) async -> ScanResult {
         var result = ScanResult(startedAt: Date())
-        progress?(ScanProgress(phase: "Looking for artifacts"))
+        progress?(ScanProgress(phase: L("Looking for artifacts")))
 
         let outputs = await withTaskGroup(of: (String, AnalyzerOutput).self) { group in
             for analyzer in analyzers {
@@ -92,7 +92,7 @@ public actor ScanCoordinator {
         }
 
         let sizer = self.sizer
-        progress?(ScanProgress(phase: "Measuring", completed: 0, total: pending.count))
+        progress?(ScanProgress(phase: L("Measuring"), completed: 0, total: pending.count))
         let limit = maxConcurrentMeasurements
         let jobs = pending.map { (index: $0, paths: items[$0].measuredPaths ?? [items[$0].path]) }
         let total = jobs.count
@@ -104,7 +104,7 @@ public actor ScanCoordinator {
                 if running >= limit, let finished = await group.next() {
                     running -= 1
                     sizes.append(finished)
-                    progress?(ScanProgress(phase: "Measuring", completed: sizes.count, total: total))
+                    progress?(ScanProgress(phase: L("Measuring"), completed: sizes.count, total: total))
                 }
                 running += 1
                 group.addTask(priority: .utility) {
@@ -126,7 +126,7 @@ public actor ScanCoordinator {
             }
             for await finished in group {
                 sizes.append(finished)
-                progress?(ScanProgress(phase: "Measuring", completed: sizes.count, total: total))
+                progress?(ScanProgress(phase: L("Measuring"), completed: sizes.count, total: total))
             }
             return sizes
         }
@@ -163,7 +163,7 @@ public actor ScanCoordinator {
             if let outer = kept.firstIndex(where: { !$0.hasPseudoPath && PathUtil.isInside(item.path, root: $0.path) }) {
                 if rank(item.safety) > rank(kept[outer].safety) {
                     kept[outer].safety = item.safety
-                    kept[outer].safetyReason = "Contains “\(item.title)”: \(item.safetyReason)"
+                    kept[outer].safetyReason = L("Contains “\(item.title)”: \(item.safetyReason)")
                     if item.safety == .protected { kept[outer].method = .none }
                 }
                 continue

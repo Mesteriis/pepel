@@ -51,18 +51,18 @@ public struct AndroidEmulators: Sendable {
 
     /// Deletes one device: its folder, then its `.ini`. Returns why it was not deleted.
     public func delete(_ name: String, running: Set<String>) -> String? {
-        guard !running.contains(name) else { return "It is running." }
-        guard let path = folder(of: name) else { return "No such emulator." }
-        guard PathUtil.keepMarker(at: path, stopAt: home) == nil else { return "It is marked as not to be cleaned." }
+        guard !running.contains(name) else { return L("It is running.") }
+        guard let path = folder(of: name) else { return L("No such emulator.") }
+        guard PathUtil.keepMarker(at: path, stopAt: home) == nil else { return L("It is marked as not to be cleaned.") }
         // In case it was started some other way: the emulator holds a lock while it runs. The lock
         // files themselves stay behind after it exits, so what counts is whether one is held.
         if Self.isLockHeld(path + "/multiinstance.lock") || Self.isLockHeld(path + "/hardware-qemu.ini.lock") {
-            return "It is running (its lock is held)."
+            return L("It is running (its lock is held).")
         }
         do {
             try FileManager.default.removeItem(atPath: path)
         } catch {
-            return "It could not be removed: \(error.localizedDescription)"
+            return L("It could not be removed: \(error.localizedDescription)")
         }
         try? FileManager.default.removeItem(atPath: directory + "/" + name + ".ini")
         return nil
@@ -147,11 +147,11 @@ public struct AndroidSystemImages: Sendable {
     /// the folders above it that are left empty.
     public func delete(_ id: String) -> String? {
         let parts = id.split(separator: "/").map(String.init)
-        guard parts.count == 3, !parts.contains(where: { $0.isEmpty || $0.hasPrefix(".") || $0 == ".." }) else { return "Not a system image." }
-        guard let image = list().first(where: { $0.id == id }) else { return "No such system image." }
-        guard image.usedBy.isEmpty else { return "Emulators start from it: \(image.usedBy.joined(separator: ", "))." }
-        guard PathUtil.keepMarker(at: image.path, stopAt: (image.path as NSString).deletingLastPathComponent) == nil else { return "It is marked as not to be cleaned." }
-        do { try FileManager.default.removeItem(atPath: image.path) } catch { return "It could not be removed: \(error.localizedDescription)" }
+        guard parts.count == 3, !parts.contains(where: { $0.isEmpty || $0.hasPrefix(".") || $0 == ".." }) else { return L("Not a system image.") }
+        guard let image = list().first(where: { $0.id == id }) else { return L("No such system image.") }
+        guard image.usedBy.isEmpty else { return L("Emulators start from it: \(image.usedBy.joined(separator: ", ")).") }
+        guard PathUtil.keepMarker(at: image.path, stopAt: (image.path as NSString).deletingLastPathComponent) == nil else { return L("It is marked as not to be cleaned.") }
+        do { try FileManager.default.removeItem(atPath: image.path) } catch { return L("It could not be removed: \(error.localizedDescription)") }
         var parent = (image.path as NSString).deletingLastPathComponent
         for _ in 0..<2 {
             guard ((try? FileManager.default.contentsOfDirectory(atPath: parent)) ?? ["x"]).isEmpty else { break }

@@ -24,9 +24,9 @@ public struct ToolBackups: Sendable {
         let setupRoot = home + "/.local/share/clausona-setup"
         let dated = ((try? FileManager.default.contentsOfDirectory(atPath: setupRoot)) ?? []).map { setupRoot + "/" + $0 }
         return [
-            BackupSet(name: "Clausona · Codex profile switches", parents: [home + "/.local/state/clausona-codex/backups"], lock: home + "/.local/state/clausona-codex/switch.lock"),
-            BackupSet(name: "Clausona · Desktop profile switches", parents: [home + "/.local/state/clausona-desktop/backups"], lock: home + "/.local/state/clausona-desktop/switch.lock"),
-            BackupSet(name: "Clausona · setup snapshots", parents: dated, prefix: "before-"),
+            BackupSet(name: L("Clausona · Codex profile switches"), parents: [home + "/.local/state/clausona-codex/backups"], lock: home + "/.local/state/clausona-codex/switch.lock"),
+            BackupSet(name: L("Clausona · Desktop profile switches"), parents: [home + "/.local/state/clausona-desktop/backups"], lock: home + "/.local/state/clausona-desktop/switch.lock"),
+            BackupSet(name: L("Clausona · setup snapshots"), parents: dated, prefix: "before-"),
         ]
     }
 
@@ -80,11 +80,11 @@ public struct ToolBackups: Sendable {
         for backup in list(keep: keep, days: days, now: now) where !backup.kept && !skip.contains(RuleAction.pathKey(backup.path)) {
             guard let set = owningSet(of: backup.path) else { continue }
             if let lock = set.lock, AndroidEmulators.isLockHeld(lock) {
-                skipped.append("\(set.name): Clausona is switching profiles right now.")
+                skipped.append(L("\(set.name): Clausona is switching profiles right now."))
                 continue
             }
             if PathUtil.keepMarker(at: backup.path, stopAt: home) != nil {
-                skipped.append("\((backup.path as NSString).lastPathComponent) is marked as not to be cleaned.")
+                skipped.append(L("\((backup.path as NSString).lastPathComponent) is marked as not to be cleaned."))
                 continue
             }
             var info = stat()

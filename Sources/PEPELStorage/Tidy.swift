@@ -125,12 +125,15 @@ public struct Tidy: Sendable {
         let ext = (item.name as NSString).pathExtension.lowercased()
         // "archive.tar.gz" is kept by "tar.gz" as well as by "gz".
         let double = ((item.name as NSString).deletingPathExtension as NSString).pathExtension.lowercased()
-        if !keep.isEmpty, keep.contains(ext) || (!double.isEmpty && keep.contains(double + "." + ext)) { return "Kept kind: .\(ext)" }
-        if Self.hasFinderTag(item.path) { return "It has a Finder tag." }
-        if PathUtil.keepMarker(at: item.path, stopAt: home) != nil { return "It is marked as not to be cleaned." }
+        if !keep.isEmpty, keep.contains(ext) || (!double.isEmpty && keep.contains(double + "." + ext)) { return L("Kept kind: .\(ext)") }
+        if Self.hasFinderTag(item.path) { return L("It has a Finder tag.") }
+        if PathUtil.keepMarker(at: item.path, stopAt: home) != nil { return L("It is marked as not to be cleaned.") }
         let age = now.timeIntervalSince(item.lastUse)
         if age < Double(days) * 86_400 {
-            return (item.kind == .screenshot ? "Taken" : "Arrived, changed or opened") + " \(TimeFormat.age(max(0, age))) ago; tidying waits \(days) day\(days == 1 ? "" : "s")."
+            let waited = TimeFormat.age(max(0, age))
+            return item.kind == .screenshot
+                ? L("Taken \(waited) ago; tidying waits \(days) days.")
+                : L("Arrived, changed or opened \(waited) ago; tidying waits \(days) days.")
         }
         return nil
     }

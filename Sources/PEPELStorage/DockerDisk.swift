@@ -173,7 +173,7 @@ public struct DockerDisk: Sendable {
                 let result = run(["rm"] + chunk.map(\.id), 300)
                 let printed = Set((result?.output ?? "").split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) })
                 removed += chunk.filter { printed.contains($0.id) }.count
-                notes += chunk.filter { !printed.contains($0.id) }.map { "\($0.name) was not removed (it may have started again)." }
+                notes += chunk.filter { !printed.contains($0.id) }.map { L("\($0.name) was not removed (it may have started again).") }
             }
             report.steps.append(.init(kind: .containers, removed: removed, attempted: plan.containers.count, notes: notes))
         }
@@ -183,7 +183,7 @@ public struct DockerDisk: Sendable {
             for image in plan.images {
                 if run(["rmi", image.id], 120)?.status == 0 { removed += 1 } else { refused += 1 }
             }
-            report.steps.append(.init(kind: .images, removed: removed, attempted: plan.images.count, notes: refused > 0 ? ["Docker refused \(refused): still referenced by a container or another image."] : []))
+            report.steps.append(.init(kind: .images, removed: removed, attempted: plan.images.count, notes: refused > 0 ? [L("Docker refused \(refused): still referenced by a container or another image.")] : []))
         }
         if kinds.contains(.buildCache), plan.buildCacheEntries > 0 {
             // `until` here means "not used since"; Docker takes hours.
@@ -199,7 +199,7 @@ public struct DockerDisk: Sendable {
         if kinds.contains(.volumes), !plan.volumes.isEmpty {
             var removed = 0
             for volume in plan.volumes where run(["volume", "rm", volume.name], 120)?.status == 0 { removed += 1 }
-            report.steps.append(.init(kind: .volumes, removed: removed, attempted: plan.volumes.count, notes: removed < plan.volumes.count ? ["Docker refused \(plan.volumes.count - removed): mounted by a container."] : []))
+            report.steps.append(.init(kind: .volumes, removed: removed, attempted: plan.volumes.count, notes: removed < plan.volumes.count ? [L("Docker refused \(plan.volumes.count - removed): mounted by a container.")] : []))
         }
         if compact {
             let outcome = self.compact()
@@ -215,16 +215,16 @@ public struct DockerDisk: Sendable {
     /// on the Mac. Docker has no command for it, so it is done from a privileged one-off
     /// container of an image that is already here; nothing is pulled.
     public func compact() -> (done: Bool, note: String) {
-        guard let list = run(["images", "--format", "{{.Repository}}:{{.Tag}}"], 30), list.status == 0 else { return (false, "Docker did not answer.") }
+        guard let list = run(["images", "--format", "{{.Repository}}:{{.Tag}}"], 30), list.status == 0 else { return (false, L("Docker did not answer.")) }
         let candidates = list.output.split(separator: "\n").map(String.init).filter { name in
             !name.contains("<none>") && ["alpine", "busybox"].contains { name.lowercased().contains($0) }
         }
         guard let image = candidates.first else {
-            return (false, "No local image with the needed tools (an Alpine or BusyBox one) is present; Docker returns the space by itself over time.")
+            return (false, L("No local image with the needed tools (an Alpine or BusyBox one) is present; Docker returns the space by itself over time."))
         }
         let script = "nsenter -t 1 -m -- fstrim -v /var/lib/docker"
         guard let result = run(["run", "--rm", "--privileged", "--pid=host", "--network=none", "--entrypoint", "sh", image, "-c", script], 600), result.status == 0 else {
-            return (false, "The trim could not be run from \(image).")
+            return (false, L("The trim could not be run from \(image)."))
         }
         return (true, result.output.trimmingCharacters(in: .whitespacesAndNewlines))
     }

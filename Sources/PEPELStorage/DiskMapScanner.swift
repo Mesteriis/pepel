@@ -95,7 +95,7 @@ public struct DiskMapScanner: Sendable {
                 if frame.level < depth {
                     var nodes = frame.nodes
                     if frame.smallCount > 0 {
-                        nodes.append(DiskNode(path: frame.path, name: "\(frame.smallCount) smaller files", kind: .smallFiles, bytes: frame.smallBytes, fileCount: frame.smallCount))
+                        nodes.append(DiskNode(path: frame.path, name: L("\(frame.smallCount) smaller files"), kind: .smallFiles, bytes: frame.smallBytes, fileCount: frame.smallCount))
                     }
                     levels.append(DiskLevel(path: frame.path, nodes: nodes.sorted { $0.bytes > $1.bytes }))
                 }
@@ -201,7 +201,7 @@ public struct DiskMapScanner: Sendable {
                 smallCount += 1
             }
         }
-        if smallCount > 0 { nodes.append(DiskNode(path: path, name: "\(smallCount) smaller files", kind: .smallFiles, bytes: smallBytes, fileCount: smallCount)) }
+        if smallCount > 0 { nodes.append(DiskNode(path: path, name: L("\(smallCount) smaller files"), kind: .smallFiles, bytes: smallBytes, fileCount: smallCount)) }
 
         var level = DiskLevel(path: path, nodes: nodes.sorted { $0.bytes > $1.bytes }, complete: false)
         level.pending = folders.count

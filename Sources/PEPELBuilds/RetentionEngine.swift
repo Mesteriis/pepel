@@ -59,58 +59,58 @@ public enum RetentionEngine {
         for (position, g) in ordered.enumerated() {
             let age = g.timestamp.map { now.timeIntervalSince($0) }
             if g.isActive {
-                verdicts[g.id] = .keep(reason: "Build is active.")
+                verdicts[g.id] = .keep(reason: L("Build is active."))
                 hardKeeps.insert(g.id)
                 continue
             }
             if g.isPinned {
-                verdicts[g.id] = .keep(reason: "Pinned by you.")
+                verdicts[g.id] = .keep(reason: L("Pinned by you."))
                 hardKeeps.insert(g.id)
                 continue
             }
             if g.sourceMissing {
-                verdicts[g.id] = .candidate(reason: "The source it was built from no longer exists.")
+                verdicts[g.id] = .candidate(reason: L("The source it was built from no longer exists."))
                 continue
             }
             guard let age else {
-                verdicts[g.id] = .keep(reason: "Its age could not be determined.")
+                verdicts[g.id] = .keep(reason: L("Its age could not be determined."))
                 hardKeeps.insert(g.id)
                 continue
             }
 
             var keep: String?
             if position == 0 {
-                keep = "Most recent build."
+                keep = L("Most recent build.")
                 hardKeeps.insert(g.id)
             }
             switch g.status {
             case .failed:
                 if failedKept < policy.keepFailed {
                     failedKept += 1
-                    keep = keep ?? "One of the last \(policy.keepFailed) failed build\(policy.keepFailed == 1 ? "" : "s")."
+                    keep = keep ?? L("One of the last \(policy.keepFailed) failed builds.")
                 }
             case .running:
-                keep = "Build is running."
+                keep = L("Build is running.")
                 hardKeeps.insert(g.id)
             case .succeeded, .unknown:
                 if g.status == .succeeded, policy.protectLastKnownGood, !lastKnownGoodSeen {
                     lastKnownGoodSeen = true
-                    keep = keep ?? "Last known good build."
+                    keep = keep ?? L("Last known good build.")
                     hardKeeps.insert(g.id)
                 }
                 if goodKept < policy.keepSuccessful {
                     goodKept += 1
-                    keep = keep ?? "One of the last \(policy.keepSuccessful) builds."
+                    keep = keep ?? L("One of the last \(policy.keepSuccessful) builds.")
                 }
             }
             if keep == nil, age < reviewAfter {
-                keep = "Newer than \(policy.reviewAfterHours) hours."
+                keep = L("Newer than \(policy.reviewAfterHours) hours.")
             }
             if let maxAge = policy.maxAgeDays, age > TimeInterval(maxAge) * 86_400, !hardKeeps.contains(g.id) {
-                verdicts[g.id] = .candidate(reason: "Older than \(maxAge) days.")
+                verdicts[g.id] = .candidate(reason: L("Older than \(maxAge) days."))
                 continue
             }
-            verdicts[g.id] = keep.map { .keep(reason: $0) } ?? .candidate(reason: "Superseded by newer builds and older than \(policy.reviewAfterHours) hours.")
+            verdicts[g.id] = keep.map { .keep(reason: $0) } ?? .candidate(reason: L("Superseded by newer builds and older than \(policy.reviewAfterHours) hours."))
         }
 
         // Budget: propose the oldest generations that are not hard-protected until the project fits.
@@ -120,7 +120,7 @@ public enum RetentionEngine {
                 guard !(verdicts[g.id]?.isCandidate ?? true), !hardKeeps.contains(g.id), let timestamp = g.timestamp,
                     now.timeIntervalSince(timestamp) >= reviewAfter
                 else { continue }
-                verdicts[g.id] = .candidate(reason: "The project exceeds its build budget of \(Bytes.format(budget)).")
+                verdicts[g.id] = .candidate(reason: L("The project exceeds its build budget of \(Bytes.format(budget))."))
                 kept -= g.sizeBytes
             }
         }

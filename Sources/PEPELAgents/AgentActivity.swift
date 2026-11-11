@@ -88,11 +88,12 @@ public enum AgentActivity {
         var latest: (Date, String)?
         for (index, interval) in intervals.enumerated() {
             if interval.noBaseline {
-                latest = (interval.end, "PEPEL began tracking disk writes of \(p.name) (PID \(p.pid)); the quiet clock starts here")
+                latest = (interval.end, L("PEPEL began tracking disk writes of \(p.name) (PID \(p.pid)); the quiet clock starts here"))
                 continue
             }
             if interval.cpuPercent >= burstPercent {
-                latest = (interval.end, String(format: "%@ (PID %d) used %.0f%% of a core", p.name, p.pid, interval.cpuPercent))
+                let percent = String(format: "%.0f", interval.cpuPercent)
+                latest = (interval.end, L("\(p.name) (PID \(p.pid)) used \(percent)% of a core"))
                 continue
             }
             guard interval.written > 0 else { continue }
@@ -106,7 +107,7 @@ public enum AgentActivity {
             let before = nearby(index - 1), after = nearby(index + 1)
             let clustered = (before > 0 || after > 0) && interval.written + before + after >= writeThresholdBytes
             if (interval.written >= writeThresholdBytes && interval.cpuPercent >= workingCPU) || clustered {
-                latest = (interval.end, "\(p.name) (PID \(p.pid)) wrote \(Bytes.format(Int64(interval.written))) to disk while working")
+                latest = (interval.end, L("\(p.name) (PID \(p.pid)) wrote \(Bytes.format(Int64(interval.written))) to disk while working"))
             }
             // Otherwise: a lone small write at idle CPU, the hourly housekeeping of an idle session.
         }
@@ -130,17 +131,17 @@ public enum AgentActivity {
             consider(lastActivity(of: p, history: history[p.identity] ?? [], now: now))
             // A process the session started while PEPEL was watching is activity in itself.
             if p.identity != root.identity, p.identity.startDate > observedSince {
-                consider((p.identity.startDate, "it started \(p.name) (PID \(p.pid))"))
+                consider((p.identity.startDate, L("it started \(p.name) (PID \(p.pid))")))
             }
         }
 
         if isService(root) {
             return Verdict(
                 state: .idle, quietSince: last?.date, observedFor: observedFor,
-                evidence: ["Runs as a server (\(root.arguments.dropFirst().first { serviceTokens.contains($0.lowercased()) } ?? "service")) for another program; servers are never treated as asleep."])
+                evidence: [L("Runs as a server (\(root.arguments.dropFirst().first { serviceTokens.contains($0.lowercased()) } ?? "service")) for another program; servers are never treated as asleep.")])
         }
         if activeBuildCount > 0 {
-            return Verdict(state: .working, quietSince: nil, observedFor: observedFor, evidence: ["A build or test is running under this session."])
+            return Verdict(state: .working, quietSince: nil, observedFor: observedFor, evidence: [L("A build or test is running under this session.")])
         }
         if let last, now.timeIntervalSince(last.date) < workingWindow {
             return Verdict(state: .working, quietSince: nil, observedFor: observedFor, evidence: ["\(TimeFormat.ago(last.date, now: now)): \(last.what)."])
@@ -150,18 +151,18 @@ public enum AgentActivity {
         let quietSince = last?.date ?? observedSince
         let quietFor = now.timeIntervalSince(quietSince)
         var evidence = [
-            last.map { "Last activity \(TimeFormat.ago($0.date, now: now)): \($0.what)." }
-                ?? "No sign of work in \(TimeFormat.age(observedFor)) of observation: no writes beyond housekeeping, no CPU bursts, no new processes."
+            last.map { L("Last activity \(TimeFormat.ago($0.date, now: now)): \($0.what).") }
+                ?? L("No sign of work in \(TimeFormat.age(observedFor)) of observation: no writes beyond housekeeping, no CPU bursts, no new processes.")
         ]
         if hasActiveLease {
-            evidence.append("It holds an active resource lease.")
+            evidence.append(L("It holds an active resource lease."))
             return Verdict(state: .idle, quietSince: quietSince, observedFor: observedFor, evidence: evidence)
         }
         guard quietFor >= sleepWindow, observedFor >= sleepWindow else {
-            evidence.append("Counts as asleep after \(TimeFormat.age(sleepWindow)) of quiet; \(TimeFormat.age(max(0, sleepWindow - min(quietFor, observedFor)))) to go.")
+            evidence.append(L("Counts as asleep after \(TimeFormat.age(sleepWindow)) of quiet; \(TimeFormat.age(max(0, sleepWindow - min(quietFor, observedFor)))) to go."))
             return Verdict(state: .idle, quietSince: quietSince, observedFor: observedFor, evidence: evidence)
         }
-        evidence.append("Quiet for \(TimeFormat.age(quietFor)), longer than the \(TimeFormat.age(sleepWindow)) sleep threshold.")
+        evidence.append(L("Quiet for \(TimeFormat.age(quietFor)), longer than the \(TimeFormat.age(sleepWindow)) sleep threshold."))
         return Verdict(state: .sleeping, quietSince: quietSince, observedFor: observedFor, evidence: evidence)
     }
 }

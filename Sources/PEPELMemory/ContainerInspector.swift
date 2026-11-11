@@ -71,11 +71,11 @@ public struct ContainerInspector: Sendable {
                     cpuPercent: Double(parts[2].replacingOccurrences(of: "%", with: "")) ?? 0)
                 container.isPaused = label?.paused ?? false
                 if label?.keep == true {
-                    container.keepReason = "It carries the label pepel.keep."
+                    container.keepReason = L("It carries the label pepel.keep.")
                 } else if keepList.contains(parts[0]) {
-                    container.keepReason = "It is on PEPEL's keep list."
+                    container.keepReason = L("It is on PEPEL's keep list.")
                 } else if let project = label?.project, keepList.contains(project) {
-                    container.keepReason = "Its compose project is on PEPEL's keep list."
+                    container.keepReason = L("Its compose project is on PEPEL's keep list.")
                 }
                 containers.append(container)
             }
@@ -87,7 +87,7 @@ public struct ContainerInspector: Sendable {
             let directory = members.compactMap(\.workingDirectory).first
             let attribution = directory.flatMap { attributor?.attribute(path: $0) }
             return ContainerGroup(
-                id: key.isEmpty ? "standalone" : key, name: key.isEmpty ? "Started without Compose" : key, projectID: attribution?.projectID,
+                id: key.isEmpty ? "standalone" : key, name: key.isEmpty ? L("Started without Compose") : key, projectID: attribution?.projectID,
                 projectConfidence: attribution == nil ? .unknown : .verified, containers: members.sorted { $0.memoryBytes > $1.memoryBytes })
         }
         .sorted { ($0.memoryBytes, $0.id) > ($1.memoryBytes, $1.id) }

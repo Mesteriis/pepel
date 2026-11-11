@@ -68,15 +68,16 @@ public enum Bytes {
 public enum TimeFormat {
     public static func age(_ interval: TimeInterval) -> String {
         let s = max(0, Int(interval))
-        if s < 60 { return "\(s)s" }
-        if s < 3600 { return "\(s / 60)m" }
-        if s < 86_400 { return "\(s / 3600)h \(s % 3600 / 60)m" }
-        return "\(s / 86_400)d \(s % 86_400 / 3600)h"
+        if s < 60 { return L("\(s)s") }
+        if s < 3600 { return L("\(s / 60)m") }
+        if s < 86_400 { return L("\(s / 3600)h \(s % 3600 / 60)m") }
+        return L("\(s / 86_400)d \(s % 86_400 / 3600)h")
     }
 
     public static func ago(_ date: Date?, now: Date = Date()) -> String {
-        guard let date else { return "unknown" }
-        return age(now.timeIntervalSince(date)) + " ago"
+        guard let date else { return L("unknown") }
+        let age = age(now.timeIntervalSince(date))
+        return L("\(age) ago")
     }
 }
 

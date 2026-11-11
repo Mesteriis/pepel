@@ -101,7 +101,7 @@ struct RetentionTests {
         let summary = report.summaries[0]
         #expect(summary.generations.count == 11 && summary.totalBytes == 142 * Bytes.gb)
         #expect(summary.protectedCount == 3 && summary.activeCount == 2 && summary.candidateCount == 6)
-        #expect(summary.narrative == "Makosh has 11 detected build generations consuming 142 GB. Three are protected, two appear active, and six are candidates for cleanup. This is over the 40.0 GB budget.")
+        #expect(summary.narrative == "Makosh has 11 detected build generations consuming 142 GB. 3 are protected, 2 appear active, and 6 are candidates for cleanup. This is over the 40.0 GB budget.")
         #expect(summary.overBudget && report.totalBytes == 142 * Bytes.gb && !report.overGlobalBudget)
 
         // Candidates stay "review" unless the user opted into treating them as safe.
@@ -1137,8 +1137,9 @@ struct EngineTests {
         let summary = DailySummary.make(audit: audit, open: ["1 application is open but unused, holding 2 GB."], from: now.addingTimeInterval(-86_400), to: now)
         #expect(summary.memoryFreedBytes == 22 * Bytes.gb && summary.diskFreedBytes == 5 * Bytes.gb)
         #expect(summary.done.contains("Ended 2 processes, 1 of them by PEPEL's own rules."), "the one from 30 hours ago is not counted")
-        #expect(summary.done.contains("Suspended agent sessions 1 time and woke them 1 time.") && summary.done.contains("Restarted Browser."))
-        #expect(summary.done.contains { $0.hasPrefix("Restarted the Docker VM 1 time") } && summary.done.contains("Stopped the containers of 1 project."))
+        // Counts are plural-aware keys; without the string catalog (as in tests) the English "other" form is used.
+        #expect(summary.done.contains { $0.hasPrefix("Suspended agent sessions 1 ") && $0.contains("woke them 1 ") } && summary.done.contains("Restarted Browser."))
+        #expect(summary.done.contains { $0.hasPrefix("Restarted the Docker VM 1 ") } && summary.done.contains { $0.hasPrefix("Stopped the containers of 1 ") })
         #expect(summary.done.count == 7 && summary.open.count == 1)
         let quiet = DailySummary.make(audit: [entry(.scan, "storage scan", "248 items", hoursAgo: 1)], open: [], from: now.addingTimeInterval(-86_400), to: now)
         #expect(quiet.done.isEmpty && quiet.headline == "PEPEL did not need to do anything.")
