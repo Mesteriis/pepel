@@ -14,6 +14,8 @@ struct StorageSection: View {
     @State private var confirmLeftovers = false
     @State private var confirmLogs = false
     @State private var confirmTemp = false
+    @State private var chosenEmulators = Set<String>()
+    @State private var confirmEmulators = false
 
     private func matches(_ item: StorageItem) -> Bool {
         if let filter, item.safety != filter { return false }
@@ -234,8 +236,35 @@ struct StorageSection: View {
                     Text("Entries in your temporary folder that nothing has read or written for \(model.settings.tempDays) days. Sockets and pipes, anything macOS manages, and anything a running program uses are left alone.")
                 }
             }
+            if !model.androidEmulators.isEmpty {
+                let chosen = model.androidEmulators.filter { chosenEmulators.contains($0.name) }
+                HStack {
+                    Text("Android emulators").font(.system(size: 12, weight: .semibold))
+                    Text("\(model.androidEmulators.count) · \(Bytes.format(model.androidEmulators.reduce(0) { $0 + $1.bytes }))").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
+                    Spacer()
+                    Button("Choose unused 30+ days") {
+                        chosenEmulators = Set(model.androidEmulators.filter { !$0.running && ($0.lastUse.map { Date().timeIntervalSince($0) > 30 * 86_400 } ?? false) }.map(\.name))
+                    }
+                    .buttonStyle(QuietButtonStyle())
+                    Button("Delete \(chosen.count) · \(Bytes.format(chosen.reduce(0) { $0 + $1.bytes }))…") { confirmEmulators = true }
+                        .buttonStyle(CopperButtonStyle(prominent: false)).disabled(chosen.isEmpty)
+                }
+                ForEach(model.androidEmulators) { emulator in
+                    HStack(spacing: 10) {
+                        Toggle(isOn: Binding(get: { chosenEmulators.contains(emulator.name) }, set: { on in if on { chosenEmulators.insert(emulator.name) } else { chosenEmulators.remove(emulator.name) } })) {
+                            Text(emulator.name).font(.system(size: 12)).lineLimit(1)
+                        }
+                        .toggleStyle(.checkbox).disabled(emulator.running)
+                        if emulator.running { Badge(text: "running", tint: Theme.forest) }
+                        Spacer()
+                        Text(emulator.lastUse.map { "used \(TimeFormat.ago($0))" } ?? "").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
+                        Text(Bytes.format(emulator.bytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)
+                    }
+                }
+                Divider().overlay(Theme.stroke)
+            }
             if let places = model.otherPlaces {
-                ForEach(places.prefix(14)) { place in
+                ForEach(places.filter { !$0.path.contains("/.android/avd/") }.prefix(14)) { place in
                     HStack(spacing: 10) {
                         Text(place.title).font(.system(size: 12, weight: .medium)).lineLimit(1).frame(width: 300, alignment: .leading)
                         if place.kept { Badge(text: "kept", tint: Theme.forest) }
@@ -252,6 +281,15 @@ struct StorageSection: View {
             }
         }
         .panel()
+        .confirmationDialog("Delete \(chosenEmulators.count) Android emulator\(chosenEmulators.count == 1 ? "" : "s")?", isPresented: $confirmEmulators, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                model.deleteAndroidEmulators(Array(chosenEmulators))
+                chosenEmulators = []
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("They are deleted as Android Studio's Device Manager does it, not moved to the Trash. Apps and data installed inside them are lost; the system images stay, so a device can be created again.")
+        }
         .confirmationDialog("Remove old log files?", isPresented: $confirmLogs, titleVisibility: .visible) {
             Button("Remove") { model.removeOldLogs() }
             Button("Cancel", role: .cancel) {}

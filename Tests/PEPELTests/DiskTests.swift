@@ -781,3 +781,42 @@ struct IgnoredFolderTests {
         #expect(trash.count == 1 && trash[0].hasPrefix(".local-"), "a redirected PEPEL uses the redirected home's Trash")
     }
 }
+
+@Suite("Android emulators")
+struct AndroidEmulatorTests {
+    @Test("Emulators are listed with their size; a running one, a marked one or a fake name is never deleted; only a person deletes")
+    func emulators() async throws {
+        let f = Fixture()
+        let avd = f.home + "/.android/avd"
+        func device(_ name: String) {
+            f.file(avd + "/\(name).ini", text: "path=\(avd)/\(name).avd\ntarget=android-37.0\n")
+            f.file(avd + "/\(name).avd/userdata-qemu.img", bytes: 2 << 20)
+            f.file(avd + "/\(name).avd/config.ini", text: "hw.ramSize=2048")
+        }
+        device("old_qa")
+        device("busy")
+        device("kept")
+        f.file(avd + "/kept.avd/.pepel-keep")
+        f.file(avd + "/orphan.ini", text: "path=nowhere")
+        let qemu = process(900, name: "qemu-system-aarch64", path: "/opt/emulator/qemu/qemu-system-aarch64", args: ["qemu-system-aarch64", "-avd", "busy", "-no-window"])
+        #expect(AndroidEmulators.runningNames([qemu, process(901, name: "emulator", args: ["emulator", "@other"])]) == ["busy", "other"])
+
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: try PepelStore.inMemory(), tools: .disabled, analyzers: [],
+            processSource: FakeProcessSource(processes: [qemu]), telemetry: { SystemTelemetry() })
+        let list = await engine.androidEmulators()
+        #expect(Set(list.map(\.name)) == ["old_qa", "busy", "kept"], "an .ini without its folder is not a device")
+        #expect(list.first { $0.name == "busy" }?.running == true && list.first { $0.name == "old_qa" }?.target == "android-37.0")
+        #expect(list.allSatisfy { $0.bytes >= 2 << 20 })
+
+        #expect(await engine.deleteAndroidEmulator("old_qa", confirmed: true, initiator: .agent) != nil)
+        #expect(await engine.deleteAndroidEmulator("old_qa", confirmed: true, initiator: .automatic) != nil)
+        #expect(await engine.deleteAndroidEmulator("old_qa", confirmed: false, initiator: .user) != nil)
+        #expect(await engine.deleteAndroidEmulator("busy", confirmed: true, initiator: .user) == "It is running.")
+        #expect(await engine.deleteAndroidEmulator("kept", confirmed: true, initiator: .user)?.contains("marked") == true)
+        #expect(await engine.deleteAndroidEmulator("../avd", confirmed: true, initiator: .user) != nil)
+        #expect(await engine.deleteAndroidEmulator("old_qa", confirmed: true, initiator: .cli) == nil)
+        #expect(!PathUtil.exists(avd + "/old_qa.avd") && !PathUtil.exists(avd + "/old_qa.ini"))
+        #expect(PathUtil.exists(avd + "/busy.avd") && PathUtil.exists(avd + "/kept.avd") && PathUtil.exists(avd + "/busy.ini"))
+    }
+}

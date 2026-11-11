@@ -654,6 +654,7 @@ public final class AppModel {
         let days = settings.logDays
         diskForecast = engine.diskForecast()
         measureTemp()
+        Task { androidEmulators = await engine.androidEmulators() }
         Task {
             otherPlaces = await engine.otherPlaces()
             oldLogs = await engine.oldLogs(days: days)
@@ -662,6 +663,20 @@ public final class AppModel {
     }
 
     public var tempEntries: [TempEntry]?
+    public var androidEmulators: [AndroidEmulator] = []
+
+    public func deleteAndroidEmulators(_ names: [String]) {
+        Task {
+            var deleted = 0
+            var notes: [String] = []
+            for name in names {
+                if let refusal = await engine.deleteAndroidEmulator(name, confirmed: true, initiator: .user) { notes.append("\(name): \(refusal)") } else { deleted += 1 }
+            }
+            message = "Deleted \(deleted) emulator\(deleted == 1 ? "" : "s")." + (notes.isEmpty ? "" : " " + notes.joined(separator: " "))
+            androidEmulators = await engine.androidEmulators()
+            measureOtherPlaces()
+        }
+    }
 
     public func measureTemp() {
         Task { tempEntries = await engine.tempEntries() }

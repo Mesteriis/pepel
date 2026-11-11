@@ -885,6 +885,26 @@ case "disk":
         print("\n`pepel disk map <folder>` opens one. Folders macOS guards are not read unless named or --guarded is given.")
         break
     }
+    if arguments.positional.first == "emulators" {
+        if arguments.positional.dropFirst().first == "delete" {
+            let names = Array(arguments.positional.dropFirst(2))
+            guard !names.isEmpty else { Out.error("usage: pepel disk emulators delete <name> … [--yes]"); exit(2) }
+            guard arguments.flags.contains("yes") || Out.confirm("Delete \(names.joined(separator: ", ")) for good? Apps and data inside are lost.") else { print("Nothing was deleted."); break }
+            for name in names {
+                let refusal = await engine.deleteAndroidEmulator(name, confirmed: true, initiator: .cli)
+                print("\(name): \(refusal.map { "not deleted, \($0)" } ?? "deleted")")
+            }
+            break
+        }
+        let emulators = await engine.androidEmulators()
+        if arguments.json { Out.json(emulators); break }
+        guard !emulators.isEmpty else { print("No Android emulators in ~/.android/avd."); break }
+        Out.table(
+            ["SIZE", "LAST USED", "", "TARGET", "NAME"],
+            emulators.map { [Bytes.format($0.bytes), $0.lastUse.map { TimeFormat.ago($0) } ?? "—", $0.running ? "running" : "", $0.target ?? "—", $0.name] })
+        print("\n\(emulators.count) emulators, \(Bytes.format(emulators.reduce(0) { $0 + $1.bytes })). `pepel disk emulators delete <name>` deletes one, as Android Studio does; apps and data inside are lost.")
+        break
+    }
     if arguments.positional.first == "temp" {
         let days = arguments.options["days"].flatMap { Int($0) } ?? settings.tempDays
         print("Looking through the temporary folder…")

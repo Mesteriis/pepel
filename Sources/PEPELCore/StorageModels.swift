@@ -462,3 +462,25 @@ public struct IgnoredFolder: Codable, Sendable, Identifiable, Hashable {
         relativePath.lowercased().split(separator: "/").contains { dataWords.contains(String($0)) }
     }
 }
+
+/// An Android virtual device: its disk images, its data, and whether it is running.
+public struct AndroidEmulator: Codable, Sendable, Identifiable, Hashable {
+    public var name: String
+    /// The `.avd` folder.
+    public var path: String
+    public var bytes: Int64
+    /// When it was last started or written to.
+    public var lastUse: Date?
+    public var target: String?
+    public var running: Bool
+    public var id: String { name }
+
+    public init(name: String, path: String, bytes: Int64, lastUse: Date?, target: String?, running: Bool) {
+        self.name = name
+        self.path = path
+        self.bytes = bytes
+        self.lastUse = lastUse
+        self.target = target
+        self.running = running
+    }
+}

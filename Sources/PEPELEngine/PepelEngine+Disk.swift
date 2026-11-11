@@ -448,3 +448,22 @@ extension PepelEngine {
         return nil
     }
 }
+
+/// Android virtual devices.
+extension PepelEngine {
+    public func androidEmulators() async -> [AndroidEmulator] {
+        let emulators = AndroidEmulators(home: paths.home), running = AndroidEmulators.runningNames(processSource.snapshot())
+        return await Task.detached(priority: .utility) { emulators.list(running: running) }.value
+    }
+
+    /// Deletes one emulator for good. Only a person can ask; a running one is refused.
+    public func deleteAndroidEmulator(_ name: String, confirmed: Bool, initiator: Initiator) async -> String? {
+        guard initiator == .user || initiator == .cli else { return "Only you can delete an emulator." }
+        guard confirmed else { return "This needs your confirmation." }
+        let emulators = AndroidEmulators(home: paths.home), running = AndroidEmulators.runningNames(processSource.snapshot())
+        let bytes = emulators.folder(of: name).map { DirectorySizer().measure($0).allocatedBytes } ?? 0
+        if let refusal = await Task.detached(priority: .utility, operation: { emulators.delete(name, running: running) }).value { return refusal }
+        store.appendAudit(AuditEntry(kind: .cleanup, initiator: initiator.rawValue, subject: "Android emulator \(name)", outcome: "removed", bytes: bytes))
+        return nil
+    }
+}
