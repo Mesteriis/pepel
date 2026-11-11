@@ -13,6 +13,7 @@ struct StorageSection: View {
     @State private var confirmUnknownCaches = false
     @State private var confirmLeftovers = false
     @State private var confirmLogs = false
+    @State private var confirmTemp = false
 
     private func matches(_ item: StorageItem) -> Bool {
         if let filter, item.safety != filter { return false }
@@ -213,6 +214,25 @@ struct StorageSection: View {
             }
             if let forecast = model.diskForecast {
                 Text(forecast.sentence()).font(.system(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
+            }
+            if let entries = model.tempEntries {
+                let removable = entries.filter { $0.keptBecause == nil }
+                HStack(spacing: 10) {
+                    Text("Temporary folder").font(.system(size: 12, weight: .medium)).frame(width: 300, alignment: .leading)
+                    Text("\(entries.count) entries · \(removable.count) unused \(model.settings.tempDays)+ days").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
+                    Spacer()
+                    if !removable.isEmpty {
+                        Button("Remove unused · \(Bytes.format(removable.reduce(0) { $0 + $1.bytes }))…") { confirmTemp = true }.buttonStyle(QuietButtonStyle())
+                    }
+                    Text(Bytes.format(entries.reduce(0) { $0 + $1.bytes })).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)
+                }
+                .help(entries.prefix(6).map { "\(Bytes.format($0.bytes))  \($0.name)  \($0.keptBecause ?? "would go")" }.joined(separator: "\n"))
+                .confirmationDialog("Remove unused temporary files?", isPresented: $confirmTemp, titleVisibility: .visible) {
+                    Button("Remove") { model.cleanTemp() }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Entries in your temporary folder that nothing has read or written for \(model.settings.tempDays) days. Sockets and pipes, anything macOS manages, and anything a running program uses are left alone.")
+                }
             }
             if let places = model.otherPlaces {
                 ForEach(places.prefix(14)) { place in

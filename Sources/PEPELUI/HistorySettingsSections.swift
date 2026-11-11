@@ -300,6 +300,13 @@ struct SettingsSection: View {
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
 
+            group("Disk: temporary files", "Your temporary folder. macOS empties it only on restart.") {
+                toggle("Once a day, remove temporary files that nothing has used", s.cleanTempFiles) { v in model.updateSettings { $0.cleanTempFiles = v } }
+                stepper("Unused means not read or written for", s.tempDays, 1...365, suffix: " days") { v in model.updateSettings { $0.tempDays = v } }
+                Text("Sockets and pipes, folders that hold one, anything macOS manages and anything a running program names or works in are left alone, whatever their age.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+
             group("Disk: logs", "Files in ~/Library/Logs. Agents' own logs are never touched.") {
                 toggle("Once a day, remove old log files larger than 1 MB", s.cleanOldLogs) { v in model.updateSettings { $0.cleanOldLogs = v } }
                 stepper("Old means older than", s.logDays, 1...365, suffix: " days") { v in model.updateSettings { $0.logDays = v } }

@@ -655,3 +655,69 @@ struct DiskMapTests {
         #expect(DiskMapScanner.notFolders.contains("/Volumes") && DiskMapScanner.notFolders.contains("/dev"))
     }
 }
+
+@Suite("Temporary folder")
+struct TempCleanerTests {
+    @Test("Only long-unused files and folders go; sockets, system entries, running programs' entries, links and marked folders stay")
+    func temporaryFolder() async throws {
+        let f = Fixture()
+        let temp = f.dir(f.home + "/.pepel-tmp")
+        func old(_ path: String, days: Double = 30) { f.age(path, hours: 24 * days) }
+        f.file(temp + "/forgotten-stage/disk.img", bytes: 4 << 20)
+        old(temp + "/forgotten-stage")
+        f.file(temp + "/old.log", bytes: 8192)
+        old(temp + "/old.log")
+        f.file(temp + "/recent/file", bytes: 8192)
+        f.file(temp + "/mixed/old", bytes: 8192)
+        old(temp + "/mixed")
+        f.file(temp + "/mixed/touched", bytes: 8192)
+        f.file(temp + "/com.apple.launchd.abc/Listeners", bytes: 8)
+        old(temp + "/com.apple.launchd.abc")
+        f.file(temp + "/com.example.editor.ShipIt.XyZ/update.zip", bytes: 8192)
+        old(temp + "/com.example.editor.ShipIt.XyZ")
+        f.file(temp + "/build-work/obj.o", bytes: 8192)
+        old(temp + "/build-work")
+        f.file(temp + "/kept/data", bytes: 8192)
+        f.file(temp + "/kept/DO_NOT_CLEAN.txt")
+        old(temp + "/kept")
+        // A folder holding a named pipe: something talks through it.
+        f.dir(temp + "/session")
+        #expect(mkfifo(temp + "/session/control", 0o600) == 0)
+        old(temp + "/session")
+        #expect(mkfifo(temp + "/debug-pipe", 0o600) == 0)
+        try FileManager.default.createSymbolicLink(atPath: temp + "/link", withDestinationPath: f.home)
+
+        let cleaner = TempCleaner(directory: temp)
+        let entries = cleaner.entries(days: 7, running: ["com.example.editor"], busyPaths: [temp + "/build-work/sub"])
+        let removable = Set(entries.filter { $0.keptBecause == nil }.map(\.name))
+        #expect(removable == ["forgotten-stage", "old.log"])
+        #expect(entries.first { $0.name == "mixed" }?.keptBecause?.contains("Used within") == true, "one recently used file keeps the whole folder")
+        #expect(entries.first { $0.name == "session" }?.keptBecause?.contains("socket or pipe") == true)
+        #expect(entries.first { $0.name == "com.example.editor.ShipIt.XyZ" }?.keptBecause?.contains("running program") == true)
+        #expect(!entries.contains { $0.name == "debug-pipe" || $0.name == "link" }, "pipes and links are not entries at all")
+
+        let result = cleaner.clean(days: 7, running: ["com.example.editor"], busyPaths: [temp + "/build-work/sub"])
+        #expect(result.removed == 2 && result.bytes >= 4 << 20)
+        for name in ["recent", "mixed", "com.apple.launchd.abc", "com.example.editor.ShipIt.XyZ", "build-work", "kept", "session", "debug-pipe", "link"] {
+            #expect(PathUtil.exists(temp + "/" + name) || (try? FileManager.default.destinationOfSymbolicLink(atPath: temp + "/" + name)) != nil, "\(name) must stay")
+        }
+        #expect(!PathUtil.exists(temp + "/forgotten-stage") && !PathUtil.exists(temp + "/old.log") && PathUtil.exists(f.home))
+
+        // In the engine: a person or the daily rule; never an agent.
+        f.file(temp + "/another-old", bytes: 8192)
+        old(temp + "/another-old")
+        let store = try PepelStore.inMemory()
+        // A build running inside build-work keeps it, as above.
+        let builder = process(77, name: "cc", path: "/usr/bin/cc", cwd: temp + "/build-work")
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: FakeProcessSource(processes: [builder]), telemetry: { SystemTelemetry() })
+        #expect(await engine.cleanTemp(confirmed: true, initiator: .agent).denial != nil)
+        #expect(await engine.cleanTemp(confirmed: false, initiator: .user).denial != nil)
+        _ = await engine.automaticPass()
+        #expect(PathUtil.exists(temp + "/another-old"), "off by default")
+        _ = try await engine.update { $0.cleanTempFiles = true }
+        _ = await engine.automaticPass()
+        #expect(!PathUtil.exists(temp + "/another-old") && PathUtil.exists(temp + "/build-work"))
+    }
+}

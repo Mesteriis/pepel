@@ -653,10 +653,25 @@ public final class AppModel {
         isMeasuringOther = true
         let days = settings.logDays
         diskForecast = engine.diskForecast()
+        measureTemp()
         Task {
             otherPlaces = await engine.otherPlaces()
             oldLogs = await engine.oldLogs(days: days)
             isMeasuringOther = false
+        }
+    }
+
+    public var tempEntries: [TempEntry]?
+
+    public func measureTemp() {
+        Task { tempEntries = await engine.tempEntries() }
+    }
+
+    public func cleanTemp() {
+        Task {
+            let result = await engine.cleanTemp(confirmed: true, initiator: .user)
+            message = result.denial.map { "Not done: \($0)" } ?? "Removed \(result.removed) temporary entries, \(Bytes.format(result.bytes))."
+            measureTemp()
         }
     }
 

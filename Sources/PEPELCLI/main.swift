@@ -868,6 +868,26 @@ case "disk":
         print("\n`pepel disk map <folder>` opens one. Folders macOS guards are not read unless named or --guarded is given.")
         break
     }
+    if arguments.positional.first == "temp" {
+        let days = arguments.options["days"].flatMap { Int($0) } ?? settings.tempDays
+        print("Looking through the temporary folder…")
+        let entries = await engine.tempEntries(days: days)
+        if arguments.json { Out.json(entries); break }
+        let removable = entries.filter { $0.keptBecause == nil }
+        print("\(PathUtil.display(appPaths.temporaryDirectory, home: appPaths.home)): \(entries.count) entries, \(Bytes.format(entries.reduce(0) { $0 + $1.bytes })). Unused for \(days)+ days: \(removable.count) entries, \(Bytes.format(removable.reduce(0) { $0 + $1.bytes })).\n")
+        Out.table(
+            ["SIZE", "LAST USED", "", "NAME"],
+            entries.prefix(15).map { [Bytes.format($0.bytes), TimeFormat.ago($0.lastUse), $0.keptBecause == nil ? "would go" : Out.truncate($0.keptBecause ?? "", 46), Out.truncate($0.name, 50)] })
+        guard arguments.positional.dropFirst().first == "clean" else {
+            print("\n`pepel disk temp clean` removes what is unused (--days N to change the age). Automatic daily cleaning is \(settings.cleanTempFiles ? "on" : "off") (cleanTempFiles).")
+            break
+        }
+        guard !removable.isEmpty else { print("\nNothing to remove."); break }
+        guard arguments.flags.contains("yes") || Out.confirm("Remove \(removable.count) entries unused for \(days) days?") else { print("Nothing was removed."); break }
+        let result = await engine.cleanTemp(days: days, confirmed: true, initiator: .cli)
+        print(result.denial.map { "Not done: \($0)" } ?? "Removed \(result.removed) entries, \(Bytes.format(result.bytes)).")
+        break
+    }
     if arguments.positional.first == "logs" {
         let days = arguments.options["days"].flatMap { Int($0) } ?? settings.logDays
         let found = await engine.oldLogs(days: days)

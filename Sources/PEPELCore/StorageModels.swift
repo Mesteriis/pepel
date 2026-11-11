@@ -410,3 +410,24 @@ public struct DiskForecast: Codable, Sendable, Hashable {
         "The disk has been filling by about \(Bytes.format(perDayBytes)) a day over the last \(TimeFormat.age(basedOn)). At that rate the \(Bytes.format(availableBytes)) that are available last about \(max(1, Int(fullAt.timeIntervalSince(now) / 86_400))) days."
     }
 }
+
+/// One file or folder directly inside the temporary folder.
+public struct TempEntry: Codable, Sendable, Identifiable, Hashable {
+    public var path: String
+    public var name: String
+    public var bytes: Int64
+    public var lastUse: Date
+    public var isDirectory: Bool
+    /// Why PEPEL leaves it; nil when it would be removed.
+    public var keptBecause: String?
+    public var id: String { path }
+
+    public init(path: String, name: String, bytes: Int64, lastUse: Date, isDirectory: Bool, keptBecause: String? = nil) {
+        self.path = path
+        self.name = name
+        self.bytes = bytes
+        self.lastUse = lastUse
+        self.isDirectory = isDirectory
+        self.keptBecause = keptBecause
+    }
+}

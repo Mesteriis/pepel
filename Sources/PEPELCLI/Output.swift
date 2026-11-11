@@ -91,6 +91,7 @@ enum Out {
           pepel free permission [--revoke] Whether PEPEL may flush the file cache without asking; remove that permission
           pepel simulators [shutdown …]    Booted simulators and what they hold; shut one or all down
           pepel disk map [<folder>]        The whole disk, or one folder, by size (the dashboard's Disk map as a table)
+          pepel disk temp [clean]          The temporary folder: what nothing has used for N days; remove it
           pepel disk [logs [clean]]        Free space, when the disk would fill, other large places; old log files
           pepel caches [trim …]            Tool caches and what in them is unused for N days; remove only that part
           pepel docker [clean …|compact]   What Docker keeps on disk; remove what is unused for N days; trim its disk image

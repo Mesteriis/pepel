@@ -330,3 +330,47 @@ extension PepelEngine {
         _ = await removeOldLogs(confirmed: false, initiator: .automatic)
     }
 }
+
+/// The temporary folder.
+extension PepelEngine {
+    /// Names of running programs and the paths they work in, so that nothing in use is removed.
+    func runningPrograms() -> (names: Set<String>, paths: [String]) {
+        let processes = processSource.snapshot()
+        var names = Set(processes.map(\.name))
+        for app in applicationControl.running() {
+            names.insert(app.name)
+            if let data = FileManager.default.contents(atPath: app.bundlePath + "/Contents/Info.plist"),
+                let plist = (try? PropertyListSerialization.propertyList(from: data, format: nil)) as? [String: Any], let id = plist["CFBundleIdentifier"] as? String
+            {
+                names.insert(id)
+            }
+        }
+        let paths = processes.flatMap { [$0.workingDirectory].compactMap { $0 } + $0.arguments.filter { $0.hasPrefix("/") } }
+        return (names, paths)
+    }
+
+    public func tempEntries(days: Int? = nil) async -> [TempEntry] {
+        let cleaner = TempCleaner(directory: paths.temporaryDirectory), running = runningPrograms(), age = days ?? settings.tempDays
+        return await Task.detached(priority: .utility) { cleaner.entries(days: age, running: running.names, busyPaths: running.paths) }.value
+    }
+
+    public func cleanTemp(days: Int? = nil, confirmed: Bool, initiator: Initiator) async -> (denial: String?, bytes: Int64, removed: Int) {
+        switch initiator {
+        case .agent: return ("Agents cannot have temporary files removed.", 0, 0)
+        case .automatic: if !settings.cleanTempFiles || settings.paused { return ("Automatic cleaning of the temporary folder is not enabled.", 0, 0) }
+        case .user, .cli: if !confirmed { return ("This needs your confirmation.", 0, 0) }
+        }
+        let cleaner = TempCleaner(directory: paths.temporaryDirectory), running = runningPrograms(), age = days ?? settings.tempDays
+        let result = await Task.detached(priority: .utility) { cleaner.clean(days: age, running: running.names, busyPaths: running.paths) }.value
+        if result.removed > 0 {
+            store.appendAudit(
+                AuditEntry(kind: .cleanup, initiator: initiator.rawValue, subject: "Temporary folder: \(result.removed) entries", outcome: "removed", bytes: result.bytes, detail: ["unusedForDays": "\(age)"]))
+        }
+        return (nil, result.bytes, result.removed)
+    }
+
+    func autoCleanTemp(now: Date = Date()) async {
+        guard settings.cleanTempFiles, !settings.paused, dueDaily("temp.lastAutoClean", now: now) else { return }
+        _ = await cleanTemp(confirmed: false, initiator: .automatic)
+    }
+}
