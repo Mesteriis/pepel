@@ -413,6 +413,16 @@
         }
       }
     },
+    "%@ closed": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Закрыто: %@"
+          }
+        }
+      }
+    },
     "%@ compressed": {
       "localizations": {
         "ru": {
@@ -1441,6 +1451,16 @@
         }
       }
     },
+    "%@. They wake up when you return to their app.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@. Проснутся, когда вы вернётесь в их приложение."
+          }
+        }
+      }
+    },
     "%@: %@": {
       "localizations": {
         "en": {
@@ -1453,6 +1473,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@: %@"
+          }
+        }
+      }
+    },
+    "%@: %@ to the Trash": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@: %2$@ to the Trash"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: %@ в Корзину"
           }
         }
       }
@@ -3014,6 +3050,7 @@
       }
     },
     "%lld items cleaned, up to %@.": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "variations": {
@@ -8521,6 +8558,16 @@
         }
       }
     },
+    "Ended %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Завершён процесс %@"
+          }
+        }
+      }
+    },
     "Ended %lld of %lld old copies inside agent servers.": {
       "localizations": {
         "en": {
@@ -9319,6 +9366,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Освободить до %@"
+          }
+        }
+      }
+    },
+    "Freed %@ on disk": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Освобождено на диске: %@"
           }
         }
       }
@@ -10199,6 +10256,32 @@
         }
       }
     },
+    "It sat idle past its limit. It held %@.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Он простаивал дольше допустимого и занимал %@."
+          }
+        }
+      }
+    },
+    "It sat idle past its limit. It held %@; memory in use dropped by %@.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "It sat idle past its limit. It held %1$@; memory in use dropped by %2$@."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Он простаивал дольше допустимого и занимал %@; занятая память уменьшилась на %@."
+          }
+        }
+      }
+    },
     "It still holds a terminal or a listening port.": {
       "localizations": {
         "ru": {
@@ -10271,6 +10354,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Его исполняемый файл находится внутри %@.app."
+          }
+        }
+      }
+    },
+    "Its memory is handed back to the Mac; the containers that ran were started again.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Её память возвращена Mac; работавшие контейнеры запущены снова."
           }
         }
       }
@@ -11541,6 +11634,16 @@
         }
       }
     },
+    "Memory and disk": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Память и диск"
+          }
+        }
+      }
+    },
     "Memory budgets": {
       "localizations": {
         "ru": {
@@ -11561,12 +11664,48 @@
         }
       }
     },
+    "Memory graph": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "График памяти"
+          }
+        }
+      }
+    },
+    "Memory graph, memory and disk": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "График памяти, память и диск"
+          }
+        }
+      }
+    },
     "Memory in use": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Занято памяти"
+          }
+        }
+      }
+    },
+    "Memory in use %@ of %@; %@ free on disk.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Memory in use %1$@ of %2$@; %3$@ free on disk."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Занято памяти: %@ из %@; свободно на диске: %@."
           }
         }
       }
@@ -12293,6 +12432,26 @@
         }
       }
     },
+    "No agent worked in the project for a while. %@ inside Docker's VM is free again; they start again with docker compose start.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В проекте давно не работал ни один агент. В ВМ Docker снова свободно %@; запустить их можно командой docker compose start."
+          }
+        }
+      }
+    },
+    "No agent worked in the project for a while; they start again with docker compose start.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В проекте давно не работал ни один агент; запустить их можно командой docker compose start."
+          }
+        }
+      }
+    },
     "No agents running": {
       "localizations": {
         "ru": {
@@ -12621,6 +12780,32 @@
           "stringUnit": {
             "state": "translated",
             "value": "Для этого элемента нет поддерживаемого способа очистки."
+          }
+        }
+      }
+    },
+    "No window was open for %lld min.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ни одного окна не было %lld мин."
+          }
+        }
+      }
+    },
+    "No window was open for %lld min. %@ of memory is free again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "No window was open for %1$lld min. %2$@ of memory is free again."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ни одного окна не было %lld мин. Освобождено памяти: %@."
           }
         }
       }
@@ -15278,6 +15463,7 @@
       }
     },
     "PEPEL terminated %@": {
+      "extractionState": "stale",
       "localizations": {
         "ru": {
           "stringUnit": {
@@ -15512,6 +15698,7 @@
       }
     },
     "PID %lld had been idle past its threshold. It held %@ with its child processes.": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -15755,6 +15942,68 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "Paused %lld idle agent sessions": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Paused %lld idle agent session"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Paused %lld idle agent sessions"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Заморожены %lld простаивающие сессии агентов"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Заморожено %lld простаивающих сессий агентов"
+                }
+              },
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Заморожена %lld простаивающая сессия агента"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Заморожено %lld простаивающих сессий агентов"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Paused the containers of %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Приостановлены контейнеры %@"
           }
         }
       }
@@ -16069,6 +16318,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Проект %@: %@"
+          }
+        }
+      }
+    },
+    "Project build output and caches": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Результаты сборки и кэши проектов"
           }
         }
       }
@@ -17957,6 +18216,16 @@
         }
       }
     },
+    "Restarted Docker's VM": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ВМ Docker перезапущена"
+          }
+        }
+      }
+    },
     "Restarted the Docker VM %lld times, which returned %@.": {
       "localizations": {
         "en": {
@@ -18444,6 +18713,7 @@
       }
     },
     "Safe cleanup finished": {
+      "extractionState": "stale",
       "localizations": {
         "ru": {
           "stringUnit": {
@@ -19557,6 +19827,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Остановленные контейнеры, образы, не используемые ни одним контейнером, кэш сборки и неиспользуемые сети. Всё можно собрать или скачать заново. Тома не трогаются."
+          }
+        }
+      }
+    },
+    "Stopped the containers of %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Остановлены контейнеры %@"
           }
         }
       }
@@ -22873,12 +23153,52 @@
         }
       }
     },
+    "What the daily disk rules removed or moved to the Trash": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Что ежедневные правила удалили с диска или отправили в Корзину"
+          }
+        }
+      }
+    },
+    "What went to the Trash can be put back from the Overview.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отправленное в Корзину можно вернуть на «Обзоре»."
+          }
+        }
+      }
+    },
+    "When PEPEL closes an app, ends a process or stops containers, and what that freed": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Когда PEPEL закрывает приложение, завершает процесс или останавливает контейнеры — и сколько это освободило"
+          }
+        }
+      }
+    },
     "When a project is idle": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Когда проект простаивает"
+          }
+        }
+      }
+    },
+    "When an idle agent session is paused": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Когда простаивающая сессия агента замораживается"
           }
         }
       }

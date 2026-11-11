@@ -125,3 +125,47 @@ struct PlanTests {
         #expect(heavy.warning(memoryLimitMB: 0) == nil, "0 switches the memory warning off")
     }
 }
+
+@Suite("Notifications about what PEPEL did on its own")
+struct NoticeTests {
+    func entry(_ id: Int64, _ kind: AuditKind, _ subject: String, _ outcome: String, bytes: Int64 = 0, detail: [String: String] = [:], initiator: String = "automatic") -> AuditEntry {
+        AuditEntry(id: id, kind: kind, initiator: initiator, subject: subject, outcome: outcome, bytes: bytes, detail: detail)
+    }
+
+    @Test("A closed app says what it freed; disk rules come as one notification; pauses are grouped")
+    func notices() {
+        let notices = PepelEngine.notices(for: [
+            entry(1, .termination, "Preview", "quit (no window)", bytes: 300 * Bytes.mb, detail: ["minutes": "2"]),
+            entry(2, .termination, "claude (PID 7)", "terminated", detail: ["observedChange": "-657 MB", "footprintBefore": "783 MB"]),
+            entry(3, .container, "sirin-dev (1 containers)", "stopped", detail: ["project": "/Users/me/projects/sirin", "memoryInsideVM": "463 MB"]),
+            entry(4, .cleanup, "Tool caches: Homebrew downloads 30.5 MB", "removed", bytes: 30 * Bytes.mb),
+            entry(5, .cleanup, "Downloads and screenshots: 6", "trashed", bytes: 5 * Bytes.mb),
+            entry(6, .termination, "Claude Code (PID 9)", "suspended", detail: ["inRAM": "948 MB"]),
+            entry(7, .termination, "Claude Code (PID 10)", "suspended"),
+            entry(8, .scan, "storage scan", "200 items"),
+        ])
+        #expect(notices.first { $0.id == "closed-1" }?.body.contains("300 MB") == true)
+        #expect(notices.first { $0.id == "ended-2" }?.body.contains("657 MB") == true)
+        #expect(notices.first { $0.id == "containers-3" }?.title.contains("sirin") == true)
+        let cleanup = notices.filter { $0.kind == .cleanup }
+        #expect(cleanup.count == 1 && cleanup[0].body.contains("Tool caches") && cleanup[0].body.contains("Trash"))
+        let frozen = notices.filter { $0.kind == .freeze }
+        #expect(frozen.count == 1 && frozen[0].body.contains("Claude Code, Claude Code"))
+        #expect(notices.count == 5)
+    }
+
+    @Test("The first call only remembers where the log is; later calls announce automatic actions once")
+    func cursor() async throws {
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: FakeProcessSource(processes: []), telemetry: { SystemTelemetry() })
+        store.appendAudit(AuditEntry(kind: .termination, initiator: "automatic", subject: "Old", outcome: "quit (no window)"))
+        #expect(await engine.actionNotices().isEmpty)
+        store.appendAudit(AuditEntry(kind: .termination, initiator: "user", subject: "Mine", outcome: "quit (no window)"))
+        store.appendAudit(AuditEntry(kind: .termination, initiator: "automatic", subject: "TextEdit", outcome: "quit (no window)"))
+        #expect(await engine.actionNotices().map(\.title) == ["TextEdit closed"])
+        #expect(await engine.actionNotices().isEmpty)
+    }
+}

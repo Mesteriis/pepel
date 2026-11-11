@@ -17,9 +17,13 @@ public struct MenuBarLabel: View {
 
     public var body: some View {
         HStack(spacing: 4) {
-            Image(nsImage: AppImages.menuBar(status: statusColor))
-            if let text = model.menuBarText {
-                Text(text).monospacedDigit()
+            if let drawn = MenuBarRenderer.image(model.settings.menuBarMode, model.menuBarReading) {
+                Image(nsImage: drawn)
+            } else {
+                Image(nsImage: AppImages.menuBar(status: statusColor))
+                if let text = model.menuBarText {
+                    Text(text).monospacedDigit()
+                }
             }
         }
         .accessibilityLabel("PEPEL. \(model.healthSentence) \(model.menuBarText.map { L("Reclaimable: \($0)") } ?? "")")
@@ -320,22 +324,18 @@ public struct PopoverView: View {
 @MainActor
 public enum MenuBarContent {
     public static func image(_ model: AppModel) -> NSImage {
-        let status: NSColor
-        if model.settings.paused {
-            status = .systemGray
-        } else {
-            switch model.health {
-            case .healthy: status = NSColor(Theme.forest)
-            case .attention: status = NSColor(Theme.amber)
-            case .critical: status = NSColor(Theme.danger)
-            }
-        }
-        return AppImages.menuBar(status: status)
+        MenuBarRenderer.image(model.settings.menuBarMode, model.menuBarReading) ?? AppImages.menuBar(status: model.menuBarStatus)
     }
 
     public static func title(_ model: AppModel) -> String { model.menuBarText ?? "" }
 
     public static func accessibilityLabel(_ model: AppModel) -> String {
-        "PEPEL. \(model.healthSentence)" + (model.menuBarText.map { " \($0)" } ?? "")
+        let r = model.menuBarReading
+        switch model.settings.menuBarMode {
+        case .memoryAndDisk, .memoryGraph, .memoryGraphAndDisk:
+            return "PEPEL. \(model.healthSentence) " + L("Memory in use \(Bytes.format(r.memoryUsed)) of \(Bytes.format(r.memoryTotal)); \(Bytes.format(r.diskAvailable)) free on disk.")
+        default:
+            return "PEPEL. \(model.healthSentence)" + (model.menuBarText.map { " \($0)" } ?? "")
+        }
     }
 }

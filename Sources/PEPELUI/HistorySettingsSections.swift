@@ -260,6 +260,12 @@ struct SettingsSection: View {
                 toggle("Pause all monitoring", s.paused) { v in model.updateSettings { $0.paused = v } }
                 toggle("Work less on battery", s.batteryAware) { v in model.updateSettings { $0.batteryAware = v } }
                 toggle("Notifications", s.notificationsEnabled) { v in model.updateSettings { $0.notificationsEnabled = v } }
+                VStack(alignment: .leading, spacing: 4) {
+                    toggle("When PEPEL closes an app, ends a process or stops containers, and what that freed", s.notifyClosures) { v in model.updateSettings { $0.notifyClosures = v } }
+                    toggle("What the daily disk rules removed or moved to the Trash", s.notifyCleanups) { v in model.updateSettings { $0.notifyCleanups = v } }
+                    toggle("When an idle agent session is paused", s.notifyFreezes) { v in model.updateSettings { $0.notifyFreezes = v } }
+                }
+                .padding(.leading, 20).disabled(!s.notificationsEnabled)
                 HStack(spacing: 8) {
                     toggle("Keep a memory journal (a reading every five minutes)", s.journalEnabled) { v in model.updateSettings { $0.journalEnabled = v } }
                     stepper(s.journalRetentionDays, 1...365, label: { "for \($0) days" }) { v in model.updateSettings { $0.journalRetentionDays = v } }
@@ -281,7 +287,7 @@ struct SettingsSection: View {
                     stepper(s.quietHours.startHour, 0...23, label: { "from \($0):00" }) { v in model.updateSettings { $0.quietHours.startHour = v } }
                     stepper(s.quietHours.endHour, 0...23, label: { "to \($0):00" }) { v in model.updateSettings { $0.quietHours.endHour = v } }
                 }
-                picker("Menu bar shows", selection: s.menuBarMode, options: [(.reclaimable, "Reclaimable storage"), (.iconOnly, "Icon only"), (.memoryPressure, "Memory pressure"), (.activeBuilds, "Active builds")]) { value in model.updateSettings { $0.menuBarMode = value } }
+                picker("Menu bar shows", selection: s.menuBarMode, options: [(.memoryGraphAndDisk, "Memory graph, memory and disk"), (.memoryGraph, "Memory graph"), (.memoryAndDisk, "Memory and disk"), (.reclaimable, "Reclaimable storage"), (.memoryPressure, "Memory pressure"), (.activeBuilds, "Active builds"), (.iconOnly, "Icon only")]) { value in model.updateSettings { $0.menuBarMode = value } }
                 Toggle("Launch PEPEL at login", isOn: Binding(get: { LoginItem.isEnabled }, set: { model.setLaunchAtLogin($0) })).font(.system(size: 12)).toggleStyle(.checkbox)
                 Text(model.loginItemStatus).font(.system(size: 11)).foregroundStyle(Theme.tertiary)
             }

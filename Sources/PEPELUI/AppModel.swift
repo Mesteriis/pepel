@@ -195,6 +195,7 @@ public final class AppModel {
         switch event {
         case .live(let state):
             withAnimation(.easeOut(duration: 0.25)) { live = state }
+            recordMemory(state.telemetry)
             // Settings changed from the command line show up in the interface too.
             Task {
                 let current = await engine.currentSettings()
@@ -214,21 +215,30 @@ public final class AppModel {
             alerts = current
             notify(current)
             postSummaryIfDue()
+            postActionNotices()
             activity.refreshSelf(heavyTasks: heavyTasks, limitMB: settings.selfMemoryWarnMB, notify: settings.notificationsEnabled)
-        case .automatic(let cleanup, let terminations):
-            if let cleanup, cleanup.succeededCount > 0 {
-                Notifier.post(
-                    id: "auto-cleanup-\(Int(cleanup.finishedAt.timeIntervalSince1970))", title: L("Safe cleanup finished"),
-                    body: L("\(cleanup.succeededCount) items cleaned, up to \(Bytes.format(cleanup.estimatedBytes))."))
-            }
-            for report in terminations where report.exited {
-                Notifier.post(
-                    id: "auto-term-\(report.target.pid)", title: L("PEPEL terminated \(report.name)"),
-                    body: L("PID \(Int(report.target.pid)) had been idle past its threshold. It held \(Bytes.format(report.footprintBefore)) with its child processes."))
-            }
+        case .automatic:
+            postActionNotices()
             refreshSecondary()
         case .cadence(let reason):
             cadence = reason
+        }
+    }
+
+    /// What PEPEL did on its own since the last time: closed, ended, stopped, removed, and what that freed.
+    private func postActionNotices() {
+        Task {
+            let notices = await engine.actionNotices()
+            let s = settings
+            guard s.notificationsEnabled, !s.quietHours.contains(hour: Calendar.current.component(.hour, from: Date())) else { return }
+            for notice in notices {
+                switch notice.kind {
+                case .closure: guard s.notifyClosures else { continue }
+                case .cleanup: guard s.notifyCleanups else { continue }
+                case .freeze: guard s.notifyFreezes else { continue }
+                }
+                Notifier.post(id: notice.id, title: notice.title, body: notice.body)
+            }
         }
     }
 
@@ -333,6 +343,35 @@ public final class AppModel {
             body: running.map { L("Expand \($0) and collapse it again to bring the icon back.") } ?? L("Check System Settings › Menu Bar."))
     }
 
+    // MARK: Menu bar graph
+
+    /// Memory in use as a share of physical memory, one reading per live update, newest last.
+    public private(set) var memoryHistory: [Double] = []
+    static let memoryHistoryLength = 48
+
+    private func recordMemory(_ t: SystemTelemetry) {
+        guard t.memoryTotalBytes > 0 else { return }
+        memoryHistory.append(Double(t.memoryUsedBytes) / Double(t.memoryTotalBytes))
+        if memoryHistory.count > Self.memoryHistoryLength { memoryHistory.removeFirst(memoryHistory.count - Self.memoryHistoryLength) }
+    }
+
+    /// Everything the menu bar item draws, read at once.
+    public var menuBarReading: MenuBarReading {
+        let t = live?.telemetry
+        return MenuBarReading(
+            status: menuBarStatus, memoryUsed: t?.memoryUsedBytes ?? 0, memoryTotal: t?.memoryTotalBytes ?? 0, pressure: t?.pressure ?? .normal,
+            history: memoryHistory, diskAvailable: t?.diskAvailableBytes ?? 0, text: menuBarText)
+    }
+
+    public var menuBarStatus: NSColor {
+        if settings.paused { return .systemGray }
+        switch health {
+        case .healthy: return NSColor(Theme.forest)
+        case .attention: return NSColor(Theme.amber)
+        case .critical: return NSColor(Theme.danger)
+        }
+    }
+
     // MARK: Derived
 
     public var health: HealthLevel {
@@ -363,6 +402,8 @@ public final class AppModel {
         case .reclaimable: return storage == nil ? nil : reclaimableText
         case .memoryPressure: return live.map { $0.telemetry.pressure == .normal ? L("OK") : $0.telemetry.pressure == .elevated ? L(LocalizedStringResource("pressure.elevated", defaultValue: "Elevated")) : L(LocalizedStringResource("pressure.critical", defaultValue: "Critical")) }
         case .activeBuilds: return live.map { "\($0.activeBuildCount)" }
+        // Drawn into the image by MenuBarRenderer.
+        case .memoryAndDisk, .memoryGraph, .memoryGraphAndDisk: return nil
         }
     }
 

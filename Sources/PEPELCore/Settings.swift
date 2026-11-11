@@ -2,6 +2,12 @@ import Foundation
 
 public enum MenuBarMode: String, Codable, Sendable, CaseIterable {
     case iconOnly, reclaimable, memoryPressure, activeBuilds
+    /// Memory in use and free disk space, as text.
+    case memoryAndDisk
+    /// A small graph of memory in use over the last minutes, with the figure.
+    case memoryGraph
+    /// The graph, with memory in use and free disk space stacked beside it.
+    case memoryGraphAndDisk
 }
 
 public enum MonitoringMode: String, Codable, Sendable, CaseIterable {
@@ -59,12 +65,18 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     public var excludedPaths: [String] = []
     public var discoveryDepth = 5
 
-    public var menuBarMode: MenuBarMode = .reclaimable
+    public var menuBarMode: MenuBarMode = .memoryGraphAndDisk
     public var monitoringMode: MonitoringMode = .notifyOnly
     public var paused = false
     public var quietHours = QuietHours()
     public var batteryAware = true
     public var notificationsEnabled = true
+    /// Say when PEPEL closed an application, ended a process or stopped containers, and what that freed.
+    public var notifyClosures = true
+    /// Say what the daily disk rules removed or moved to the Trash.
+    public var notifyCleanups = true
+    /// Say when an idle agent session was paused (frequent; off by default).
+    public var notifyFreezes = false
     public var launchAtLogin = false
 
     public var deletionMode: DeletionMode = .automatic

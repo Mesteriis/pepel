@@ -65,13 +65,15 @@ extension PepelEngine {
             // The same checks as quitting by hand: nothing living inside it, not PEPEL's own surroundings.
             guard let decision = await applicationDecision(.quit, bundlePath: app.bundlePath, initiator: .user), decision.verdict != .denied else { continue }
             if let identity { windowlessAsked.insert(identity) }
+            // What it holds, measured before it goes: every process running from its bundle.
+            let held = processSource.snapshot().filter { $0.pid == app.pid || ($0.executablePath ?? "").hasPrefix(app.bundlePath + "/") }.reduce(Int64(0)) { $0 + $1.footprintBytes }
             if applicationControl.quit(app.pid) {
                 quit.append(app.name)
                 windowlessStates[id] = nil
                 store.appendAudit(
                     AuditEntry(
-                        kind: .termination, initiator: Initiator.automatic.rawValue, subject: app.name, outcome: "quit (no window)",
-                        detail: ["withoutWindowFor": TimeFormat.age(waited), "bundleID": id]))
+                        kind: .termination, initiator: Initiator.automatic.rawValue, subject: app.name, outcome: "quit (no window)", bytes: held,
+                        detail: ["withoutWindowFor": TimeFormat.age(waited), "bundleID": id, "minutes": "\(Int(waited / 60))"]))
             }
         }
         for id in windowlessStates.keys where !stillWindowless.contains(id) { windowlessStates[id] = nil }
