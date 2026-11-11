@@ -1218,8 +1218,90 @@ case "journal":
     if !digest.actions.isEmpty { print("\nWhat PEPEL did: " + digest.actions.sorted { $0.value > $1.value }.prefix(10).map { "\($0.key) ×\($0.value)" }.joined(separator: ", ") + ".") }
     if digest.forecasts > 0 { print("A shortage was forecast in \(digest.forecasts) reading\(digest.forecasts == 1 ? "" : "s").") }
 
+case "plan":
+    // What the daily rules will act on next; `leave` takes an item out, `forget` puts it back.
+    let verb = arguments.positional.first
+    if verb == "leave" || verb == "forget", arguments.positional.count >= 2 {
+        var key = arguments.positional.dropFirst().joined(separator: " ")
+        if key.hasPrefix("/") || key.hasPrefix("~") { key = RuleAction.pathKey(PathUtil.canonical(key, home: appPaths.home)) }
+        let settings = try await engine.setLeftAlone([key], verb == "leave")
+        print(verb == "leave" ? "The daily rules will leave \(key) alone." : "The daily rules may act on \(key) again.")
+        print("Leave-alone list: \(settings.leaveAlone.count) item\(settings.leaveAlone.count == 1 ? "" : "s").")
+        break
+    } else if verb != nil {
+        Out.error("usage: pepel plan [leave <id or path> | forget <id or path>]"); exit(2)
+    }
+    if isatty(STDERR_FILENO) != 0 && !arguments.json { FileHandle.standardError.write(Data("Looking at what each rule would touch…\r".utf8)) }
+    _ = await engine.refreshLive()
+    let plan = await engine.actionPlan()
+    if isatty(STDERR_FILENO) != 0 && !arguments.json { FileHandle.standardError.write(Data("\r\u{1B}[K".utf8)) }
+    if arguments.json { Out.json(plan); break }
+    for note in plan.notes { print(note) }
+    if plan.actions.isEmpty { print("No daily rule has anything to do right now."); break }
+    print("Next 24 hours: \(plan.actions.count) item\(plan.actions.count == 1 ? "" : "s"), up to \(Bytes.format(plan.bytes)).\n")
+    Out.table(
+        ["WHEN", "RULE", "SIZE", "DOES", "ITEM", "ID (for leave)"],
+        plan.actions.prefix(arguments.flags.contains("all") ? 10_000 : 60).map {
+            let wait = $0.due.timeIntervalSinceNow
+            return [wait < 120 ? "next pass" : "in " + TimeFormat.age(wait), $0.rule.title, Bytes.format($0.bytes), $0.verb, Out.truncate($0.title, 40), Out.truncate($0.id.hasPrefix("path:") ? PathUtil.display(String($0.id.dropFirst(5)), home: appPaths.home) : $0.id, 60)]
+        })
+    if plan.actions.count > 60, !arguments.flags.contains("all") { print("… \(plan.actions.count - 60) more (use --all)") }
+    print("\n`pepel plan leave <id or path>` keeps the rules off one item.")
+
+case "restore":
+    if let first = arguments.positional.first {
+        guard let id = Int64(first) else { Out.error("usage: pepel restore [<number>]"); exit(2) }
+        if let problem = engine.restoreTrashed(id: id) { Out.error(problem); exit(1) }
+        print("Put back.")
+        break
+    }
+    let days = arguments.options["days"].flatMap { Int($0) } ?? 14
+    let center = engine.restoreCenter(days: days)
+    if arguments.json { Out.json(center); break }
+    if center.restorable.isEmpty {
+        print("Nothing PEPEL moved to the Trash in the last \(days) days is waiting there.")
+    } else {
+        print("Can be put back (`pepel restore <number>`):")
+        Out.table(["NUMBER", "SIZE", "WHEN", "BY", "FROM"], center.restorable.map { ["\($0.id)", Bytes.format($0.bytes), TimeFormat.ago($0.at), $0.source, Out.truncate(PathUtil.display($0.originalPath, home: appPaths.home), 70)] })
+    }
+    if !center.gone.isEmpty { print("\n\(center.gone.count) trashed item\(center.gone.count == 1 ? " is" : "s are") no longer in the Trash, or their place is taken again.") }
+    if !center.removed.isEmpty {
+        print("\nRemoved for good (rebuilt or downloaded again when needed):")
+        Out.table(["SIZE", "WHEN", "WHAT"], center.removed.prefix(30).map { [Bytes.format($0.bytes), TimeFormat.ago($0.timestamp), Out.truncate($0.subject, 80)] })
+    }
+
+case "self":
+    // Two readings a second apart give the CPU share.
+    _ = await engine.selfUsage()
+    try? await Task.sleep(for: .seconds(1))
+    let usage = await engine.selfUsage()
+    if arguments.json { Out.json(usage); break }
+    if usage.processes.isEmpty { print("The PEPEL app is not running."); break }
+    Out.table(["PID", "MEMORY", "CPU", "PROCESS"], usage.processes.map { ["\($0.pid)", Bytes.format($0.footprintBytes), $0.cpuPercent.map { "\(Int($0.rounded()))%" } ?? "—", $0.name] })
+    print(usage.heavyTasks.isEmpty ? "\nNo heavy job is running." : "\nRunning: " + usage.heavyTasks.joined(separator: ", ") + ".")
+    let settings = await engine.currentSettings()
+    if let warning = usage.warning(memoryLimitMB: settings.selfMemoryWarnMB) { print(warning) }
+
+case "preset":
+    let settings = await engine.currentSettings()
+    guard let name = arguments.positional.first else {
+        print("Rule set: \(SettingsPreset.matching(settings)?.title ?? "custom (tuned by hand)").\n")
+        for preset in SettingsPreset.allCases { print("  \(preset.rawValue.padding(toLength: 11, withPad: " ", startingAt: 0)) \(preset.summary)") }
+        print("\n`pepel preset <name>` shows what would change and asks before switching.")
+        break
+    }
+    guard let preset = SettingsPreset(rawValue: name.lowercased()) else { Out.error("unknown rule set '\(name)'; one of careful, normal, aggressive"); exit(2) }
+    let changes = preset.changes(from: settings)
+    if changes.isEmpty { print("The rules are already at \(preset.title)."); break }
+    print("\(preset.title): \(preset.summary)\n")
+    for change in changes { print("  \(change)") }
+    guard arguments.flags.contains("yes") || Out.confirm("Switch to \(preset.title)?") else { print("Nothing changed."); break }
+    _ = try await engine.update { preset.apply(to: &$0) }
+    print("Switched to \(preset.title).")
+
 case "summary":
-    let hours = arguments.options["hours"].flatMap { Double($0) } ?? 24
+    let configured = await engine.currentSettings().summaryFrequency
+    let hours = arguments.options["hours"].flatMap { Double($0) } ?? (configured == .daily ? 24 : 24 * 7)
     let summary = await engine.summary(hours: hours)
     if arguments.json { Out.json(summary); break }
     print("Last \(TimeFormat.age(hours * 3600)): \(summary.headline)\n")

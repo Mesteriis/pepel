@@ -191,6 +191,9 @@ public struct CleanupExecutor: Sendable {
         case .trashed(let to):
             text = "trashed"
             detail["trashedTo"] = to
+            if !dryRun, !to.isEmpty {
+                store?.recordTrashed(TrashRecord(source: "Cleanup", originalPath: outcome.path, trashedPath: to, bytes: outcome.estimatedBytes))
+            }
         case .toolRan: text = "tool ran"
         case .wouldApply: text = "would apply"
         case .skipped(let reason): text = "skipped: \(reason)"

@@ -21,6 +21,11 @@ public final class PepelStore: Sendable {
                 try db.execute("PRAGMA user_version = 2")
             }
         }
+        // Every version: the record of what PEPEL moved to the Trash (added after v2, idempotent).
+        defer {
+            try? db.execute(
+                "CREATE TABLE IF NOT EXISTS trash(id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, source TEXT NOT NULL, original TEXT NOT NULL, trashed TEXT NOT NULL, bytes INTEGER NOT NULL, restored REAL)")
+        }
         guard version < 1 else { return }
         try db.transaction {
             for sql in [
@@ -134,6 +139,35 @@ public final class PepelStore: Sendable {
                 initiator: row[3].text ?? "", subject: row[4].text ?? "", outcome: row[5].text ?? "",
                 bytes: row[6].int, detail: detail ?? [:])
         }
+    }
+
+    // MARK: Trash
+
+    @discardableResult
+    public func recordTrashed(_ record: TrashRecord) -> Int64 {
+        do {
+            return try db.transaction {
+                try db.execute(
+                    "INSERT INTO trash(ts, source, original, trashed, bytes) VALUES(?,?,?,?,?)",
+                    [.double(record.at.timeIntervalSince1970), .text(record.source), .text(record.originalPath), .text(record.trashedPath), .int(record.bytes)])
+                return db.lastInsertRowID
+            }
+        } catch {
+            return -1
+        }
+    }
+
+    public func trashed(since: Date, limit: Int = 2000) -> [TrashRecord] {
+        let rows = (try? db.query("SELECT id, ts, source, original, trashed, bytes, restored FROM trash WHERE ts >= ? ORDER BY id DESC LIMIT ?", [.double(since.timeIntervalSince1970), .int(Int64(limit))])) ?? []
+        return rows.map { row in
+            TrashRecord(
+                id: row[0].int, at: Date(timeIntervalSince1970: row[1].double), source: row[2].text ?? "", originalPath: row[3].text ?? "",
+                trashedPath: row[4].text ?? "", bytes: row[5].int, restoredAt: row[6] == .null ? nil : Date(timeIntervalSince1970: row[6].double))
+        }
+    }
+
+    public func markRestored(id: Int64, at: Date = Date()) {
+        try? db.execute("UPDATE trash SET restored = ? WHERE id = ?", [.double(at.timeIntervalSince1970), .int(id)])
     }
 
     // MARK: Protection rules

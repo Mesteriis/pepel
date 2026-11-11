@@ -103,7 +103,12 @@ enum Out {
           pepel docker volumes             Named volumes no container mounts, and whether their project is still here
           pepel docker [clean …|compact]   What Docker keeps on disk; remove what is unused for N days; trim its disk image
           pepel journal [--days N] [path]  The memory journal: what it says about the last days, and where it is
-          pepel summary [--hours N]        What PEPEL did over the last day and what it left for you
+          pepel summary [--hours N]        What PEPEL did over the last week (or day, as set) and what it left for you
+          pepel plan [--all]               What the daily rules will remove in the next 24 hours
+          pepel plan leave|forget <id|path>  Keep the daily rules off one item, or let them act on it again
+          pepel restore [N] [--days N]     What PEPEL removed lately; put back item N from the Trash
+          pepel preset [careful|normal|aggressive] [--yes]  Ready-made sets for the daily disk rules
+          pepel self                       What PEPEL itself costs in memory and CPU, and which heavy job runs
           pepel budget [set <owner> <GB>]  Memory budgets per owner (a name, or kind:agentSession); alerts when exceeded
           pepel memory system [restart …]  Large macOS components; restart one that the system brings back by itself
           pepel memory forecast            Where memory use is heading, when it has been rising steadily

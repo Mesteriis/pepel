@@ -67,11 +67,11 @@ public struct OtherPlaces: Sendable {
     }
 
     /// Removes those log files. Each is looked at again right before it goes.
-    public func removeOldLogs(days: Int, now: Date = Date()) -> (bytes: Int64, removed: Int) {
+    public func removeOldLogs(days: Int, skip: Set<String> = [], now: Date = Date()) -> (bytes: Int64, removed: Int) {
         let cutoff = Int(now.timeIntervalSince1970) - days * 86_400
         var bytes: Int64 = 0
         var removed = 0
-        for path in oldLogs(days: days, now: now).files {
+        for path in oldLogs(days: days, now: now).files where !skip.contains(RuleAction.pathKey(path)) {
             var info = stat()
             guard lstat(path, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG, CacheTrimmer.lastUse(info) < cutoff else { continue }
             if unlink(path) == 0 {

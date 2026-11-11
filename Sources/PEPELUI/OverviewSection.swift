@@ -35,6 +35,12 @@ struct OverviewSection: View {
                 .panel()
             }
 
+            // What PEPEL is about to do and what it can undo: the two questions before trusting it.
+            HStack(alignment: .top, spacing: 10) {
+                PlanPanel()
+                RestorePanel()
+            }
+
             HStack(alignment: .top, spacing: 10) {
                 largest
                 buildsSummary
@@ -88,11 +94,13 @@ struct OverviewSection: View {
 
     private var growthTile: some View {
         let day = model.growth?.day
+        let delta = day?.deltaBytes ?? 0
+        let span = day.map { $0.coversWindow ? "than a day ago" : "than \(TimeFormat.age($0.actualSpan)) ago" } ?? ""
         return MetricTile(
-            label: "Storage growth · 24 h", value: day.map { Bytes.formatDelta($0.deltaBytes) } ?? "—",
-            detail: day.map { $0.coversWindow ? "Change in disk usage" : "Over the last \(TimeFormat.age($0.actualSpan)); history is shorter than a day" }
+            label: "Disk used · 24 h", value: day.map { Bytes.formatDelta($0.deltaBytes) } ?? "—",
+            detail: day.map { _ in delta < 0 ? "\(Bytes.format(-delta)) less in use \(span)" : delta > 0 ? "\(Bytes.format(delta)) more in use \(span)" : "Unchanged" }
                 ?? "History starts with the first scan",
-            tint: (day?.deltaBytes ?? 0) > 20 * Bytes.gb ? Theme.amber : Theme.text)
+            tint: delta > 20 * Bytes.gb ? Theme.amber : delta < 0 ? Theme.forest : Theme.text)
     }
 
     private var largest: some View {

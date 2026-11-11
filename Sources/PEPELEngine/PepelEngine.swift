@@ -37,6 +37,8 @@ public actor PepelEngine {
     /// True in the process that watches continuously (the app); a one-off command does not add readings.
     var journaling = false
     var lastJournalAt = Date.distantPast
+    /// Previous CPU-time reading of PEPEL's own processes, for its CPU share.
+    var lastSelfReading: [Int32: (cpuNs: UInt64, at: Date)] = [:]
 
     public func setJournaling(_ on: Bool) { journaling = on }
     var applicationControl: ApplicationControl = .unavailable

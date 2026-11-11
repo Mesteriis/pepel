@@ -198,14 +198,36 @@ registered through the system hot key service, which needs no Accessibility perm
 A **memory budget** (`pepel budget set <owner> <GB>`, by owner name or `kind:<kind>`) raises an
 alert when an owner holds more. It never ends, suspends or restarts anything.
 
-### Forecast, swap and the daily summary
+### Forecast, swap and the summary
 
 These only report. The **forecast** is a straight line through the last 90 minutes of readings,
 shown only when memory in use rose steadily (at least 20 minutes, 1% of memory an hour, a line
 that explains most of the variation) and would reach 90% of physical memory within three hours;
 that 90% is an estimate of where macOS starts to struggle and is described as such. **Swap on
-disk** is read from `/System/Volumes/VM` (file sizes only). The **daily summary** is built from
-the audit log, so it says what was recorded, and can be sent once a day (`dailySummary`).
+disk** is read from `/System/Volumes/VM` (file sizes only). The **summary** is built from
+the audit log, so it says what was recorded; it is sent once a week by default
+(`summaryFrequency` weekly, daily or off; `summaryWeekday`, `dailySummaryHour`), and a missed
+one is sent the next time PEPEL runs.
+
+### Plan, leave alone, restore center, rule sets
+
+`pepel plan` and the Overview list what each switched-on daily rule would act on if it ran now,
+computed by the same listing the rule uses, with when the rule runs next. "Leave alone" adds the
+item's key to `leaveAlone`; every daily rule skips keys on that list (paths, tool caches by id,
+Docker containers by name, Docker images and build cache as a whole). It never widens what a
+rule may touch. Everything PEPEL moves to the Trash (cleanup, Downloads and screenshots, what
+removed applications left, ignored folders) is recorded with where it went; `pepel restore` and
+the Overview put an item back only while it is still in the Trash and its original place is free,
+and never over something new. Removals for good are listed, not undoable. Rule sets
+(`pepel preset`, Settings › Rule set) only change the switches and ages of the daily disk rules;
+the change is shown and confirmed first, and keep lists and protections stay as they are.
+
+### PEPEL watching itself
+
+The app reads its own memory and CPU each pass (and `pepel self` does on request), notes which
+heavy job runs (disk map, large files search, scan, measuring), shows it in the sidebar and
+notifies at most once an hour when it holds more than `selfMemoryWarnMB` or a heavy job keeps
+it at 80% CPU or more. The disk map now runs at utility priority.
 
 ### Memory journal
 

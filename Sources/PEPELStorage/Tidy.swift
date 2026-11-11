@@ -139,12 +139,13 @@ public struct Tidy: Sendable {
     /// - Parameter trashDirectory: for a redirected PEPEL, a stand-in for the real Trash.
     public func clean(
         screenshotDays: Int, downloadDays: Int, keepExtensions: Set<String>, includeScreenshots: Bool, includeDownloads: Bool, action: TidyAction,
-        trashDirectory: String? = nil, now: Date = Date()
-    ) -> (bytes: Int64, removed: Int) {
+        trashDirectory: String? = nil, skip: Set<String> = [], now: Date = Date()
+    ) -> (bytes: Int64, removed: Int, trashed: [TrashRecord]) {
         var bytes: Int64 = 0
         var removed = 0
+        var trashed: [TrashRecord] = []
         for item in items(screenshotDays: screenshotDays, downloadDays: downloadDays, keepExtensions: keepExtensions, includeScreenshots: includeScreenshots, includeDownloads: includeDownloads, now: now)
-        where item.keptBecause == nil {
+        where item.keptBecause == nil && !skip.contains(RuleAction.pathKey(item.path)) {
             var info = stat()
             guard lstat(item.path, &info) == 0, [S_IFREG, S_IFDIR].contains(info.st_mode & S_IFMT) else { continue }
             let again = Self.inspect(item.path, info, screenshot: item.kind == .screenshot)
@@ -155,11 +156,18 @@ public struct Tidy: Sendable {
             case .delete:
                 done = (try? FileManager.default.removeItem(atPath: item.path)) != nil
             case .trash:
+                var destination: String?
                 if let trashDirectory {
                     try? FileManager.default.createDirectory(atPath: trashDirectory, withIntermediateDirectories: true)
-                    done = (try? FileManager.default.moveItem(atPath: item.path, toPath: trashDirectory + "/" + UUID().uuidString.prefix(6) + "-" + item.name)) != nil
+                    let target = trashDirectory + "/" + UUID().uuidString.prefix(6) + "-" + item.name
+                    if (try? FileManager.default.moveItem(atPath: item.path, toPath: target)) != nil { destination = target }
                 } else {
-                    done = (try? FileManager.default.trashItem(at: URL(fileURLWithPath: item.path), resultingItemURL: nil)) != nil
+                    var resulting: NSURL?
+                    if (try? FileManager.default.trashItem(at: URL(fileURLWithPath: item.path), resultingItemURL: &resulting)) != nil { destination = resulting?.path ?? "" }
+                }
+                done = destination != nil
+                if let destination, !destination.isEmpty {
+                    trashed.append(TrashRecord(source: item.kind == .screenshot ? "Screenshots" : "Downloads", originalPath: item.path, trashedPath: destination, bytes: again.bytes))
                 }
             }
             if done {
@@ -167,6 +175,6 @@ public struct Tidy: Sendable {
                 removed += 1
             }
         }
-        return (bytes, removed)
+        return (bytes, removed, trashed)
     }
 }

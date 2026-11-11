@@ -33,6 +33,11 @@ public enum Snapshotter {
         model.protections = model.engine.store.protections()
         model.leases = model.engine.store.leases()
         model.plan = await model.engine.cleanupPlan(initiator: .user)
+        model.activity.plan = await model.engine.actionPlan()
+        model.activity.restore = model.engine.restoreCenter()
+        _ = await model.engine.selfUsage()
+        try? await Task.sleep(for: .seconds(1))
+        model.activity.selfUsage = await model.engine.selfUsage()
         // The disk map of a chosen folder, measured before the pictures are taken.
         if let mapRoot = ProcessInfo.processInfo.environment["PEPEL_SNAPSHOT_MAP"] {
             model.setDiskMapRoot(mapRoot)

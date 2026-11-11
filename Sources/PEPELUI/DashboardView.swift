@@ -59,6 +59,7 @@ public struct DashboardView: View {
                 .keyboardShortcut("r")
                 Text(model.storage.map { "Last scan \(TimeFormat.ago($0.scan.finishedAt))" } ?? "Not scanned yet")
                     .font(.system(size: 10)).foregroundStyle(Theme.tertiary)
+                SelfUsageLine()
             }
             .padding(10)
         }

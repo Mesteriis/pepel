@@ -73,11 +73,11 @@ public struct ToolBackups: Sendable {
     }
 
     /// Removes the backups retention does not keep. A set whose tool is working is left alone.
-    public func clean(keep: Int, days: Int, now: Date = Date()) -> (bytes: Int64, removed: Int, skipped: [String]) {
+    public func clean(keep: Int, days: Int, skip: Set<String> = [], now: Date = Date()) -> (bytes: Int64, removed: Int, skipped: [String]) {
         var bytes: Int64 = 0
         var removed = 0
         var skipped: [String] = []
-        for backup in list(keep: keep, days: days, now: now) where !backup.kept {
+        for backup in list(keep: keep, days: days, now: now) where !backup.kept && !skip.contains(RuleAction.pathKey(backup.path)) {
             guard let set = owningSet(of: backup.path) else { continue }
             if let lock = set.lock, AndroidEmulators.isLockHeld(lock) {
                 skipped.append("\(set.name): Clausona is switching profiles right now.")

@@ -112,9 +112,16 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     public var tabIdleMinutes = 30
     /// Warn when memory is forecast to run short within this many minutes; 0 switches the warning off.
     public var forecastWarnMinutes = 45
-    /// Post a summary of the last day once a day at `dailySummaryHour`.
-    public var dailySummary = false
+    /// How often a summary is posted: what PEPEL returned, removed, and what waits for a decision.
+    public var summaryFrequency: SummaryFrequency = .weekly
+    /// Day of the weekly summary, as Calendar numbers it (1 Sunday, 2 Monday … 7 Saturday).
+    public var summaryWeekday = 2
     public var dailySummaryHour = 9
+    /// What the daily rules must not touch, chosen from the plan for the next day
+    /// (keys of `RuleAction.id`, such as "cache:go-build" or "path:/Users/me/Downloads/x.zip").
+    public var leaveAlone: [String] = []
+    /// Warn when PEPEL itself holds more memory than this; 0 switches the warning off.
+    public var selfMemoryWarnMB = 1024
     /// Write the memory journal: a reading every five minutes, kept as daily files.
     public var journalEnabled = true
     public var journalRetentionDays = 30

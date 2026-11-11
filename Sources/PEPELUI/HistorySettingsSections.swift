@@ -199,11 +199,24 @@ struct SettingsSection: View {
     @State private var budgetGB = 4
     @State private var vmLimitGiB = 8
     @State private var overrideProject = ""
+    /// Groups opened by the user; everything starts folded so the page reads as a list of headings.
+    @State private var expanded: Set<String> = []
+    @State private var pendingPreset: SettingsPreset?
 
     var body: some View {
         let s = model.settings
         VStack(alignment: .leading, spacing: 14) {
-            SectionTitle(title: "Settings")
+            HStack(alignment: .firstTextBaseline) {
+                SectionTitle(title: "Settings", subtitle: "Pick a rule set, then open a group only to change what it does.")
+                Spacer()
+                Button(expanded.isEmpty ? "Open all" : "Fold all") {
+                    withAnimation(.easeOut(duration: 0.2)) { expanded = expanded.isEmpty ? Set(Self.groupTitles) : [] }
+                }
+                .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Theme.copper)
+            }
+            presets(s)
+            leaveAloneGroup(s)
+            Caption("General").padding(.top, 6)
             group("Project roots", "Folders PEPEL searches for repositories. Nothing outside them, the known cache locations and DerivedData is examined.") {
                 ForEach(s.projectRoots, id: \.self) { root in
                     HStack {
@@ -234,9 +247,17 @@ struct SettingsSection: View {
                     stepper("for", s.journalRetentionDays, 1...365, suffix: " days") { v in model.updateSettings { $0.journalRetentionDays = v } }
                 }
                 HStack(spacing: 8) {
-                    toggle("Send a summary of the last 24 hours every day", s.dailySummary) { v in model.updateSettings { $0.dailySummary = v } }
-                    stepper("at", s.dailySummaryHour, 0...23, suffix: ":00") { v in model.updateSettings { $0.dailySummaryHour = v } }
+                    picker("Summary", selection: s.summaryFrequency, options: [(.weekly, "Once a week"), (.daily, "Every day"), (.off, "Off")]) { value in model.updateSettings { $0.summaryFrequency = value } }
+                        .frame(maxWidth: 230)
+                    if s.summaryFrequency == .weekly {
+                        picker("on", selection: s.summaryWeekday, options: Self.weekdays) { value in model.updateSettings { $0.summaryWeekday = value } }.frame(maxWidth: 150)
+                    }
+                    if s.summaryFrequency != .off {
+                        stepper("at", s.dailySummaryHour, 0...23, suffix: ":00") { v in model.updateSettings { $0.dailySummaryHour = v } }
+                    }
                 }
+                Text("What PEPEL gave back in memory and disk, what it removed, and what waits for your decision.").font(.system(size: 11)).foregroundStyle(Theme.tertiary)
+                stepper("Warn when PEPEL itself holds more than", s.selfMemoryWarnMB, 0...16_384, step: 256, suffix: s.selfMemoryWarnMB == 0 ? " MB (off)" : " MB") { v in model.updateSettings { $0.selfMemoryWarnMB = v } }
                 HStack(spacing: 8) {
                     toggle("Quiet hours", s.quietHours.enabled) { v in model.updateSettings { $0.quietHours.enabled = v } }
                     stepper("from", s.quietHours.startHour, 0...23, suffix: ":00") { v in model.updateSettings { $0.quietHours.startHour = v } }
@@ -254,6 +275,7 @@ struct SettingsSection: View {
                 stepper("Warn when disk space falls below", Int(s.lowDiskThresholdBytes / Bytes.gb), 5...500, step: 5, suffix: " GB") { v in model.updateSettings { $0.lowDiskThresholdBytes = Int64(v) * Bytes.gb } }
             }
 
+            Caption("Daily disk rules").padding(.top, 6)
             group("Disk: Docker", "Images, stopped containers and build cache can be rebuilt or pulled again. Named volumes are never removed; anonymous ones only when you ask.") {
                 toggle("Once a day, remove containers, images and build cache Docker has not used", s.dockerAutoClean) { v in model.updateSettings { $0.dockerAutoClean = v } }
                 stepper("Unused means untouched for", s.dockerUnusedDays, 1...365, suffix: " days") { v in model.updateSettings { $0.dockerUnusedDays = v } }
@@ -383,6 +405,7 @@ struct SettingsSection: View {
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
 
+            Caption("Builds, memory and processes").padding(.top, 6)
             group("Build retention", "Defaults for every project. Active and pinned builds are always kept.") {
                 stepper("Keep the last", s.defaultRetention.keepSuccessful, 1...20, suffix: " builds") { v in model.updateSettings { $0.defaultRetention.keepSuccessful = v } }
                 stepper("Keep the last", s.defaultRetention.keepFailed, 0...20, suffix: " failed builds") { v in model.updateSettings { $0.defaultRetention.keepFailed = v } }
@@ -641,6 +664,7 @@ struct SettingsSection: View {
                 stepper("Wait", s.gracefulTerminationSeconds, 2...120, suffix: " s for a graceful exit") { v in model.updateSettings { $0.gracefulTerminationSeconds = v } }
             }
 
+            Caption("Safety").padding(.top, 6)
             group("Protection rules", "Paths, projects and services PEPEL must leave alone. Credentials, agent state, git metadata, source code and model weights are protected without any rule.") {
                 ForEach(model.protections) { rule in
                     HStack(spacing: 8) {
@@ -687,12 +711,142 @@ struct SettingsSection: View {
     }
 
     private func group<Content: View>(_ title: String, _ subtitle: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
-            Text(subtitle).font(.system(size: 11)).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
-            content()
+        let open = expanded.contains(title)
+        let state = status(title, model.settings)
+        return VStack(alignment: .leading, spacing: 8) {
+            Button {
+                withAnimation(.easeOut(duration: 0.18)) { if open { expanded.remove(title) } else { expanded.insert(title) } }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.tertiary)
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                    Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                    Spacer(minLength: 8)
+                    if let state { Badge(text: state.text, tint: state.on ? Theme.forest : Theme.tertiary) }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(open ? "expanded" : "collapsed")
+            if open {
+                Text(subtitle).font(.system(size: 11)).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
+                content()
+            }
+        }
+        .panel(padding: open ? 12 : 10)
+    }
+
+    static let weekdays: [(Int, String)] = [(2, "Monday"), (3, "Tuesday"), (4, "Wednesday"), (5, "Thursday"), (6, "Friday"), (7, "Saturday"), (1, "Sunday")]
+
+    static let groupTitles = [
+        "Leave alone", "Project roots", "Monitoring", "Cleanup", "Disk: Docker", "Disk: projects left untouched", "Disk: tool caches", "Disk: application caches", "Disk: Android emulators",
+        "Disk: Downloads and screenshots", "Disk: Clausona backups", "Disk: temporary files", "Disk: logs", "Build retention", "Free memory", "Agent sessions",
+        "Apps that stay open without windows", "Applications", "Memory budgets", "Containers", "Processes", "Protection rules", "Permissions",
+    ]
+
+    /// The one-line state shown on a folded group's heading.
+    private func status(_ title: String, _ s: PepelSettings) -> (text: String, on: Bool)? {
+        func rule(_ on: Bool, _ detail: String) -> (String, Bool) { (on ? "On · " + detail : "Off", on) }
+        switch title {
+        case "Project roots": return ("\(s.projectRoots.count) root\(s.projectRoots.count == 1 ? "" : "s")", true)
+        case "Monitoring": return (s.paused ? "Paused" : s.monitoringMode == .manual ? "Manual" : s.monitoringMode == .notifyOnly ? "Notify only" : "Automatic", !s.paused)
+        case "Cleanup": return (s.deletionMode == .trash ? "Always Trash" : s.deletionMode == .permanent ? "Permanent" : "Safe removed · review to Trash", true)
+        case "Disk: Docker": return rule(s.dockerAutoClean, "\(s.dockerUnusedDays) days")
+        case "Disk: projects left untouched": return rule(s.cleanStaleProjects, "\(s.staleProjectDays) days")
+        case "Disk: tool caches": return rule(s.trimCaches, "\(s.cacheUnusedDays) days" + (s.cacheSizeLimitGB > 0 ? " · \(s.cacheSizeLimitGB) GB cap" : ""))
+        case "Disk: application caches": return rule(s.cleanAppCaches, "\(s.appCacheUnusedDays) days")
+        case "Disk: Android emulators": return rule(s.cleanAndroidEmulators, "\(s.emulatorUnusedDays) days" + (s.cleanUnusedSystemImages ? " · images" : ""))
+        case "Disk: Downloads and screenshots":
+            let parts = (s.tidyScreenshots ? ["screenshots \(s.screenshotDays) d"] : []) + (s.tidyDownloads ? ["downloads \(s.downloadDays) d"] : [])
+            return rule(!parts.isEmpty, parts.joined(separator: " · "))
+        case "Disk: Clausona backups": return rule(s.cleanToolBackups, "keep \(s.toolBackupsKeep), \(s.toolBackupsDays) days")
+        case "Disk: temporary files": return rule(s.cleanTempFiles, "\(s.tempDays) days")
+        case "Disk: logs": return rule(s.cleanOldLogs, "\(s.logDays) days")
+        case "Agent sessions": return rule(s.freezeIdleAgents || s.terminateSleepingAgents, s.freezeIdleAgents ? "freeze after \(s.freezeAfterMinutes) min" : "end after \(s.agentSleepMinutes) min")
+        case "Apps that stay open without windows": return rule(!s.quitWhenWindowless.isEmpty, "\(s.quitWhenWindowless.count) app\(s.quitWhenWindowless.count == 1 ? "" : "s")")
+        case "Leave alone": return ("\(s.leaveAlone.count)", true)
+        case "Memory budgets": return s.memoryBudgets.isEmpty ? ("None", false) : ("\(s.memoryBudgets.count)", true)
+        case "Containers": return rule(s.stopContainersOfIdleProjects, "after \(s.projectIdleGraceMinutes) min idle")
+        case "Processes": return rule(s.autoTerminateAbandoned, "abandoned only")
+        case "Free memory": return rule(s.freeMemoryHotkey || s.freeMemoryOnLock, [s.freeMemoryHotkey ? "hotkey" : nil, s.freeMemoryOnLock ? "on lock" : nil].compactMap { $0 }.joined(separator: " · "))
+        case "Protection rules": return ("\(model.protections.count)", !model.protections.isEmpty)
+        default: return nil
+        }
+    }
+
+    /// Three ready-made sets for the daily disk rules, with what a choice would change shown first.
+    private func presets(_ s: PepelSettings) -> some View {
+        let current = SettingsPreset.matching(s)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Rule set").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                Spacer()
+                Badge(text: current?.title ?? "Custom", tint: current == nil ? Theme.amber : Theme.forest)
+            }
+            HStack(alignment: .top, spacing: 8) {
+                ForEach(SettingsPreset.allCases, id: \.self) { preset in
+                    Button {
+                        if current != preset { pendingPreset = preset }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(preset.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(current == preset ? Theme.forest : Theme.text)
+                            Text(preset.summary).font(.system(size: 11)).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
+                                .multilineTextAlignment(.leading)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .padding(10)
+                        .background(current == preset ? Theme.forestDim.opacity(0.5) : Theme.raised, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(current == preset ? Theme.forest.opacity(0.7) : Theme.stroke, lineWidth: 1))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(current == preset ? .isSelected : [])
+                }
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            if current == nil {
+                Text("Your rules are tuned by hand. Choosing a set replaces the disk rules' switches and ages; keep lists, leave-alone items and memory settings stay as they are.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
         }
         .panel()
+        .confirmationDialog(
+            "Switch to the \(pendingPreset?.title ?? "") rule set?", isPresented: Binding(get: { pendingPreset != nil }, set: { if !$0 { pendingPreset = nil } }), titleVisibility: .visible
+        ) {
+            Button("Switch to \(pendingPreset?.title ?? "")") {
+                if let preset = pendingPreset { model.updateSettings { preset.apply(to: &$0) } }
+                pendingPreset = nil
+            }
+            Button("Cancel", role: .cancel) { pendingPreset = nil }
+        } message: {
+            let changes = pendingPreset?.changes(from: s) ?? []
+            Text(changes.isEmpty ? "Nothing changes." : "\(changes.count) setting\(changes.count == 1 ? "" : "s") change:\n" + changes.prefix(14).joined(separator: "\n") + (changes.count > 14 ? "\n…" : ""))
+        }
+    }
+
+    /// Items taken out of the daily rules from the plan on the Overview.
+    @ViewBuilder
+    private func leaveAloneGroup(_ s: PepelSettings) -> some View {
+        if !s.leaveAlone.isEmpty {
+            group("Leave alone", "Chosen from the plan for the next day. The daily rules pass these by; a person can still remove them by hand.") {
+                ForEach(s.leaveAlone, id: \.self) { key in
+                    HStack {
+                        Text(Self.leaveAloneLabel(key)).font(.system(size: 12)).foregroundStyle(Theme.text).lineLimit(1).truncationMode(.middle)
+                        Spacer()
+                        Button("Let the rules act again") { model.activity.forgetLeaveAlone(key) }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    static func leaveAloneLabel(_ key: String) -> String {
+        if key.hasPrefix("path:") { return PathUtil.display(String(key.dropFirst(5))) }
+        if key.hasPrefix("cache:") { return "Tool cache " + key.dropFirst(6) }
+        if key.hasPrefix("container:") { return "Docker container " + key.dropFirst(10) }
+        if key == "docker:images" { return "Docker images" }
+        if key == "docker:buildCache" { return "Docker build cache" }
+        return key
     }
 
     private func line(_ label: String, _ path: String, remove: @escaping @MainActor @Sendable () -> Void) -> some View {

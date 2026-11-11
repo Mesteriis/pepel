@@ -66,9 +66,25 @@ public final class AppModel {
     public var apiStatus = "Not started"
     public var loginItemStatus = LoginItem.statusText
 
+    /// What the rules will do next, what they did, and what PEPEL itself costs.
+    public let activity: ActivityModel
+
     public init(engine: PepelEngine) {
         self.engine = engine
         self.monitor = MonitorService(engine: engine)
+        self.activity = ActivityModel(engine: engine)
+    }
+
+    /// Heavy jobs running in this app right now, by name.
+    var heavyTasks: [String] {
+        var tasks: [String] = []
+        if isMeasuringDiskMap { tasks.append("Disk map") }
+        if isFindingLargeFiles { tasks.append("Large files search") }
+        if isScanning { tasks.append("Storage scan") }
+        if isMeasuringCaches { tasks.append("Cache measuring") }
+        if isMeasuringAppData || isMeasuringOther { tasks.append("Folder measuring") }
+        if activity.isPlanning { tasks.append("Plan for the next day") }
+        return tasks
     }
 
     public static func make() -> AppModel {
@@ -169,7 +185,8 @@ public final class AppModel {
         case .alerts(let current):
             alerts = current
             notify(current)
-            postDailySummaryIfDue()
+            postSummaryIfDue()
+            activity.refreshSelf(heavyTasks: heavyTasks, limitMB: settings.selfMemoryWarnMB, notify: settings.notificationsEnabled)
         case .automatic(let cleanup, let terminations):
             if let cleanup, cleanup.succeededCount > 0 {
                 Notifier.post(
@@ -253,6 +270,7 @@ public final class AppModel {
             telemetryHistory = store.telemetryHistory(since: Date().addingTimeInterval(-7 * 86_400))
             protections = store.protections()
             leases = store.leases()
+            activity.refreshRestore()
         }
     }
 
@@ -596,7 +614,8 @@ public final class AppModel {
         let run = diskMapRun
         let scanner = DiskMapScanner(home: engine.paths.home)
         let guarded = diskMapReadsGuarded
-        diskMapTask = Task.detached(priority: .userInitiated) { [weak self] in
+        // Utility priority: a map of the whole disk must not make the Mac sluggish.
+        diskMapTask = Task.detached(priority: .utility) { [weak self] in
             let levels = await scanner.measure(path, includeGuarded: guarded) { level in
                 Task { @MainActor in self?.adoptDiskMap([level], run: run, finished: false) }
             }
@@ -956,24 +975,31 @@ public final class AppModel {
     // MARK: Daily summary
 
     public var summary: DailySummary?
-    private var lastSummaryDay = UserDefaults.standard.integer(forKey: "PEPELLastSummaryDay")
+    private var lastSummaryAt: Date? = {
+        let stored = UserDefaults.standard.double(forKey: "PEPELLastSummaryAt")
+        return stored > 0 ? Date(timeIntervalSince1970: stored) : Date()
+    }()
 
     public func refreshSummary() {
-        Task { summary = await engine.summary() }
+        let hours = settings.summaryFrequency == .daily ? 24.0 : 24 * 7
+        Task { summary = await engine.summary(hours: hours) }
     }
 
-    /// Once a day, at the chosen hour or the first time PEPEL runs after it.
-    private func postDailySummaryIfDue() {
-        let calendar = Calendar.current, now = Date()
-        let day = calendar.ordinality(of: .day, in: .era, for: now) ?? 0
-        guard settings.dailySummary, settings.notificationsEnabled, day != lastSummaryDay, calendar.component(.hour, from: now) >= settings.dailySummaryHour else { return }
-        lastSummaryDay = day
-        UserDefaults.standard.set(day, forKey: "PEPELLastSummaryDay")
+    /// Once a day or once a week, at the chosen time or the first time PEPEL runs after it.
+    private func postSummaryIfDue() {
+        let now = Date(), frequency = settings.summaryFrequency
+        guard settings.notificationsEnabled,
+            frequency.isDue(lastPosted: lastSummaryAt, now: now, weekday: settings.summaryWeekday, hour: settings.dailySummaryHour)
+        else { return }
+        lastSummaryAt = now
+        UserDefaults.standard.set(now.timeIntervalSince1970, forKey: "PEPELLastSummaryAt")
         Task {
-            let result = await engine.summary()
+            let result = await engine.summary(hours: frequency.hours)
             summary = result
-            let open = result.open.isEmpty ? "" : " Still there: " + result.open.prefix(2).joined(separator: " ")
-            Notifier.post(id: "summary-\(day)", title: "PEPEL, last 24 hours", body: result.headline + " " + result.done.prefix(3).joined(separator: " ") + open)
+            let open = result.open.isEmpty ? "" : " Waiting for you: " + result.open.prefix(2).joined(separator: " ")
+            Notifier.post(
+                id: "summary-\(Int(now.timeIntervalSince1970))", title: frequency == .weekly ? "PEPEL, this week" : "PEPEL, last 24 hours",
+                body: result.headline + " " + result.done.prefix(3).joined(separator: " ") + open)
         }
     }
 

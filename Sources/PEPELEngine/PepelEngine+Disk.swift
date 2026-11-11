@@ -17,7 +17,8 @@ extension PepelEngine {
     /// Compose projects an agent session is working in right now, and what must be left alone.
     func dockerExclusions() -> (keep: Set<String>, active: Set<String>) {
         let active = Set((live?.containers?.groups ?? []).filter { $0.agentSessions > 0 }.map(\.id))
-        return (Set(settings.keepContainers), active)
+        let skipped = leftAlone.filter { $0.hasPrefix("container:") }.map { String($0.dropFirst("container:".count)) }
+        return (Set(settings.keepContainers).union(skipped), active)
     }
 
     /// Asks Docker what it keeps on disk (a few seconds) and what a cleanup would remove.
@@ -58,7 +59,9 @@ extension PepelEngine {
         guard settings.dockerAutoClean, live?.containers != nil || containerRunner != nil else { return nil }
         guard dueDaily("docker.lastAutoClean", now: now) else { return nil }
         guard let (_, plan) = await dockerCleanupPlan(), plan.reproducibleBytes >= Bytes.gb else { return nil }
-        return await cleanDocker(kinds: [.containers, .images, .buildCache, .networks], confirmed: false, initiator: .automatic).report
+        let kinds = Set<DockerCleanKind>([.containers, .images, .buildCache, .networks]).filter { !leftAlone.contains("docker:" + $0.rawValue) }
+        guard !kinds.isEmpty else { return nil }
+        return await cleanDocker(kinds: kinds, confirmed: false, initiator: .automatic).report
     }
 
     /// Trims the Docker VM's filesystem so its disk image on the Mac shrinks.
@@ -92,7 +95,7 @@ extension PepelEngine {
             let stale = now.timeIntervalSince(last) >= Double(settings.staleProjectDays) * 86_400
             for index in indices {
                 result[index].projectLastActivity = last
-                guard stale, settings.cleanStaleProjects, result[index].safety == .review else { continue }
+                guard stale, settings.cleanStaleProjects, result[index].safety == .review, !leftAlone.contains(RuleAction.pathKey(projectID)) else { continue }
                 result[index].safety = .safe
                 result[index].safetyReason = "Its project has not been touched for \(TimeFormat.age(now.timeIntervalSince(last))); installing or building again recreates this."
             }
@@ -105,7 +108,7 @@ extension PepelEngine {
         let limit = days ?? settings.staleProjectDays
         var groups: [String: StaleProject] = [:]
         for item in storage?.items ?? [] where item.safety != .protected && item.isStale(days: limit, now: now) && storage?.inUse[item.id] == nil {
-            guard let projectID = item.projectID, let last = item.projectLastActivity else { continue }
+            guard let projectID = item.projectID, let last = item.projectLastActivity, !leftAlone.contains(RuleAction.pathKey(projectID)) else { continue }
             var entry = groups[projectID] ?? StaleProject(id: projectID, name: projectIndex.project(id: projectID)?.name ?? (projectID as NSString).lastPathComponent, lastActivity: last, bytes: 0, itemIDs: [])
             entry.bytes += item.reclaimableBytes
             entry.itemIDs.append(item.id)
@@ -145,7 +148,8 @@ extension PepelEngine {
         let cap = limitGB ?? settings.cacheSizeLimitGB
         let maxBytes: Int64? = cap > 0 ? Int64(cap) * Bytes.gb : nil
         let trimmer = CacheTrimmer(home: paths.home)
-        let wanted = CacheTrimmer.caches.filter { ids?.contains($0.id) ?? true }
+        let skip = leftAlone
+        let wanted = CacheTrimmer.caches.filter { (ids?.contains($0.id) ?? true) && !skip.contains("cache:" + $0.id) }
         // A cache is left alone while the tool that owns it is running.
         let running = Set(processSource.snapshot().map(\.name))
         let read = readTelemetry
@@ -179,6 +183,10 @@ public struct ApplicationDataReport: Codable, Sendable {
     public var removed: [String]
     public var kept: [String]
     public var bytes: Int64
+    /// Where trashed items went, for the restore center.
+    public var trashed: [TrashRecord] = []
+
+    enum CodingKeys: String, CodingKey { case kind, removed, kept, bytes }
 }
 
 /// Application caches, and what removed applications left in the Library.
@@ -226,11 +234,11 @@ extension PepelEngine {
         if let denial = policy.applicationDataDenial(.cache, confirmed: confirmed, initiator: initiator, settings: settings) { return (denial, nil) }
         let scanner = await applicationScanner()
         let age = days ?? settings.appCacheUnusedDays
-        let keep = Set(settings.keepAppCaches.map { $0.lowercased() })
+        let keep = Set(settings.keepAppCaches.map { $0.lowercased() }), skip = leftAlone
         let report = await Task.detached(priority: .utility) { () -> ApplicationDataReport in
             // Measured now, so that what is removed is what is there now.
             var report = ApplicationDataReport(kind: .cache, removed: [], kept: [], bytes: 0)
-            for cache in Self.removableCaches(scanner.caches(), days: age, includeUnknown: includeUnknown, keep: keep) {
+            for cache in Self.removableCaches(scanner.caches(), days: age, includeUnknown: includeUnknown, keep: keep) where !skip.contains(RuleAction.pathKey(cache.path)) {
                 guard scanner.isManageable(cache), (try? FileManager.default.removeItem(atPath: cache.path)) != nil else {
                     report.kept.append(cache.name)
                     continue
@@ -257,15 +265,18 @@ extension PepelEngine {
         let report = await Task.detached(priority: .utility) { () -> ApplicationDataReport in
             var report = ApplicationDataReport(kind: .leftover, removed: [], kept: [], bytes: 0)
             for item in scanner.leftovers() where item.unused(days: days) {
-                guard scanner.isManageable(item), (try? FileManager.default.trashItem(at: URL(fileURLWithPath: item.path), resultingItemURL: nil)) != nil else {
+                var resulting: NSURL?
+                guard scanner.isManageable(item), (try? FileManager.default.trashItem(at: URL(fileURLWithPath: item.path), resultingItemURL: &resulting)) != nil else {
                     report.kept.append(item.name)
                     continue
                 }
                 report.removed.append(item.name)
                 report.bytes += item.bytes
+                if let to = resulting?.path { report.trashed.append(TrashRecord(source: "Left by removed applications", originalPath: item.path, trashedPath: to, bytes: item.bytes)) }
             }
             return report
         }.value
+        for record in report.trashed { store.recordTrashed(record) }
         if !report.removed.isEmpty {
             store.appendAudit(
                 AuditEntry(
@@ -301,8 +312,8 @@ extension PepelEngine {
         case .automatic: if !settings.cleanOldLogs || settings.paused { return ("Automatic removal of old logs is not enabled.", 0, 0) }
         case .user, .cli: if !confirmed { return ("This needs your confirmation.", 0, 0) }
         }
-        let places = OtherPlaces(home: paths.home), age = days ?? settings.logDays
-        let result = await Task.detached(priority: .utility) { places.removeOldLogs(days: age) }.value
+        let places = OtherPlaces(home: paths.home), age = days ?? settings.logDays, skip = leftAlone
+        let result = await Task.detached(priority: .utility) { places.removeOldLogs(days: age, skip: skip) }.value
         if result.removed > 0 {
             store.appendAudit(
                 AuditEntry(kind: .cleanup, initiator: initiator.rawValue, subject: "Old logs: \(result.removed) files", outcome: "removed", bytes: result.bytes, detail: ["olderThanDays": "\(age)"]))
@@ -361,7 +372,9 @@ extension PepelEngine {
         case .user, .cli: if !confirmed { return ("This needs your confirmation.", 0, 0) }
         }
         let cleaner = TempCleaner(directory: paths.temporaryDirectory), running = runningPrograms(), age = days ?? settings.tempDays
-        let result = await Task.detached(priority: .utility) { cleaner.clean(days: age, running: running.names, busyPaths: running.paths) }.value
+        // What was chosen to be left alone counts as in use.
+        let busy = running.paths + leftAlone.filter { $0.hasPrefix("path:") }.map { String($0.dropFirst(5)) }
+        let result = await Task.detached(priority: .utility) { cleaner.clean(days: age, running: running.names, busyPaths: busy) }.value
         if result.removed > 0 {
             store.appendAudit(
                 AuditEntry(kind: .cleanup, initiator: initiator.rawValue, subject: "Temporary folder: \(result.removed) entries", outcome: "removed", bytes: result.bytes, detail: ["unusedForDays": "\(age)"]))
@@ -437,13 +450,18 @@ extension PepelEngine {
         let window = TimeInterval(settings.recentWriteProtectionMinutes) * 60
         if CleanupExecutor.hasRecentWrites(path, within: window, now: Date()) { return "Something was written in it in the last \(settings.recentWriteProtectionMinutes) minutes." }
         let bytes = ApplicationDataScanner.measure(path).bytes
+        let destination: String
         if paths.isRedirected {
             let trash = paths.home + "/.Trash"
             try? FileManager.default.createDirectory(atPath: trash, withIntermediateDirectories: true)
-            guard (try? FileManager.default.moveItem(atPath: path, toPath: trash + "/" + (path as NSString).lastPathComponent + "-" + UUID().uuidString.prefix(6))) != nil else { return "It could not be moved." }
+            destination = trash + "/" + (path as NSString).lastPathComponent + "-" + UUID().uuidString.prefix(6)
+            guard (try? FileManager.default.moveItem(atPath: path, toPath: destination)) != nil else { return "It could not be moved." }
         } else {
-            guard (try? FileManager.default.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: nil)) != nil else { return "It could not be moved to the Trash." }
+            var resulting: NSURL?
+            guard (try? FileManager.default.trashItem(at: URL(fileURLWithPath: path), resultingItemURL: &resulting)) != nil else { return "It could not be moved to the Trash." }
+            destination = resulting?.path ?? ""
         }
+        if !destination.isEmpty { store.recordTrashed(TrashRecord(source: "Ignored folder", originalPath: path, trashedPath: destination, bytes: bytes)) }
         store.appendAudit(AuditEntry(kind: .cleanup, initiator: initiator.rawValue, subject: "Ignored folder \((path as NSString).lastPathComponent)", outcome: "trashed", bytes: bytes, detail: ["path": path]))
         return nil
     }
@@ -460,6 +478,7 @@ extension PepelEngine {
     func emulatorRuleRefusal(_ emulator: AndroidEmulator, now: Date = Date()) -> String? {
         if emulator.running { return "It is running." }
         if settings.keepEmulators.contains(where: { $0.caseInsensitiveCompare(emulator.name) == .orderedSame }) { return "It is on the keep list." }
+        if leftAlone.contains(RuleAction.pathKey(emulator.path)) { return "It is on the leave-alone list." }
         guard let last = emulator.lastUse else { return "PEPEL cannot tell when it was last started." }
         let unused = now.timeIntervalSince(last)
         if unused < Double(settings.emulatorUnusedDays) * 86_400 {
@@ -537,7 +556,7 @@ extension PepelEngine {
 
     func autoCleanSystemImages(now: Date = Date()) async {
         guard settings.cleanUnusedSystemImages, !settings.paused, dueDaily("sysimages.lastAutoClean", now: now) else { return }
-        for image in await androidSystemImages() where image.usedBy.isEmpty {
+        for image in await androidSystemImages() where image.usedBy.isEmpty && !leftAlone.contains(RuleAction.pathKey(image.path)) {
             _ = await deleteSystemImage(image.id, confirmed: false, initiator: .automatic)
         }
     }
@@ -570,7 +589,8 @@ extension PepelEngine {
         let backups = ToolBackups(home: paths.home), count = max(0, keep ?? settings.toolBackupsKeep), age = max(0, days ?? settings.toolBackupsDays)
         let read = readTelemetry
         let before = read().diskAvailableBytes
-        let result = await Task.detached(priority: .utility) { backups.clean(keep: count, days: age) }.value
+        let skip = leftAlone
+        let result = await Task.detached(priority: .utility) { backups.clean(keep: count, days: age, skip: skip) }.value
         // Backups are often clones of the live files and share their blocks: removing them frees
         // far less than their size. What is recorded is what the disk measured, not the sum of sizes.
         let freed = max(0, read().diskAvailableBytes - before)
@@ -614,9 +634,11 @@ extension PepelEngine {
         let tidy = tidy(), chosen = action ?? settings.tidyAction, keep = Set(settings.tidyKeepExtensions)
         let shotDays = settings.screenshotDays, days = settings.downloadDays
         let trash: String? = paths.isRedirected ? paths.home + "/.Trash" : nil
+        let skip = leftAlone
         let result = await Task.detached(priority: .utility) {
-            tidy.clean(screenshotDays: shotDays, downloadDays: days, keepExtensions: keep, includeScreenshots: shots, includeDownloads: files, action: chosen, trashDirectory: trash)
+            tidy.clean(screenshotDays: shotDays, downloadDays: days, keepExtensions: keep, includeScreenshots: shots, includeDownloads: files, action: chosen, trashDirectory: trash, skip: skip)
         }.value
+        for record in result.trashed { store.recordTrashed(record) }
         if result.removed > 0 {
             store.appendAudit(
                 AuditEntry(
