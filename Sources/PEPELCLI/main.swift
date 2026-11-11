@@ -269,6 +269,33 @@ case "containers":
     print("\n\(report.total - report.running) more container\(report.total - report.running == 1 ? " is" : "s are") stopped and use no memory.")
     print("The limit is set in \(report.product) › Settings › Resources; PEPEL does not change it. `pepel containers refresh-vm` restarts the VM to return its memory.")
 
+case "free":
+    let plan = await engine.reclaimPlan()
+    if arguments.json, !arguments.flags.contains("yes") { Out.json(plan); break }
+    let t = plan.telemetry
+    print("Memory now: \(Bytes.format(t.memoryUsedBytes)) used of \(Bytes.format(t.memoryTotalBytes)), pressure \(t.pressure.rawValue), \(Bytes.format(t.compressedBytes)) compressed, swap \(Bytes.format(t.swapUsedBytes)).\n")
+    guard !plan.steps.isEmpty else { print("Nothing to free: no abandoned processes, sleeping sessions, unused containers or VM slack."); break }
+    var selection = plan.defaultSelection
+    if arguments.flags.contains("all") { selection = Set(plan.steps.map(\.id)) }
+    for step in plan.steps {
+        let on = selection.contains(step.id)
+        print("[\(on ? "x" : " ")] \(step.title)\(step.estimatedBytes > 0 ? " — up to \(Bytes.format(step.estimatedBytes))" : "")")
+        print("    \(step.detail)")
+        for target in step.targets.prefix(8) { print("    · \(target)") }
+        if step.targets.count > 8 { print("    · … and \(step.targets.count - 8) more") }
+    }
+    print("\nSelected steps could return up to \(Bytes.format(plan.estimatedBytes(selection))). Unselected steps are included with --all.")
+    guard !selection.isEmpty else { print("Nothing is selected by default; use --all to include the optional steps."); break }
+    guard arguments.flags.contains("yes") || Out.confirm("Free memory now?") else { print("Nothing was done. Run `pepel free --yes` to carry out the selected steps."); break }
+    let report = await engine.reclaim(selection, initiator: .cli)
+    if arguments.json { Out.json(report); break }
+    print("")
+    for result in report.results {
+        print("\(result.title): \(result.done) of \(result.attempted)")
+        for note in result.notes { print("    \(note)") }
+    }
+    print("\nMeasured: memory used \(Bytes.format(report.before.memoryUsedBytes)) → \(Bytes.format(report.after.memoryUsedBytes)) (\(Bytes.formatDelta(-report.freedBytes))), compressed \(Bytes.format(report.before.compressedBytes)) → \(Bytes.format(report.after.compressedBytes)), swap \(Bytes.format(report.before.swapUsedBytes)) → \(Bytes.format(report.after.swapUsedBytes)), pressure \(report.before.pressure.rawValue) → \(report.after.pressure.rawValue).")
+
 case "leftovers":
     let live = await engine.refreshLive()
     if arguments.json { Out.json(live.leftovers); break }

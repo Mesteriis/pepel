@@ -79,6 +79,18 @@ and there is no recursive-delete command line anywhere in the project.
   log. PEPEL reports the observed change; it does not claim the process's footprint was freed.
 - No `purge`, no memory ballooning, no undocumented kernel calls.
 
+### Free memory
+
+"Free memory" (popover button, `pepel free`) is one pass over what PEPEL can already stop:
+abandoned developer processes, leftovers of quit applications, sleeping agent sessions,
+containers of projects no agent works in, and a Docker VM restart. It first shows the plan and
+does nothing until confirmed. Each step goes through the same policy decision as when done one
+by one, so anything policy refuses is reported and skipped. Idle (not yet sleeping) sessions and,
+while a session is working or a container is kept, the VM restart are offered but not
+preselected; working sessions are never offered. Agents cannot run it. It does not flush the
+file cache: macOS gives that memory up on demand, so flushing only changes the "free" figure.
+The result is the measured before/after of memory used, compressed memory, swap and pressure.
+
 ## Local agent API
 
 - Unix-domain socket at `~/Library/Application Support/PEPEL/pepel.sock`, mode 0600, inside a

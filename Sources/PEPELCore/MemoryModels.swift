@@ -203,3 +203,90 @@ public struct ContainerReport: Codable, Sendable, Hashable {
         return text
     }
 }
+
+// MARK: - Free memory
+
+public enum ReclaimStepKind: String, Codable, Sendable, CaseIterable {
+    case abandonedProcesses, appLeftovers, sleepingAgents, idleAgents, idleContainers, containerVM
+}
+
+/// One thing "Free memory" can do, with what it would act on and what it could give back.
+public struct ReclaimStep: Codable, Sendable, Identifiable, Hashable {
+    public var kind: ReclaimStepKind
+    public var title: String
+    public var detail: String
+    /// Names of what would be terminated, stopped or restarted.
+    public var targets: [String]
+    /// Upper bound. A process's footprint is not a promise of that much becoming available.
+    public var estimatedBytes: Int64
+    /// Steps that only touch what PEPEL already considers unused are on by default; steps that
+    /// can interrupt something a person might still want are offered but off.
+    public var selectedByDefault: Bool
+
+    public var id: String { kind.rawValue }
+
+    public init(kind: ReclaimStepKind, title: String, detail: String, targets: [String], estimatedBytes: Int64, selectedByDefault: Bool) {
+        self.kind = kind
+        self.title = title
+        self.detail = detail
+        self.targets = targets
+        self.estimatedBytes = estimatedBytes
+        self.selectedByDefault = selectedByDefault
+    }
+}
+
+public struct ReclaimPlan: Codable, Sendable {
+    public var steps: [ReclaimStep]
+    public var telemetry: SystemTelemetry
+
+    public init(steps: [ReclaimStep], telemetry: SystemTelemetry) {
+        self.steps = steps
+        self.telemetry = telemetry
+    }
+
+    public var defaultSelection: Set<String> { Set(steps.filter(\.selectedByDefault).map(\.id)) }
+
+    public func estimatedBytes(_ selection: Set<String>) -> Int64 {
+        steps.filter { selection.contains($0.id) }.reduce(0) { $0 + $1.estimatedBytes }
+    }
+}
+
+public struct ReclaimStepResult: Codable, Sendable, Identifiable, Hashable {
+    public var kind: ReclaimStepKind
+    public var title: String
+    public var done: Int
+    public var attempted: Int
+    public var notes: [String]
+
+    public var id: String { kind.rawValue }
+
+    public init(kind: ReclaimStepKind, title: String, done: Int, attempted: Int, notes: [String] = []) {
+        self.kind = kind
+        self.title = title
+        self.done = done
+        self.attempted = attempted
+        self.notes = notes
+    }
+}
+
+/// What "Free memory" did, with measurements taken before and after.
+public struct ReclaimReport: Codable, Sendable {
+    public var startedAt: Date
+    public var finishedAt: Date
+    public var before: SystemTelemetry
+    public var after: SystemTelemetry
+    public var results: [ReclaimStepResult]
+
+    public init(startedAt: Date, finishedAt: Date, before: SystemTelemetry, after: SystemTelemetry, results: [ReclaimStepResult]) {
+        self.startedAt = startedAt
+        self.finishedAt = finishedAt
+        self.before = before
+        self.after = after
+        self.results = results
+    }
+
+    /// Measured change in memory used (application + wired + compressed). Other activity on the
+    /// machine moves this number too.
+    public var freedBytes: Int64 { before.memoryUsedBytes - after.memoryUsedBytes }
+    public var swapFreedBytes: Int64 { before.swapUsedBytes - after.swapUsedBytes }
+}

@@ -50,6 +50,7 @@ public struct PopoverView: View {
             metrics
             if model.isScanning { scanRow }
             primaryAction
+            freeMemory
             dockerMemory
             quickActions
             footer
@@ -145,6 +146,76 @@ public struct PopoverView: View {
         .buttonStyle(CopperButtonStyle())
         .keyboardShortcut(.defaultAction)
         .accessibilityHint("Opens the cleanup review. Nothing is removed until you confirm.")
+    }
+
+    /// One action for everything PEPEL can do to give memory back: shows what it would stop,
+    /// then does it and reports the measured change.
+    @ViewBuilder private var freeMemory: some View {
+        if model.isReclaiming {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Freeing memory…").font(.system(size: 11)).foregroundStyle(Theme.secondary)
+            }
+        } else if let plan = model.reclaimPlan {
+            @Bindable var model = model
+            VStack(alignment: .leading, spacing: 7) {
+                Text(plan.steps.isEmpty ? "Nothing to free right now" : "Free memory").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text)
+                if plan.steps.isEmpty {
+                    Text("No abandoned processes, sleeping agent sessions, unused containers or Docker VM slack. What is in memory is in use.")
+                        .font(.system(size: 11)).foregroundStyle(Theme.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                ForEach(plan.steps) { step in
+                    Toggle(
+                        isOn: Binding(
+                            get: { model.reclaimSelection.contains(step.id) },
+                            set: { if $0 { model.reclaimSelection.insert(step.id) } else { model.reclaimSelection.remove(step.id) } })
+                    ) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(spacing: 4) {
+                                Text(step.title).font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.text)
+                                Spacer(minLength: 0)
+                                if step.estimatedBytes > 0 {
+                                    Text("up to \(Bytes.format(step.estimatedBytes))").font(.system(size: 10)).monospacedDigit().foregroundStyle(Theme.copper)
+                                }
+                            }
+                            Text(step.targets.prefix(3).joined(separator: ", ") + (step.targets.count > 3 ? " and \(step.targets.count - 3) more" : ""))
+                                .font(.system(size: 10)).foregroundStyle(Theme.secondary).lineLimit(2)
+                        }
+                    }
+                    .toggleStyle(.checkbox)
+                    .help(step.detail)
+                }
+                HStack {
+                    Spacer()
+                    Button(plan.steps.isEmpty ? "Close" : "Cancel") { model.cancelReclaim() }.buttonStyle(QuietButtonStyle())
+                    if !plan.steps.isEmpty {
+                        Button("Free up to \(Bytes.format(plan.estimatedBytes(model.reclaimSelection)))") { model.confirmReclaim() }
+                            .buttonStyle(CopperButtonStyle()).disabled(model.reclaimSelection.isEmpty)
+                    }
+                }
+            }
+            .panel(padding: 10)
+        } else {
+            Button {
+                model.prepareReclaim()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "memorychip").frame(width: 14)
+                    Text("Free memory")
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(Theme.tertiary)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(QuietButtonStyle())
+            .help("Shows what PEPEL would stop to give memory back. Nothing happens until you confirm.")
+            .accessibilityHint("Lists what would be stopped. Nothing happens until you confirm.")
+            if let report = model.reclaimReport {
+                let done = report.results.reduce(0) { $0 + $1.done }
+                Text("Last time: memory used \(Bytes.format(report.before.memoryUsedBytes)) → \(Bytes.format(report.after.memoryUsedBytes)), swap \(Bytes.format(report.before.swapUsedBytes)) → \(Bytes.format(report.after.swapUsedBytes)); \(done) stopped.")
+                    .font(.system(size: 10)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     /// Return the memory the Docker VM holds beyond what its containers use.

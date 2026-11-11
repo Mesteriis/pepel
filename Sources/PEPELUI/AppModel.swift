@@ -356,6 +356,37 @@ public final class AppModel {
         refreshSecondary()
     }
 
+    // MARK: Free memory
+
+    public var reclaimPlan: ReclaimPlan?
+    public var reclaimSelection: Set<String> = []
+    public var reclaimReport: ReclaimReport?
+    public var isReclaiming = false
+
+    public func prepareReclaim() {
+        reclaimReport = nil
+        Task {
+            let plan = await engine.reclaimPlan()
+            reclaimSelection = plan.defaultSelection
+            reclaimPlan = plan
+        }
+    }
+
+    public func cancelReclaim() { reclaimPlan = nil }
+
+    public func confirmReclaim() {
+        let selection = reclaimSelection
+        reclaimPlan = nil
+        guard !selection.isEmpty else { return }
+        isReclaiming = true
+        Task {
+            reclaimReport = await engine.reclaim(selection, initiator: .user)
+            isReclaiming = false
+            live = await engine.live
+            refreshSecondary()
+        }
+    }
+
     // MARK: Containers
 
     public var pendingVMRefresh: VMRefreshDecision?

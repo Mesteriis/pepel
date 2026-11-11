@@ -23,6 +23,8 @@ public actor PepelEngine {
     /// first seen without one, when PEPEL started watching it).
     var projectActivity: [String: Date] = [:]
     var projectActivityWritten = Date.distantPast
+    /// Idle sessions the user explicitly chose to end in a "Free memory" pass; empty otherwise.
+    var manualSleepOverride: [ProcessIdentity: [String]] = [:]
     var containerReport: ContainerReport?
     var containerRefreshStarted = Date.distantPast
     var appTracker = AppExitTracker()
@@ -196,6 +198,10 @@ public actor PepelEngine {
             processes: processes, history: history, protections: store.protections(), attributor: projectIndex, now: now,
             idleWindow: TimeInterval(settings.idleMinutesBeforeAbandoned) * 60)
         for session in sessions where session.state == .sleeping { context.sleepingAgents[session.root] = session.evidence }
+        // Never a working session, whatever was asked.
+        for session in sessions where session.state == .idle && !session.isService {
+            if let asked = manualSleepOverride[session.root] { context.sleepingAgents[session.root] = asked }
+        }
         let assessments = ProcessGuardian.assess(context)
         let telemetry = readTelemetry()
         let advice = MemoryGuardian.advise(telemetry: telemetry, processes: processes, assessments: assessments, history: history)

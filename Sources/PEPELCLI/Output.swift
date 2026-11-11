@@ -86,6 +86,7 @@ enum Out {
           pepel scan                       Scan developer storage now (nothing is removed)
           pepel projects                   Discovered projects and their artifact usage
           pepel builds                     Build generations, retention verdicts and budgets
+          pepel free [--all] [--yes]       Free memory: show what would be stopped, then do it and measure
           pepel memory                     Memory pressure, swap and the largest consumers
           pepel processes [--all]          Developer processes and whether they look abandoned
           pepel agents                     Agent sessions: working, idle or asleep, and why

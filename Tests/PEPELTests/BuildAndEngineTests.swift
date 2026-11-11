@@ -480,6 +480,75 @@ struct EngineTests {
         #expect(store.audit(kinds: [.termination]).first?.initiator == "automatic")
     }
 
+    @Test("Free memory ends sleeping sessions by default, idle ones only when chosen, and never a working one")
+    func freeMemoryPass() async throws {
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        let alpha = f.gitRepo(f.projects + "/alpha"), beta = f.gitRepo(f.projects + "/beta"), gamma = f.gitRepo(f.projects + "/gamma")
+        let now = Date()
+        var sleeper = process(10, name: "claude", path: "/Users/x/.local/bin/claude", cwd: alpha, footprint: 300_000_000)
+        sleeper.diskBytesWritten = 5_000_000
+        let sleeperServer = process(11, parent: 10, name: "python3", args: ["python3", "mcp-server"], cwd: alpha, start: 1_000_100, footprint: 100_000_000)
+        var worker = process(20, name: "claude", path: "/Users/x/.local/bin/claude", cwd: beta)
+        worker.diskBytesWritten = 9_000_000
+        worker.cpuTimeNs = 400 * 1_000_000_000
+        var idler = process(30, name: "claude", path: "/Users/x/.local/bin/claude", cwd: gamma, footprint: 200_000_000)
+        idler.diskBytesWritten = 4_000_000
+        func record(_ p: ProcessSnapshot, written: [(minutesAgo: Double, bytes: UInt64)]) {
+            for point in written {
+                var copy = p
+                copy.diskBytesWritten = point.bytes
+                copy.cpuTimeNs = 0
+                store.recordObservations([copy], at: now.addingTimeInterval(-point.minutesAgo * 60))
+            }
+        }
+        record(sleeper, written: [(170, 5_000_000), (120, 5_000_000), (60, 5_000_000), (2, 5_000_000)])
+        record(sleeperServer, written: [(170, 0), (2, 0)])
+        record(worker, written: [(170, 1_000_000), (60, 4_000_000), (1, 8_500_000)])
+        // Wrote half an hour ago and nothing since: quiet, but not for the two-hour window.
+        idler.cpuTimeNs = 60 * 1_000_000_000
+        for (minutesAgo, bytes, cpuSeconds) in [(170.0, 1_000_000, 0), (32, 1_000_000, 0), (30, 4_000_000, 60), (2, 4_000_000, 60)] as [(Double, UInt64, UInt64)] {
+            var copy = idler
+            copy.diskBytesWritten = bytes
+            copy.cpuTimeNs = cpuSeconds * 1_000_000_000
+            store.recordObservations([copy], at: now.addingTimeInterval(-minutesAgo * 60))
+        }
+
+        let source = FakeProcessSource(processes: [sleeper, sleeperServer, worker, idler])
+        var settings = PepelSettings()
+        settings.projectRoots = [f.projects]
+        settings.gracefulTerminationSeconds = 2
+        try store.saveSettings(settings)
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled,
+            analyzers: [], processSource: source, telemetry: { SystemTelemetry() })
+
+        let plan = await engine.reclaimPlan()
+        let seen = await engine.live?.agentSessions.map { "\($0.root.pid):\($0.state):\($0.evidence)" } ?? []
+        #expect(plan.steps.map(\.kind) == [.sleepingAgents, .idleAgents], "\(plan.steps.map { "\($0.kind) \($0.targets)" }) \(seen)")
+        #expect(plan.defaultSelection == ["sleepingAgents"], "idle sessions are offered, not preselected")
+        #expect(plan.steps[0].estimatedBytes == 400_000_000)
+        #expect(source.signals.isEmpty, "making a plan signals nothing")
+
+        // Agents cannot use this to end sessions.
+        let asAgent = await engine.reclaim(["sleepingAgents", "idleAgents"], initiator: .agent)
+        #expect(asAgent.results.allSatisfy { $0.done == 0 } && source.signals.isEmpty)
+
+        let first = await engine.reclaim(plan.defaultSelection)
+        #expect(first.results.map(\.done) == [1])
+        #expect(source.signals.map(\.pid) == [10, 11])
+        #expect(Set(source.snapshot().map(\.pid)) == [20, 30])
+
+        // Asking for a step that is not in the plan (working sessions never are) does nothing.
+        let second = await engine.reclaim(["idleAgents", "workingAgents"])
+        #expect(second.results.map(\.kind) == [.idleAgents] && second.results[0].done == 1)
+        #expect(source.snapshot().map(\.pid) == [20], "the working session is never touched")
+        #expect(store.audit(kinds: [.termination]).contains { $0.subject == "Free memory" })
+
+        let empty = await engine.reclaimPlan()
+        #expect(empty.steps.isEmpty)
+    }
+
     @Test("The engine notices an application quitting, reports what it left, and terminates it only when enabled")
     func engineHandlesLeftovers() async throws {
         let f = Fixture()
