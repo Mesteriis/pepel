@@ -535,3 +535,23 @@ public struct AndroidSystemImage: Codable, Sendable, Identifiable, Hashable {
         self.usedBy = usedBy
     }
 }
+
+/// One backup a tool made: a folder with its own date.
+public struct ToolBackup: Codable, Sendable, Identifiable, Hashable {
+    public var path: String
+    /// The group it belongs to; retention keeps the newest of each.
+    public var set: String
+    public var createdAt: Date
+    public var bytes: Int64
+    /// Kept by the retention rule: among the newest of its set, or not old enough yet.
+    public var kept: Bool
+    public var id: String { path }
+
+    public init(path: String, set: String, createdAt: Date, bytes: Int64, kept: Bool) {
+        self.path = path
+        self.set = set
+        self.createdAt = createdAt
+        self.bytes = bytes
+        self.kept = kept
+    }
+}

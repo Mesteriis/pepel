@@ -553,3 +553,38 @@ extension PepelEngine {
         return NamedVolumeReport.make(report, projectFolders: folders)
     }
 }
+
+/// Backups tools make of agents' state (Clausona), kept by count and age.
+extension PepelEngine {
+    public nonisolated func toolBackups(keep: Int, days: Int) async -> [ToolBackup] {
+        let backups = ToolBackups(home: paths.home)
+        return await Task.detached(priority: .utility) { backups.list(keep: keep, days: days) }.value
+    }
+
+    public func cleanToolBackups(keep: Int? = nil, days: Int? = nil, confirmed: Bool, initiator: Initiator) async -> (denial: String?, bytes: Int64, removed: Int, skipped: [String]) {
+        switch initiator {
+        case .agent: return ("Agents cannot remove backups.", 0, 0, [])
+        case .automatic: if !settings.cleanToolBackups || settings.paused { return ("Retention for tool backups is not enabled.", 0, 0, []) }
+        case .user, .cli: if !confirmed { return ("This needs your confirmation.", 0, 0, []) }
+        }
+        let backups = ToolBackups(home: paths.home), count = max(0, keep ?? settings.toolBackupsKeep), age = max(0, days ?? settings.toolBackupsDays)
+        let read = readTelemetry
+        let before = read().diskAvailableBytes
+        let result = await Task.detached(priority: .utility) { backups.clean(keep: count, days: age) }.value
+        // Backups are often clones of the live files and share their blocks: removing them frees
+        // far less than their size. What is recorded is what the disk measured, not the sum of sizes.
+        let freed = max(0, read().diskAvailableBytes - before)
+        if result.removed > 0 {
+            store.appendAudit(
+                AuditEntry(
+                    kind: .cleanup, initiator: initiator.rawValue, subject: "Clausona backups: \(result.removed)", outcome: "removed", bytes: freed,
+                    detail: ["keepNewest": "\(count)", "olderThanDays": "\(age)", "sizeOfRemoved": Bytes.format(result.bytes), "measuredFree": Bytes.format(freed)]))
+        }
+        return (nil, freed, result.removed, result.skipped)
+    }
+
+    func autoCleanToolBackups(now: Date = Date()) async {
+        guard settings.cleanToolBackups, !settings.paused, dueDaily("toolbackups.lastAutoClean", now: now) else { return }
+        _ = await cleanToolBackups(confirmed: false, initiator: .automatic)
+    }
+}

@@ -971,3 +971,48 @@ struct NamedVolumeTests {
     }
 }
 
+@Suite("Clausona backups")
+struct ToolBackupTests {
+    @Test("Retention keeps the newest of each set and anything young; a working Clausona, a marker and the live history are never touched")
+    func retention() async throws {
+        let f = Fixture()
+        let now = Date()
+        func ns(_ daysAgo: Double) -> String { String(Int64((now.timeIntervalSince1970 - daysAgo * 86_400) * 1e9)) }
+        let codex = f.home + "/.local/state/clausona-codex/backups"
+        for (age, bytes) in [(20.0, 3 << 20), (10, 1 << 20), (1, 4096)] { f.file(codex + "/" + ns(age) + "/sessions/a.jsonl", bytes: bytes) }
+        let setup = f.home + "/.local/share/clausona-setup"
+        f.file(setup + "/2026-11-03/before-rename-" + ns(30) + "/x", bytes: 4096)
+        f.file(setup + "/2026-11-09/before-shared-history-" + ns(12) + "/x", bytes: 2 << 20)
+        f.file(setup + "/2026-11-09/clausona.js", text: "// tool")
+        f.file(setup + "/2026-11-09/build-output/x", bytes: 4096)
+        f.file(f.home + "/.codex/sessions/2026/10/15/live.jsonl", bytes: 8192)
+
+        let backups = ToolBackups(home: f.home)
+        let listed = backups.list(keep: 1, days: 7)
+        #expect(listed.count == 5, "only folders: tool files and other folders are not backups")
+        #expect(listed.filter { !$0.kept }.count == 3, "the two older Codex backups and the older setup snapshot")
+        #expect(listed.filter { $0.set.contains("Codex") }.first { $0.kept }?.createdAt ?? .distantPast > now.addingTimeInterval(-2 * 86_400))
+        #expect(backups.list(keep: 0, days: 0).allSatisfy { !$0.kept } && backups.list(keep: 5, days: 0).allSatisfy(\.kept))
+
+        // Clausona is switching: the Codex set is left alone.
+        f.file(f.home + "/.local/state/clausona-codex/switch.lock", text: "")
+        let holder = open(f.home + "/.local/state/clausona-codex/switch.lock", O_RDONLY)
+        #expect(systemFlock(holder, LOCK_EX) == 0)
+        let busy = backups.clean(keep: 1, days: 7)
+        #expect(busy.removed == 1 && busy.skipped.contains { $0.contains("switching") })
+        close(holder)
+
+        let store = try PepelStore.inMemory()
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: FakeProcessSource(processes: []), telemetry: { SystemTelemetry() })
+        #expect(await engine.cleanToolBackups(confirmed: true, initiator: .agent).denial != nil)
+        _ = await engine.automaticPass()
+        #expect(backups.list(keep: 1, days: 7).filter { !$0.kept }.count == 2, "off by default")
+        _ = try await engine.update { $0.cleanToolBackups = true }
+        _ = await engine.automaticPass()
+        #expect(backups.list(keep: 1, days: 7).count == 2 && backups.list(keep: 1, days: 7).allSatisfy(\.kept))
+        #expect(PathUtil.exists(f.home + "/.codex/sessions/2026/10/15/live.jsonl") && PathUtil.exists(setup + "/2026-11-09/clausona.js") && PathUtil.exists(setup + "/2026-11-09/build-output"))
+    }
+}
+

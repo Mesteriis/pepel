@@ -102,6 +102,7 @@ pepel disk temp [clean]          The temporary folder: what nothing has used for
 pepel projects ignored [trash …] Large folders git ignores that PEPEL does not recognise
 pepel disk emulators [delete …]  Android emulators by size and last use; delete chosen ones
 pepel disk images [delete …]     Android system images no emulator uses; delete them
+pepel disk backups [clean]       Clausona's backups; keep the newest N of each set, remove the rest after D days
 pepel docker volumes             Named volumes no container mounts, and whether their project is still here
 pepel disk files [--days N]      Large files not opened for N days, and identical copies (a report)
 pepel containers limit [<GiB>]   Show or lower the Docker VM's memory limit

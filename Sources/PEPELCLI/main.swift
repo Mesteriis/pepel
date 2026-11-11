@@ -901,6 +901,31 @@ case "disk":
         print("\nPEPEL only reports these. Folders macOS guards are left out unless --guarded is given.")
         break
     }
+    if arguments.positional.first == "backups" {
+        let keep = arguments.options["keep"].flatMap { Int($0) } ?? settings.toolBackupsKeep
+        let days = arguments.options["days"].flatMap { Int($0) } ?? settings.toolBackupsDays
+        if arguments.positional.dropFirst().first == "clean" {
+            let doomed = await engine.toolBackups(keep: keep, days: days).filter { !$0.kept }
+            guard !doomed.isEmpty else { print("Nothing to remove when keeping the newest \(keep) of each set and anything younger than \(days) days."); break }
+            print("\(doomed.count) backups, \(Bytes.format(doomed.reduce(0) { $0 + $1.bytes })) would be removed. The live agent history is not touched.")
+            guard arguments.flags.contains("yes") || Out.confirm("Remove them?") else { print("Nothing was removed."); break }
+            let result = await engine.cleanToolBackups(keep: keep, days: days, confirmed: true, initiator: .cli)
+            if let denial = result.denial { print("Not done: \(denial)"); exit(3) }
+            print("Removed \(result.removed). Free space measured: +\(Bytes.format(result.bytes)); less than their size when they shared blocks with the live files.")
+            for note in result.skipped { print("  kept: \(note)") }
+            break
+        }
+        let backups = await engine.toolBackups(keep: keep, days: days)
+        if arguments.json { Out.json(backups); break }
+        guard !backups.isEmpty else { print("No Clausona backups found."); break }
+        Out.table(
+            ["SIZE", "MADE", "", "SET", "BACKUP"],
+            backups.map { [Bytes.format($0.bytes), TimeFormat.ago($0.createdAt), $0.kept ? "kept" : "would go", $0.set, Out.truncate(($0.path as NSString).lastPathComponent, 46)] })
+        let doomed = backups.filter { !$0.kept }
+        print("\nKeeping the newest \(keep) of each set and anything younger than \(days) days, \(doomed.count) would go: \(Bytes.format(doomed.reduce(0) { $0 + $1.bytes })).")
+        print("`pepel disk backups clean [--keep N] [--days D]` removes them. Daily rule: \(settings.cleanToolBackups ? "on" : "off") (cleanToolBackups, toolBackupsKeep, toolBackupsDays).")
+        break
+    }
     if arguments.positional.first == "images" {
         if arguments.positional.dropFirst().first == "delete" {
             let ids = Array(arguments.positional.dropFirst(2))

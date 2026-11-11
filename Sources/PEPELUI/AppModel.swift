@@ -657,6 +657,7 @@ public final class AppModel {
         Task {
             androidEmulators = await engine.androidEmulators()
             systemImages = await engine.androidSystemImages()
+            toolBackups = await engine.toolBackups(keep: settings.toolBackupsKeep, days: settings.toolBackupsDays)
         }
         Task {
             otherPlaces = await engine.otherPlaces()
@@ -668,6 +669,15 @@ public final class AppModel {
     public var tempEntries: [TempEntry]?
     public var androidEmulators: [AndroidEmulator] = []
     public var systemImages: [AndroidSystemImage] = []
+    public var toolBackups: [ToolBackup] = []
+
+    public func cleanToolBackups() {
+        Task {
+            let result = await engine.cleanToolBackups(confirmed: true, initiator: .user)
+            message = result.denial.map { "Not done: \($0)" } ?? "Removed \(result.removed) backups; free space grew by \(Bytes.format(result.bytes)), less than their size when they shared blocks with the live files." + (result.skipped.isEmpty ? "" : " " + result.skipped.joined(separator: " "))
+            toolBackups = await engine.toolBackups(keep: settings.toolBackupsKeep, days: settings.toolBackupsDays)
+        }
+    }
 
     public func deleteUnusedSystemImages() {
         Task {

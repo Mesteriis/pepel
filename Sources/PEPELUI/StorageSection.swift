@@ -17,6 +17,7 @@ struct StorageSection: View {
     @State private var chosenEmulators = Set<String>()
     @State private var confirmEmulators = false
     @State private var confirmImages = false
+    @State private var confirmBackups = false
 
     private func matches(_ item: StorageItem) -> Bool {
         if let filter, item.safety != filter { return false }
@@ -261,6 +262,26 @@ struct StorageSection: View {
                 } message: {
                     Text("Entries in your temporary folder that nothing has read or written for \(model.settings.tempDays) days. Sockets and pipes, anything macOS manages, and anything a running program uses are left alone.")
                 }
+            }
+            if !model.toolBackups.isEmpty {
+                let doomed = model.toolBackups.filter { !$0.kept }
+                HStack(spacing: 10) {
+                    Text("Clausona backups").font(.system(size: 12, weight: .semibold))
+                    Text("\(model.toolBackups.count) · \(Bytes.format(model.toolBackups.reduce(0) { $0 + $1.bytes })) · keeping the newest \(model.settings.toolBackupsKeep) of each set and anything under \(model.settings.toolBackupsDays) days")
+                        .font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary).lineLimit(1)
+                    Spacer()
+                    if !doomed.isEmpty {
+                        Button("Remove \(doomed.count) · \(Bytes.format(doomed.reduce(0) { $0 + $1.bytes }))…") { confirmBackups = true }.buttonStyle(QuietButtonStyle())
+                    }
+                }
+                .help(model.toolBackups.map { "\(Bytes.format($0.bytes))  \($0.set)  \(TimeFormat.ago($0.createdAt))  \($0.kept ? "kept" : "would go")" }.joined(separator: "\n"))
+                .confirmationDialog("Remove \(doomed.count) Clausona backups?", isPresented: $confirmBackups, titleVisibility: .visible) {
+                    Button("Remove", role: .destructive) { model.cleanToolBackups() }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("Copies Clausona made before switching profiles or migrating history. The live Codex and Claude history is not touched; what goes is the ability to roll back to those moments.")
+                }
+                Divider().overlay(Theme.stroke)
             }
             if !model.androidEmulators.isEmpty {
                 let chosen = model.androidEmulators.filter { chosenEmulators.contains($0.name) }

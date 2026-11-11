@@ -327,6 +327,14 @@ struct SettingsSection: View {
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
 
+            group("Disk: Clausona backups", "Copies Clausona makes before it switches profiles or migrates history. The live Codex and Claude history is never part of this.") {
+                toggle("Once a day, remove old backups", s.cleanToolBackups) { v in model.updateSettings { $0.cleanToolBackups = v } }
+                stepper("Always keep the newest", s.toolBackupsKeep, 0...20, suffix: " of each set") { v in model.updateSettings { $0.toolBackupsKeep = v } }
+                stepper("Remove the rest once they are", s.toolBackupsDays, 0...365, suffix: " days old") { v in model.updateSettings { $0.toolBackupsDays = v } }
+                Text("Nothing is removed while Clausona is switching profiles (its lock is held), or from a folder marked as not to be cleaned.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+
             group("Disk: temporary files", "Your temporary folder. macOS empties it only on restart.") {
                 toggle("Once a day, remove temporary files that nothing has used", s.cleanTempFiles) { v in model.updateSettings { $0.cleanTempFiles = v } }
                 stepper("Unused means not read or written for", s.tempDays, 1...365, suffix: " days") { v in model.updateSettings { $0.tempDays = v } }

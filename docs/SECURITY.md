@@ -316,6 +316,16 @@ right before deletion.
 emulator names in its `config.ini` can be deleted on request or by the daily rule
 (`cleanUnusedSystemImages`, off by default); one an emulator uses is refused.
 
+**Clausona backups** (`pepel disk backups`, `cleanToolBackups`, off by default). Folders
+Clausona makes before it switches profiles or migrates history: under
+`~/.local/state/clausona-{codex,desktop}/backups` and the `before-*` folders under
+`~/.local/share/clausona-setup/<date>`. Retention keeps the newest `toolBackupsKeep` (1) of each
+set and removes the rest once they are `toolBackupsDays` (7) old. The live Codex and Claude
+history is never part of it; nothing is removed while Clausona holds its switch lock. These
+copies are often APFS clones of the live files, so the space recorded is the measured change in
+free space, not the sum of their sizes. Removal of these backups was allowed by the owner on
+11.11.2026.
+
 **Named Docker volumes** (`pepel docker volumes`). A report of the named volumes no container
 mounts, with their compose project and whether that project's folder is still on this Mac.
 PEPEL never removes them. The Docker disk image's limit is shown and never changed: lowering it

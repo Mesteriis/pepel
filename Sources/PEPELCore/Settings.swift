@@ -152,6 +152,11 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     public var keepEmulators: [String] = []
     /// Once a day, delete Android system images that no emulator starts from.
     public var cleanUnusedSystemImages = false
+    /// Once a day, apply retention to Clausona's backups: keep the newest `toolBackupsKeep` of each
+    /// set and remove the rest once they are `toolBackupsDays` old. The live agent history is not part of it.
+    public var cleanToolBackups = false
+    public var toolBackupsKeep = 1
+    public var toolBackupsDays = 7
     public var freezeIdleAgents = false
     public var freezeAfterMinutes = 20
     /// How often a frozen session is woken for a moment to see whether work is waiting.

@@ -93,6 +93,7 @@ enum Out {
           pepel simulators [shutdown …]    Booted simulators and what they hold; shut one or all down
           pepel disk map [<folder>]        The whole disk, or one folder, by size (the dashboard's Disk map as a table)
           pepel disk files [--days N]      Large files not opened for N days, and identical copies (a report)
+          pepel disk backups [clean]       Clausona's backups and what retention would remove (--keep N --days D)
           pepel disk images [delete …]     Android system images and the emulators that use them; delete unused ones
           pepel disk emulators [delete …]  Android emulators by size and last use; delete chosen ones (keep|unkeep <name>)
           pepel disk temp [clean]          The temporary folder: what nothing has used for N days; remove it
