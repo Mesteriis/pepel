@@ -118,6 +118,10 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     /// Write the memory journal: a reading every five minutes, kept as daily files.
     public var journalEnabled = true
     public var journalRetentionDays = 30
+    /// Once a day, remove what Docker can rebuild or pull again and has not used for `dockerUnusedDays`:
+    /// stopped containers, images no container uses, build cache, unused networks. Never volumes.
+    public var dockerAutoClean = false
+    public var dockerUnusedDays = 30
     public var freezeIdleAgents = false
     public var freezeAfterMinutes = 20
     /// How often a frozen session is woken for a moment to see whether work is waiting.

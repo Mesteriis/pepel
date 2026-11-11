@@ -511,6 +511,52 @@ public final class AppModel {
         }
     }
 
+    // MARK: Docker on disk
+
+    public var dockerDisk: DockerDiskReport?
+    public var dockerPlan: DockerCleanupPlan?
+    public var dockerCleanReport: DockerCleanupReport?
+    public var isReadingDocker = false
+    public var isCleaningDocker = false
+
+    public func refreshDocker() {
+        guard !isReadingDocker, !isCleaningDocker else { return }
+        isReadingDocker = true
+        Task {
+            if let result = await engine.dockerCleanupPlan() {
+                dockerDisk = result.report
+                dockerPlan = result.plan
+            } else {
+                dockerDisk = nil
+                dockerPlan = nil
+            }
+            isReadingDocker = false
+        }
+    }
+
+    public func cleanDocker(_ kinds: Set<DockerCleanKind>) {
+        isCleaningDocker = true
+        Task {
+            let result = await engine.cleanDocker(kinds: kinds, confirmed: true, initiator: .user)
+            isCleaningDocker = false
+            dockerCleanReport = result.report
+            if let denial = result.denial { message = "Not done: \(denial)" }
+            refreshDocker()
+            refreshSecondary()
+        }
+    }
+
+    public func compactDocker() {
+        isCleaningDocker = true
+        let engine = engine
+        Task {
+            let outcome = await Task.detached(priority: .utility) { engine.dockerDiskCompact() }.value
+            isCleaningDocker = false
+            message = outcome.done ? "Trimmed: \(outcome.note)" : "Not trimmed: \(outcome.note)"
+            refreshDocker()
+        }
+    }
+
     // MARK: Memory journal
 
     public var journalDigest: JournalDigest?

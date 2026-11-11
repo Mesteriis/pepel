@@ -782,6 +782,69 @@ case "roots":
     let settings = await engine.currentSettings()
     if arguments.json { Out.json(settings.projectRoots) } else { settings.projectRoots.forEach { print($0) } }
 
+case "docker":
+    let settings = await engine.currentSettings()
+    let days = arguments.options["days"].flatMap { Int($0) } ?? settings.dockerUnusedDays
+    if arguments.positional.first == "compact" {
+        let outcome = engine.dockerDiskCompact()
+        print(outcome.done ? "Trimmed: \(outcome.note)" : "Not compacted: \(outcome.note)")
+        break
+    }
+    guard let (report, plan) = await engine.dockerCleanupPlan(days: days) else { Out.error("Docker did not answer"); exit(1) }
+    if arguments.positional.first == "clean" {
+        let wanted = arguments.positional.dropFirst().first ?? "all"
+        let kinds: Set<DockerCleanKind>
+        switch wanted {
+        case "all": kinds = [.containers, .images, .buildCache, .networks]
+        case "containers": kinds = [.containers]
+        case "images": kinds = [.images]
+        case "cache": kinds = [.buildCache]
+        case "networks": kinds = [.networks]
+        case "volumes": kinds = [.volumes]
+        default: Out.error("usage: pepel docker clean [all|containers|images|cache|networks|volumes] [--days N] [--yes]"); exit(2)
+        }
+        for kind in DockerCleanKind.allCases where kinds.contains(kind) && kind != .networks {
+            print("\(kind.title): \(plan.count(kind)), \(Bytes.format(plan.bytes(kind)))")
+        }
+        if kinds.contains(.volumes) {
+            for volume in plan.volumes.sorted(by: { $0.sizeBytes > $1.sizeBytes }).prefix(15) {
+                print("  \(Bytes.format(volume.sizeBytes))  \(volume.isAnonymous ? "anonymous " + String(volume.name.prefix(12)) : volume.name)\(volume.composeProject.map { " (\($0))" } ?? "")")
+            }
+            print("Volumes hold data (databases, uploads). Removing them cannot be undone and rebuilding does not bring them back.")
+        }
+        guard kinds.contains(where: { plan.count($0) > 0 }) || kinds.contains(.networks) else { print("Nothing has been unused for \(days) days."); break }
+        guard arguments.flags.contains("yes") || Out.confirm("Remove these from Docker?") else { print("Nothing was removed."); break }
+        let result = await engine.cleanDocker(kinds: kinds, days: days, confirmed: true, initiator: .cli)
+        if let denial = result.denial { print("Not done: \(denial)"); exit(3) }
+        if let done = result.report {
+            for step in done.steps {
+                print("\(step.kind.title): \(step.removed) of \(step.attempted)")
+                for note in step.notes { print("    \(note)") }
+            }
+            print("Docker reports \(Bytes.format(done.dockerBytesBefore)) → \(Bytes.format(done.dockerBytesAfter)). Its disk image on this Mac: \(Bytes.format(done.diskImageBefore)) → \(Bytes.format(done.diskImageAfter)) (\(Bytes.formatDelta(-done.freedOnDisk))).")
+            print(done.compacted ? "Trimmed: \(done.compactNote)" : "Not trimmed: \(done.compactNote)")
+        }
+        break
+    }
+    if arguments.json {
+        struct Both: Encodable { var report: DockerDiskReport, plan: DockerCleanupPlan }
+        Out.json(Both(report: report, plan: plan))
+        break
+    }
+    let stopped = report.containers.filter { !$0.isRunning }
+    print("Docker's disk image takes \(Bytes.format(report.diskImageBytes)) on this Mac.\n")
+    Out.table(
+        ["KIND", "HAS", "SIZE", "UNUSED \(days)+ DAYS", "WOULD FREE"],
+        [
+            ["Stopped containers", String(stopped.count), Bytes.format(stopped.reduce(0) { $0 + $1.sizeBytes }), String(plan.containers.count), Bytes.format(plan.bytes(.containers))],
+            ["Images", String(report.images.count), Bytes.format(report.imageBytes), String(plan.images.count), Bytes.format(plan.bytes(.images))],
+            ["Build cache", String(report.buildCache.count), Bytes.format(report.buildCacheBytes), String(plan.buildCacheEntries), Bytes.format(plan.bytes(.buildCache))],
+            ["Volumes", String(report.volumes.count), Bytes.format(report.volumeBytes), String(plan.volumes.count) + " unmounted", Bytes.format(plan.bytes(.volumes))],
+        ])
+    for line in plan.skipped { print("  · \(line)") }
+    print("\n`pepel docker clean` removes containers, images, build cache and networks unused for \(days) days (--days N to change), then trims the disk image.")
+    print("`pepel docker clean volumes` is separate: volumes hold data. Automatic daily cleanup is \(settings.dockerAutoClean ? "on" : "off") (dockerAutoClean).")
+
 case "journal":
     let journal = engine.journal
     let files = journal.files()

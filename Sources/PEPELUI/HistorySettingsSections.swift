@@ -251,6 +251,13 @@ struct SettingsSection: View {
                 stepper("Warn when disk space falls below", Int(s.lowDiskThresholdBytes / Bytes.gb), 5...500, step: 5, suffix: " GB") { v in model.updateSettings { $0.lowDiskThresholdBytes = Int64(v) * Bytes.gb } }
             }
 
+            group("Disk: Docker", "Images, stopped containers and build cache can be rebuilt or pulled again. Volumes hold data and are never removed automatically.") {
+                toggle("Once a day, remove containers, images and build cache Docker has not used", s.dockerAutoClean) { v in model.updateSettings { $0.dockerAutoClean = v } }
+                stepper("Unused means untouched for", s.dockerUnusedDays, 1...365, suffix: " days") { v in model.updateSettings { $0.dockerUnusedDays = v } }
+                Text("A stopped container counts from when it stopped, an image from when it was last pulled or built, build cache from its last use. Containers of a compose project that is running, or that an agent is working in, and anything on the keep list are left alone. After removal PEPEL trims Docker's disk image so the Mac gets the space back.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+
             group("Build retention", "Defaults for every project. Active and pinned builds are always kept.") {
                 stepper("Keep the last", s.defaultRetention.keepSuccessful, 1...20, suffix: " builds") { v in model.updateSettings { $0.defaultRetention.keepSuccessful = v } }
                 stepper("Keep the last", s.defaultRetention.keepFailed, 0...20, suffix: " failed builds") { v in model.updateSettings { $0.defaultRetention.keepFailed = v } }

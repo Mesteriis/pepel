@@ -23,7 +23,7 @@ struct Arguments {
                 let name = String(arg.dropFirst(2))
                 if let eq = name.firstIndex(of: "=") {
                     options[String(name[..<eq])] = String(name[name.index(after: eq)...])
-                } else if ["limit", "note", "kind"].contains(name), index + 1 < rest.count {
+                } else if ["limit", "note", "kind", "days", "hours"].contains(name), index + 1 < rest.count {
                     options[name] = rest[index + 1]
                     index += 1
                 } else {
@@ -89,6 +89,7 @@ enum Out {
           pepel free [--all] [--no-cache]  Free memory: show what would be stopped and flushed, then do it (--yes) and measure
           pepel free permission [--revoke] Whether PEPEL may flush the file cache without asking; remove that permission
           pepel simulators [shutdown …]    Booted simulators and what they hold; shut one or all down
+          pepel docker [clean …|compact]   What Docker keeps on disk; remove what is unused for N days; trim its disk image
           pepel journal [--days N] [path]  The memory journal: what it says about the last days, and where it is
           pepel summary [--hours N]        What PEPEL did over the last day and what it left for you
           pepel budget [set <owner> <GB>]  Memory budgets per owner (a name, or kind:agentSession); alerts when exceeded

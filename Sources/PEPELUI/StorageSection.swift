@@ -6,6 +6,8 @@ struct StorageSection: View {
     @State private var search = ""
     @State private var filter: SafetyClass?
     @State private var expanded: String?
+    @State private var confirmDocker = false
+    @State private var confirmVolumes = false
 
     private func matches(_ item: StorageItem) -> Bool {
         if let filter, item.safety != filter { return false }
@@ -16,11 +18,90 @@ struct StorageSection: View {
             || (model.projectName(item.projectID)?.lowercased().contains(needle) ?? false)
     }
 
+    /// What Docker keeps on disk, and what has been unused long enough to go.
+    @ViewBuilder private var docker: some View {
+        let days = model.settings.dockerUnusedDays
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Caption("Docker on disk")
+                Spacer()
+                if model.isReadingDocker || model.isCleaningDocker { ProgressView().controlSize(.small) }
+                if let report = model.dockerDisk {
+                    Text("disk image \(Bytes.format(report.diskImageBytes))").font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(Theme.secondary)
+                }
+                Button("Read again") { model.refreshDocker() }.buttonStyle(QuietButtonStyle()).disabled(model.isReadingDocker || model.isCleaningDocker)
+            }
+            if let report = model.dockerDisk, let plan = model.dockerPlan {
+                let stopped = report.containers.filter { !$0.isRunning }
+                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
+                    GridRow {
+                        Text("").gridColumnAlignment(.leading)
+                        Text("has").gridColumnAlignment(.trailing)
+                        Text("size").gridColumnAlignment(.trailing)
+                        Text("unused \(days)+ days").gridColumnAlignment(.trailing)
+                        Text("would free").gridColumnAlignment(.trailing)
+                    }
+                    .font(.system(size: 10)).foregroundStyle(Theme.tertiary)
+                    dockerRow("Stopped containers", stopped.count, stopped.reduce(0) { $0 + $1.sizeBytes }, plan.containers.count, plan.bytes(.containers))
+                    dockerRow("Images", report.images.count, report.imageBytes, plan.images.count, plan.bytes(.images))
+                    dockerRow("Build cache", report.buildCache.count, report.buildCacheBytes, plan.buildCacheEntries, plan.bytes(.buildCache))
+                    dockerRow("Volumes no container mounts", report.volumes.count, report.volumeBytes, plan.volumes.count, plan.bytes(.volumes), tint: Theme.amber)
+                }
+                ForEach(plan.skipped, id: \.self) { line in
+                    Text(line).font(.system(size: 11)).foregroundStyle(Theme.tertiary)
+                }
+                HStack(spacing: 8) {
+                    Button("Remove unused containers, images and cache · \(Bytes.format(plan.reproducibleBytes))…") { confirmDocker = true }
+                        .buttonStyle(CopperButtonStyle(prominent: false)).disabled(plan.reproducibleBytes == 0 || model.isCleaningDocker)
+                    Button("Remove \(plan.volumes.count) volumes · \(Bytes.format(plan.bytes(.volumes)))…") { confirmVolumes = true }
+                        .buttonStyle(QuietButtonStyle()).disabled(plan.volumes.isEmpty || model.isCleaningDocker)
+                    Button("Trim disk image") { model.compactDocker() }.buttonStyle(QuietButtonStyle()).disabled(model.isCleaningDocker)
+                        .help("Hands blocks Docker no longer uses back to the Mac. Nothing is removed.")
+                }
+                if let done = model.dockerCleanReport {
+                    Text("Last cleanup: " + done.steps.map { "\($0.kind.title.lowercased()) \($0.removed) of \($0.attempted)" }.joined(separator: ", ")
+                        + ". Disk image \(Bytes.format(done.diskImageBefore)) → \(Bytes.format(done.diskImageAfter)).")
+                        .font(.system(size: 11)).foregroundStyle(Theme.forest).fixedSize(horizontal: false, vertical: true)
+                }
+                Text("Containers, images and build cache can be rebuilt or pulled again, so they can also be removed automatically once a day (Settings). Volumes hold data and are only ever removed from here. Nothing is removed with force: Docker refuses what is in use.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            } else if !model.isReadingDocker {
+                Text("Docker did not answer, or is not installed.").font(.system(size: 12)).foregroundStyle(Theme.secondary)
+            }
+        }
+        .panel()
+        .onAppear { if model.dockerDisk == nil { model.refreshDocker() } }
+        .confirmationDialog("Remove what Docker has not used for \(days) days?", isPresented: $confirmDocker, titleVisibility: .visible) {
+            Button("Remove containers, images and build cache") { model.cleanDocker([.containers, .images, .buildCache, .networks]) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Stopped containers, images no container uses, build cache and unused networks. Everything can be rebuilt or pulled again. Volumes are not touched.")
+        }
+        .confirmationDialog("Remove \(model.dockerPlan?.volumes.count ?? 0) volumes?", isPresented: $confirmVolumes, titleVisibility: .visible) {
+            Button("Remove volumes", role: .destructive) { model.cleanDocker([.volumes]) }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Volumes hold data such as databases and uploads. No container mounts these and they are older than \(days) days, but removing them cannot be undone and rebuilding does not bring them back.")
+        }
+    }
+
+    private func dockerRow(_ title: String, _ count: Int, _ bytes: Int64, _ candidates: Int, _ free: Int64, tint: Color = Theme.copper) -> some View {
+        GridRow {
+            Text(title).foregroundStyle(Theme.text)
+            Text("\(count)").foregroundStyle(Theme.secondary)
+            Text(Bytes.format(bytes)).foregroundStyle(Theme.secondary)
+            Text("\(candidates)").foregroundStyle(candidates > 0 ? Theme.text : Theme.tertiary)
+            Text(Bytes.format(free)).foregroundStyle(free > 0 ? tint : Theme.tertiary)
+        }
+        .font(.system(size: 12)).monospacedDigit()
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionTitle(
                 title: "Storage",
                 subtitle: "Developer artifacts found on this Mac. Sizes are blocks allocated on disk; where files are hard-linked, cloned or unreadable the figure is an upper bound, marked ≤.")
+            docker
             if let storage = model.storage {
                 breakdown(storage)
                 controls(storage)

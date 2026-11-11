@@ -86,6 +86,7 @@ extension PepelEngine {
         guard !settings.paused else { return (nil, []) }
         _ = await stopIdleProjectContainers()
         _ = await nightlyVMRefresh()
+        _ = await autoCleanDocker()
         if settings.monitoringMode == .automaticSafe, let storage {
             let safe = Set(storage.items.filter { $0.safety == .safe }.map(\.id))
             if !safe.isEmpty {

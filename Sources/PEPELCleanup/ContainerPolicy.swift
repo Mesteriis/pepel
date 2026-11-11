@@ -425,3 +425,21 @@ extension CleanupPolicyEngine {
         return ApprovedVMLimit(bytes: decision.newLimitBytes)
     }
 }
+
+extension CleanupPolicyEngine {
+    /// Docker resources are removed by identifier and never with force, so the question here is
+    /// only who may ask for what. Images, containers and build cache can be rebuilt or pulled
+    /// again; a volume is data, and no rule of PEPEL's own ever removes one.
+    public func dockerCleanDenial(kinds: Set<DockerCleanKind>, confirmed: Bool, initiator: Initiator, settings: PepelSettings) -> String? {
+        guard !kinds.isEmpty else { return "Nothing was chosen." }
+        switch initiator {
+        case .agent: return "Agents cannot have Docker resources removed."
+        case .automatic:
+            if settings.paused || !settings.dockerAutoClean { return "Automatic Docker cleanup is not enabled." }
+            if kinds.contains(.volumes) { return "Volumes hold data; they are only removed when you ask." }
+            return nil
+        case .user, .cli:
+            return confirmed ? nil : "Removing Docker resources needs your confirmation."
+        }
+    }
+}
