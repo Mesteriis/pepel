@@ -266,20 +266,41 @@ public struct ContainerVMRefresher: Sendable {
         return Set(result.output.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty })
     }
 
-    public func refresh(_ approved: ApprovedVMRefresh) async -> VMRefreshReport {
+    /// - Parameter whileStopped: runs between stopping and starting Docker Desktop (used to
+    ///   change its settings, which it only reads at start). Returns an error text, or nil.
+    public func refresh(_ approved: ApprovedVMRefresh, whileStopped: (@Sendable () -> String?)? = nil) async -> VMRefreshReport {
         var report = VMRefreshReport(restarted: false, back: [], missing: [], steps: [])
         // The list is taken again right before the restart: it is what must come back.
         let before = running() ?? Set(approved.containers)
         report.steps.append("\(before.count) containers were running.")
 
-        guard let restart = run(["desktop", "restart"], 300), restart.status == 0 else {
-            report.steps.append("`docker desktop restart` failed; nothing was changed.")
-            report.missing = []
-            record(report, initiator: approved.initiator)
-            return report
+        if let whileStopped {
+            guard let stop = run(["desktop", "stop"], 300), stop.status == 0 else {
+                report.steps.append("`docker desktop stop` failed; nothing was changed.")
+                record(report, initiator: approved.initiator)
+                return report
+            }
+            report.steps.append("Docker Desktop was stopped.")
+            // Whatever happens to the change, Docker is started again.
+            report.steps.append(whileStopped().map { "The change was not made: \($0)" } ?? "The change was written.")
+            guard let start = run(["desktop", "start"], 300), start.status == 0 else {
+                report.steps.append("`docker desktop start` failed; start Docker Desktop yourself. Containers were not started.")
+                report.missing = before.sorted()
+                record(report, initiator: approved.initiator)
+                return report
+            }
+            report.restarted = true
+            report.steps.append("Docker Desktop was started.")
+        } else {
+            guard let restart = run(["desktop", "restart"], 300), restart.status == 0 else {
+                report.steps.append("`docker desktop restart` failed; nothing was changed.")
+                report.missing = []
+                record(report, initiator: approved.initiator)
+                return report
+            }
+            report.restarted = true
+            report.steps.append("Docker Desktop was restarted.")
         }
-        report.restarted = true
-        report.steps.append("Docker Desktop was restarted.")
 
         let deadline = ContinuousClock.now + .seconds(readyTimeout)
         var now = running()
@@ -323,5 +344,52 @@ extension CleanupPolicyEngine {
         case .agent: return "Agents cannot have the file cache flushed."
         case .automatic: return "The file cache is only flushed when you ask. macOS gives cached memory up by itself under pressure; flushing on a timer would only slow file access."
         }
+    }
+}
+
+// MARK: - VM memory limit
+
+public struct VMLimitDecision: Codable, Sendable, Hashable {
+    public var newLimitBytes: Int64
+    public var currentLimitBytes: Int64
+    public var verdict: CleanupVerdict
+    public var reasons: [String]
+    public var warnings: [String]
+}
+
+/// A new VM memory limit the policy engine cleared; cannot be built elsewhere.
+public struct ApprovedVMLimit: Sendable {
+    public let bytes: Int64
+    init(bytes: Int64) { self.bytes = bytes }
+}
+
+extension CleanupPolicyEngine {
+    /// Lowering the VM's memory limit is what keeps it from growing back; restarting alone only
+    /// resets it. A limit too low gets containers killed inside the VM, so the floor is tied to
+    /// the most they have been seen to use. Only a person can change it.
+    public func evaluateVMLimit(_ report: ContainerReport, newLimitBytes: Int64, physicalMemoryBytes: Int64, initiator: Initiator) -> VMLimitDecision {
+        var denials: [String] = []
+        var confirmations: [String] = []
+        var warnings: [String] = []
+        if !report.product.lowercased().contains("docker desktop") { denials.append("The memory limit can only be changed for Docker Desktop; this is \(report.product).") }
+        if initiator == .agent || initiator == .automatic { denials.append("Only you can change the VM's memory limit.") }
+        if abs(newLimitBytes - report.vmLimitBytes) < (256 << 20) { denials.append("The limit is already \(Bytes.format(report.vmLimitBytes)).") }
+        if newLimitBytes < report.minimumLimitBytes {
+            denials.append(
+                "The containers have used up to \(Bytes.format(max(report.usedByContainersBytes, report.peakUsedBytes))); below \(Bytes.format(report.minimumLimitBytes)) Linux would start killing them for lack of memory.")
+        }
+        if physicalMemoryBytes > 0, newLimitBytes > physicalMemoryBytes { denials.append("This Mac has \(Bytes.format(physicalMemoryBytes)) of memory.") }
+        let names = report.groups.flatMap(\.containers).count
+        confirmations.append("Docker Desktop is stopped and started again with the new limit; \(names) running container\(names == 1 ? " goes" : "s go") down for a minute or two and \(names == 1 ? "is" : "are") started again.")
+        if newLimitBytes > report.vmLimitBytes { warnings.append("This raises the limit: the VM may grow to \(Bytes.format(newLimitBytes)).") }
+        if report.peakUsedBytes == 0 { warnings.append("PEPEL has only today's reading of what the containers use; a busier day may need more.") }
+        let verdict: CleanupVerdict = !denials.isEmpty ? .denied : .needsConfirmation
+        return VMLimitDecision(
+            newLimitBytes: newLimitBytes, currentLimitBytes: report.vmLimitBytes, verdict: verdict, reasons: denials.isEmpty ? confirmations : denials, warnings: warnings)
+    }
+
+    public func approveVMLimit(_ decision: VMLimitDecision, confirmed: Bool, initiator: Initiator) -> ApprovedVMLimit? {
+        guard decision.verdict == .needsConfirmation, confirmed, initiator == .user || initiator == .cli else { return nil }
+        return ApprovedVMLimit(bytes: decision.newLimitBytes)
     }
 }

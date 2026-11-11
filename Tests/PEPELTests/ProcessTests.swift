@@ -561,6 +561,71 @@ struct ProcessTests {
         #expect(!failing.restarted && failing.steps.last?.contains("failed") == true)
     }
 
+    @Test("The VM memory limit is changed only by a person, never below what containers have used, and written while Docker is stopped")
+    func vmMemoryLimit() async throws {
+        let f = Fixture()
+        let engine = CleanupPolicyEngine()
+        var report = ContainerReport(
+            product: "Docker Desktop", vmLimitBytes: 24 << 30, cpus: 8, running: 2, total: 2,
+            groups: [ContainerGroup(id: "app", name: "app", containers: [ContainerMemory(name: "app-db-1", memoryBytes: 3 << 30, cpuPercent: 0), ContainerMemory(name: "app-api-1", memoryBytes: 1 << 30, cpuPercent: 0)])],
+            hostFootprintBytes: 14 << 30)
+        report.peakUsedBytes = 8 << 30
+        #expect(report.minimumLimitBytes == 11 << 30, "a quarter above the 8 GiB peak, plus 1 GiB")
+        #expect(report.suggestedLimitBytes == 14 << 30, "1.5× the peak plus 2 GiB")
+        let physical: Int64 = 64 << 30
+        func verdict(_ gib: Int64, _ initiator: Initiator = .user) -> CleanupVerdict {
+            engine.evaluateVMLimit(report, newLimitBytes: gib << 30, physicalMemoryBytes: physical, initiator: initiator).verdict
+        }
+        #expect(verdict(12) == .needsConfirmation)
+        #expect(verdict(10) == .denied, "below what the containers have used")
+        #expect(verdict(24) == .denied, "already the limit")
+        #expect(verdict(80) == .denied, "more than the Mac has")
+        #expect(verdict(12, .agent) == .denied && verdict(12, .automatic) == .denied)
+        var other = report
+        other.product = "OrbStack"
+        #expect(engine.evaluateVMLimit(other, newLimitBytes: 12 << 30, physicalMemoryBytes: physical, initiator: .user).verdict == .denied)
+
+        let decision = engine.evaluateVMLimit(report, newLimitBytes: 12 << 30, physicalMemoryBytes: physical, initiator: .user)
+        #expect(engine.approveVMLimit(decision, confirmed: false, initiator: .user) == nil)
+        #expect(engine.approveVMLimit(decision, confirmed: true, initiator: .automatic) == nil)
+        let approvedLimit = try #require(engine.approveVMLimit(decision, confirmed: true, initiator: .user))
+
+        // The settings file: only the limit changes, the original is kept once.
+        let path = f.root + "/settings-store.json"
+        try Data(#"{"AutoStart": false, "MemoryMiB": 24576, "SwapMiB": 1950, "Nested": {"a": [1, 2]}}"#.utf8).write(to: URL(fileURLWithPath: path))
+        let docker = DockerDesktopSettings(path: path)
+        #expect(docker.memoryLimitBytes() == 24 << 30)
+        #expect(throws: DockerDesktopSettings.Failure.unreadable) { try DockerDesktopSettings(path: f.root + "/missing.json").setMemoryLimit(1 << 30, backupDirectory: nil) }
+
+        // Docker is stopped, the file is written, Docker and the containers are started.
+        let refreshDecision = engine.evaluateVMRefresh(report, workingSessions: 0, initiator: .user)
+        let approved = try #require(engine.approveVMRefresh(refreshDecision, confirmed: true, initiator: .user))
+        let state = RefreshScript()
+        var refresher = ContainerVMRefresher(store: nil) { arguments, _ in state.answer(arguments) }
+        refresher.pollInterval = .milliseconds(5)
+        let backups = f.root + "/backups"
+        let result = await refresher.refresh(approved) {
+            // Written only once Docker has been told to stop.
+            guard state.calls.contains(["desktop", "stop"]), !state.calls.contains(["desktop", "start"]) else { return "wrong moment" }
+            do { try docker.setMemoryLimit(approvedLimit.bytes, backupDirectory: backups) } catch { return "\(error)" }
+            return nil
+        }
+        #expect(result.restarted && result.missing.isEmpty && result.steps.contains("The change was written."))
+        #expect(!state.calls.contains(["desktop", "restart"]) && state.calls.contains(["desktop", "start"]))
+        #expect(docker.memoryLimitBytes() == 12 << 30)
+        let after = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: path))) as? [String: Any])
+        #expect(after["SwapMiB"] as? Int == 1950 && after["AutoStart"] as? Bool == false && (after["Nested"] as? [String: [Int]]) == ["a": [1, 2]])
+        let backup = try String(contentsOfFile: f.root + "/backups/docker-settings-store.json", encoding: .utf8)
+        #expect(backup.contains("24576"))
+
+        // If Docker cannot be stopped, nothing is written.
+        let stuck = await ContainerVMRefresher(store: nil) { arguments, _ in arguments.first == "ps" ? (0, "app-db-1\n") : (1, "") }.refresh(approved) {
+            try? docker.setMemoryLimit(20 << 30, backupDirectory: nil)
+            return nil
+        }
+        #expect(!stuck.restarted && docker.memoryLimitBytes() == 12 << 30)
+    }
+
     @Test("The nightly VM restart runs once a day, at night, in a quiet moment, and only when it is worth it")
     func nightlyVMRefreshPolicy() {
         let engine = CleanupPolicyEngine()

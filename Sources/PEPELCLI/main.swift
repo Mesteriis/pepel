@@ -210,6 +210,28 @@ case "containers":
         print("PEPEL leaves these running: " + ((updated?.keepContainers.isEmpty ?? true) ? "(none; containers labelled pepel.keep=true are always left running)" : updated!.keepContainers.joined(separator: ", ")))
         break
     }
+    if arguments.positional.first == "limit" {
+        guard let report = await engine.inspectContainers() else { Out.error("no container runtime answered"); exit(1) }
+        guard arguments.positional.count > 1 else {
+            print("\(report.product): the VM may use up to \(Bytes.format(report.vmLimitBytes)). Containers use \(Bytes.format(report.usedByContainersBytes)) now\(report.peakUsedBytes > 0 ? ", \(Bytes.format(report.peakUsedBytes)) at most in the days PEPEL has watched" : "").")
+            print("Lowest limit PEPEL accepts: \(Bytes.format(report.minimumLimitBytes)). " + (report.suggestedLimitBytes.map { "Suggested: \(Bytes.format($0)) — `pepel containers limit \($0 >> 30)`." } ?? "The current limit is already close to what is needed."))
+            break
+        }
+        guard let gib = Double(arguments.positional[1]), gib > 0 else { Out.error("usage: pepel containers limit [<GiB>] [--yes]"); exit(2) }
+        let bytes = Int64(gib * Double(1 << 30))
+        guard let decision = await engine.vmLimitDecision(bytes, initiator: .cli) else { Out.error("no container runtime answered"); exit(1) }
+        print("VM memory limit: \(Bytes.format(decision.currentLimitBytes)) → \(Bytes.format(bytes))")
+        for line in decision.reasons + decision.warnings { print("  ! \(line)") }
+        guard decision.verdict != .denied else { print("PEPEL will not set this limit."); exit(3) }
+        guard arguments.flags.contains("yes") || Out.confirm("Change the limit and restart Docker Desktop?") else { print("Nothing was changed."); break }
+        if let report = await engine.setContainerVMLimit(bytes, confirmed: true, initiator: .cli)?.report {
+            for step in report.steps { print("  \(step)") }
+            print("Charged to the Mac for the VM: \(Bytes.format(report.hostFootprintBefore)) before, \(Bytes.format(report.hostFootprintAfter)) after.")
+        } else {
+            print("Not changed: the restart was refused.")
+        }
+        break
+    }
     if arguments.positional.first == "refresh-vm" {
         guard let (decision, before) = await engine.vmRefreshDecision(initiator: .cli) else { Out.error("no container runtime answered"); exit(1) }
         print("\(before.product): \(decision.containers.count) containers use \(Bytes.format(before.usedByContainersBytes)); the Mac is charged \(Bytes.format(before.hostFootprintBytes)) for the VM.")

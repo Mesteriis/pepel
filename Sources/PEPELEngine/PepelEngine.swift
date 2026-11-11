@@ -27,6 +27,7 @@ public actor PepelEngine {
     var manualSleepOverride: [ProcessIdentity: [String]] = [:]
     var containerReport: ContainerReport?
     var fileCacheFlusher: FileCacheFlusher = .unavailable
+    var containerPeaks: [Int: Int64]?
     var frontmostPID: @Sendable () -> Int32? = { nil }
     /// Settings as adapted to the memory pressure of the latest sample.
     var effectiveSettings: PepelSettings { settings.adapted(to: live?.telemetry.pressure ?? .normal) }
@@ -143,6 +144,16 @@ public actor PepelEngine {
         }
         // Measured after the last restart; before any restart was observed, a cautious 6 GiB.
         report.baselineOverheadBytes = store.value("containers.vmOverhead").flatMap(Int64.init) ?? (6 << 30)
+        // The busiest reading per day, kept for two weeks: what a memory limit must leave room for.
+        let day = Int(now.timeIntervalSince1970 / 86_400)
+        if containerPeaks == nil { containerPeaks = store.loadCodable([Int: Int64].self, key: "containers.peaks") ?? [:] }
+        var peaks = (containerPeaks ?? [:]).filter { day - $0.key < 14 }
+        if report.usedByContainersBytes > peaks[day] ?? 0 {
+            peaks[day] = report.usedByContainersBytes
+            try? store.saveCodable(peaks, key: "containers.peaks")
+        }
+        containerPeaks = peaks
+        report.peakUsedBytes = peaks.values.max() ?? 0
         func group(of projectID: String) -> String { projectIndex.project(id: projectID)?.groupID ?? projectID }
         var live: [String: Int] = [:]
         for session in sessions where !session.isService {

@@ -171,6 +171,13 @@ users and accidental callers; the narrow operation set is what limits a particip
 - It can **restart the Docker Desktop VM** (`docker desktop restart`) and start the same
   containers again. Manual only, always confirmed; a VM restart cannot spare a container, so
   kept containers are named in the warning.
+- It can **lower the VM's memory limit** (`pepel containers limit <GiB>`). Measured on Docker
+  Desktop 4.97: dropping caches inside the VM frees guest memory but the Mac is charged the same,
+  because the VM has no working balloon; only a restart gives memory back and only a lower limit
+  keeps it from growing again. The change is manual and confirmed, refused below a quarter above
+  the most the containers were seen to use (14 days) plus 1 GiB, and written to
+  `settings-store.json` while Docker Desktop is stopped, keeping every other key. The original
+  file is copied to PEPEL's support directory once.
 - It never runs `rm`, `down`, `kill`, `prune` on volumes, or anything else that removes data.
 
 ## Agents' instruction files

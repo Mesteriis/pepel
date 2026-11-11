@@ -155,6 +155,8 @@ public struct ContainerReport: Codable, Sendable, Hashable {
     /// What the VM costs the host on top of its containers even right after a restart (its
     /// kernel and the container engine), as measured the last time it was restarted.
     public var baselineOverheadBytes: Int64 = 0
+    /// The most the containers used together on any of the last 14 days PEPEL was watching.
+    public var peakUsedBytes: Int64 = 0
 
     public init(
         product: String, vmLimitBytes: Int64, cpus: Int, running: Int, total: Int, groups: [ContainerGroup],
@@ -181,11 +183,16 @@ public struct ContainerReport: Codable, Sendable, Hashable {
     /// What the containers themselves use right now, by the runtime's own accounting.
     public var usedByContainersBytes: Int64 { groups.reduce(0) { $0 + $1.memoryBytes } }
 
-    /// A limit with headroom over current use: 1.5× plus 2 GiB, rounded up to 2 GiB steps,
-    /// never below 4 GiB. Nil when that would not be meaningfully lower than the current limit.
+    /// The lowest limit PEPEL accepts: a quarter above the most the containers have been seen
+    /// to use, plus 1 GiB for the VM's own kernel and engine.
+    public var minimumLimitBytes: Int64 { max(2 << 30, max(usedByContainersBytes, peakUsedBytes) * 5 / 4 + (1 << 30)) }
+
+    /// A limit with headroom over the most the containers have used: 1.5× plus 2 GiB, rounded up
+    /// to 2 GiB steps, never below 4 GiB. Nil when that would not be meaningfully lower than the
+    /// current limit.
     public var suggestedLimitBytes: Int64? {
         let gib: Int64 = 1 << 30
-        let wanted = max(4 * gib, usedByContainersBytes * 3 / 2 + 2 * gib)
+        let wanted = max(4 * gib, max(usedByContainersBytes, peakUsedBytes) * 3 / 2 + 2 * gib)
         let rounded = (wanted + 2 * gib - 1) / (2 * gib) * (2 * gib)
         return vmLimitBytes > 0 && rounded * 4 <= vmLimitBytes * 3 ? rounded : nil
     }
@@ -198,7 +205,7 @@ public struct ContainerReport: Codable, Sendable, Hashable {
             text += " This Mac is charged \(Bytes.format(hostFootprintBytes)) for that machine, which is about what it costs right after a restart."
         }
         if let suggestedLimitBytes {
-            text += " A limit around \(Bytes.format(suggestedLimitBytes)) would still leave 1.5× headroom over what is used now."
+            text += " A limit around \(Bytes.format(suggestedLimitBytes)) would still leave 1.5× headroom over the most the containers have used\(peakUsedBytes > usedByContainersBytes ? " (\(Bytes.format(peakUsedBytes)))" : "")."
         }
         return text
     }

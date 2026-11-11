@@ -190,11 +190,25 @@ extension PepelEngine {
 
     /// Restarts the container VM and starts the same containers again, measuring what the Mac
     /// is charged for the VM before and after.
-    public func refreshContainerVM(confirmed: Bool, initiator: Initiator) async -> (decision: VMRefreshDecision, report: VMRefreshReport?)? {
+    public func refreshContainerVM(confirmed: Bool, initiator: Initiator, newLimit: ApprovedVMLimit? = nil) async -> (decision: VMRefreshDecision, report: VMRefreshReport?)? {
         guard let (decision, containers) = await vmRefreshDecision(initiator: initiator) else { return nil }
         guard let approved = policy.approveVMRefresh(decision, confirmed: confirmed, initiator: initiator) else { return (decision, nil) }
         let tools = tools, store = store
-        var report = await ContainerVMRefresher(tools: tools, store: store).refresh(approved)
+        let dockerSettings = DockerDesktopSettings(home: paths.home), backups = paths.supportDirectory + "/docker-backups"
+        var change: (@Sendable () -> String?)?
+        if let limit = newLimit?.bytes {
+            change = {
+                do {
+                    try dockerSettings.setMemoryLimit(limit, backupDirectory: backups)
+                    return nil
+                } catch DockerDesktopSettings.Failure.unreadable {
+                    return "Docker's settings file could not be read."
+                } catch {
+                    return "Docker's settings file could not be written."
+                }
+            }
+        }
+        var report = await ContainerVMRefresher(tools: tools, store: store).refresh(approved, whileStopped: change)
         if report.restarted { try? store.setValue(String(Date().timeIntervalSince1970), for: "containers.lastVMRefresh") }
         report.hostFootprintBefore = containers.hostFootprintBytes
         // Give the new VM a moment to settle before reading what it is charged.
@@ -212,6 +226,24 @@ extension PepelEngine {
                 bytes: max(0, report.returnedBytes),
                 detail: ["chargedBefore": Bytes.format(report.hostFootprintBefore), "chargedAfter": Bytes.format(report.hostFootprintAfter)]))
         containerRefreshStarted = .distantPast
+        return (decision, report)
+    }
+
+    public func vmLimitDecision(_ bytes: Int64, initiator: Initiator) async -> VMLimitDecision? {
+        guard let report = await inspectContainers() else { return nil }
+        return policy.evaluateVMLimit(report, newLimitBytes: bytes, physicalMemoryBytes: live?.telemetry.memoryTotalBytes ?? 0, initiator: initiator)
+    }
+
+    /// Changes the Docker VM's memory limit: stops Docker Desktop, writes the setting, starts it
+    /// and the containers that were running.
+    public func setContainerVMLimit(_ bytes: Int64, confirmed: Bool, initiator: Initiator) async -> (decision: VMLimitDecision, report: VMRefreshReport?)? {
+        guard let decision = await vmLimitDecision(bytes, initiator: initiator) else { return nil }
+        guard let approved = policy.approveVMLimit(decision, confirmed: confirmed, initiator: initiator) else { return (decision, nil) }
+        let report = await refreshContainerVM(confirmed: confirmed, initiator: initiator, newLimit: approved)?.report
+        store.appendAudit(
+            AuditEntry(
+                kind: .container, initiator: initiator.rawValue, subject: "Docker Desktop VM memory limit",
+                outcome: "\(Bytes.format(decision.currentLimitBytes)) → \(Bytes.format(bytes))", detail: ["steps": report?.steps.joined(separator: " ") ?? "not restarted"]))
         return (decision, report)
     }
 
