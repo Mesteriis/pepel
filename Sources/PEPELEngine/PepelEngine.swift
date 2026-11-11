@@ -26,6 +26,12 @@ public actor PepelEngine {
     /// Idle sessions the user explicitly chose to end in a "Free memory" pass; empty otherwise.
     var manualSleepOverride: [ProcessIdentity: [String]] = [:]
     var containerReport: ContainerReport?
+    var fileCacheFlusher: FileCacheFlusher = .unavailable
+    /// Settings as adapted to the memory pressure of the latest sample.
+    var effectiveSettings: PepelSettings { settings.adapted(to: live?.telemetry.pressure ?? .normal) }
+
+    /// Replaces how the file cache is flushed; tests use it so no administrator prompt appears.
+    public func setFileCacheFlusher(_ flusher: FileCacheFlusher) { fileCacheFlusher = flusher }
     var containerRefreshStarted = Date.distantPast
     var appTracker = AppExitTracker()
     var lastTrackerWrite = Date.distantPast
@@ -52,6 +58,7 @@ public actor PepelEngine {
         self.processSource = processSource
         let home = paths.home
         self.readTelemetry = telemetry ?? { TelemetryReader().read(volumePath: home) }
+        self.fileCacheFlusher = paths.isRedirected ? .unavailable : .system(tools: self.tools)
         self.settings = self.store.loadSettings(home: paths.home)
         let saved = self.store.loadCodable(StorageState.self, key: "storage.state")
         self.storage = saved
@@ -193,7 +200,7 @@ public actor PepelEngine {
 
         let sessions = AgentDetector.sessions(
             processes: processes, attributor: projectIndex, history: history, now: now,
-            sleepWindow: TimeInterval(settings.agentSleepMinutes) * 60, leases: store.leases(now: now))
+            sleepWindow: TimeInterval(effectiveSettings.agentSleepMinutes) * 60, leases: store.leases(now: now))
         var context = AssessmentContext(
             processes: processes, history: history, protections: store.protections(), attributor: projectIndex, now: now,
             idleWindow: TimeInterval(settings.idleMinutesBeforeAbandoned) * 60)
@@ -232,7 +239,7 @@ public actor PepelEngine {
         }
         state.leftovers = appTracker.leftovers(
             processes: processes, assessments: assessments, protectedRoots: Set(sessions.map(\.root)), attributor: projectIndex, now: now,
-            automaticAfter: TimeInterval(settings.appLeftoverGraceMinutes) * 60)
+            automaticAfter: TimeInterval(effectiveSettings.appLeftoverGraceMinutes) * 60)
         // Container memory needs three Docker calls (about two seconds), so it is refreshed in
         // the background at most every two minutes and only while a virtual machine is running.
         let vm = owners.first { $0.kind == .virtualMachine }

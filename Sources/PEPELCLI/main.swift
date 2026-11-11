@@ -284,7 +284,8 @@ case "free":
         for target in step.targets.prefix(8) { print("    · \(target)") }
         if step.targets.count > 8 { print("    · … and \(step.targets.count - 8) more") }
     }
-    print("\nSelected steps could return up to \(Bytes.format(plan.estimatedBytes(selection))). Unselected steps are included with --all.")
+    if arguments.flags.contains("no-cache") { selection.remove("fileCache") }
+    print("\nSelected steps could return up to \(Bytes.format(plan.estimatedBytes(selection))) from what they stop. Unselected steps are included with --all; --no-cache skips the cache flush.")
     guard !selection.isEmpty else { print("Nothing is selected by default; use --all to include the optional steps."); break }
     guard arguments.flags.contains("yes") || Out.confirm("Free memory now?") else { print("Nothing was done. Run `pepel free --yes` to carry out the selected steps."); break }
     let report = await engine.reclaim(selection, initiator: .cli)
@@ -294,7 +295,7 @@ case "free":
         print("\(result.title): \(result.done) of \(result.attempted)")
         for note in result.notes { print("    \(note)") }
     }
-    print("\nMeasured: memory used \(Bytes.format(report.before.memoryUsedBytes)) → \(Bytes.format(report.after.memoryUsedBytes)) (\(Bytes.formatDelta(-report.freedBytes))), compressed \(Bytes.format(report.before.compressedBytes)) → \(Bytes.format(report.after.compressedBytes)), swap \(Bytes.format(report.before.swapUsedBytes)) → \(Bytes.format(report.after.swapUsedBytes)), pressure \(report.before.pressure.rawValue) → \(report.after.pressure.rawValue).")
+    print("\nMeasured: memory used \(Bytes.format(report.before.memoryUsedBytes)) → \(Bytes.format(report.after.memoryUsedBytes)) (\(Bytes.formatDelta(-report.freedBytes))), compressed \(Bytes.format(report.before.compressedBytes)) → \(Bytes.format(report.after.compressedBytes)), swap \(Bytes.format(report.before.swapUsedBytes)) → \(Bytes.format(report.after.swapUsedBytes)), free \(Bytes.format(report.before.freeBytes)) → \(Bytes.format(report.after.freeBytes)), cached files \(Bytes.format(report.before.cachedFileBytes)) → \(Bytes.format(report.after.cachedFileBytes)), pressure \(report.before.pressure.rawValue) → \(report.after.pressure.rawValue).")
 
 case "leftovers":
     let live = await engine.refreshLive()

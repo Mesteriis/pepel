@@ -42,7 +42,7 @@ extension PepelEngine {
             steps.append(
                 ReclaimStep(
                     kind: .sleepingAgents, title: "Sleeping agent sessions",
-                    detail: "No sign of work for \(settings.agentSleepMinutes) minutes. Ended with the tool servers they started; they can be resumed.",
+                    detail: "No sign of work for \(effectiveSettings.agentSleepMinutes) minutes. Ended with the tool servers they started; they can be resumed.",
                     targets: sleeping.map(describe), estimatedBytes: sleeping.reduce(0) { $0 + $1.footprintBytes }, selectedByDefault: true))
         }
         let idle = sessions.filter { $0.state == .idle }
@@ -50,7 +50,7 @@ extension PepelEngine {
             steps.append(
                 ReclaimStep(
                     kind: .idleAgents, title: "Idle agent sessions",
-                    detail: "Not working right now, but quiet for less than \(settings.agentSleepMinutes) minutes. One of them may be waiting for you.",
+                    detail: "Not working right now, but quiet for less than \(effectiveSettings.agentSleepMinutes) minutes. One of them may be waiting for you.",
                     targets: idle.map(describe), estimatedBytes: idle.reduce(0) { $0 + $1.footprintBytes }, selectedByDefault: false))
         }
 
@@ -77,6 +77,15 @@ extension PepelEngine {
                         // On by default only when nobody is working and nothing kept would be restarted.
                         selectedByDefault: working == 0 && containers.kept.isEmpty))
             }
+        }
+        // Last, so it also clears what the steps above leave cached.
+        let cached = live.telemetry.cachedFileBytes
+        if fileCacheFlusher.isAvailable, cached >= Bytes.gb {
+            steps.append(
+                ReclaimStep(
+                    kind: .fileCache, title: "Flush the file cache",
+                    detail: "Turns cached file pages into free pages. Asks for your administrator password. It does not shrink what applications use, and macOS fills the cache again as files are read.",
+                    targets: ["\(Bytes.format(cached)) of cached files become free"], estimatedBytes: 0, selectedByDefault: true))
         }
         return ReclaimPlan(steps: steps, telemetry: live.telemetry)
     }
@@ -133,6 +142,25 @@ extension PepelEngine {
                     }
                 }
                 results.append(ReclaimStepResult(kind: step.kind, title: step.title, done: done, attempted: attempted, notes: notes))
+            case .fileCache:
+                if let denial = policy.cacheFlushDenial(initiator: initiator) {
+                    results.append(ReclaimStepResult(kind: step.kind, title: step.title, done: 0, attempted: 1, notes: [denial]))
+                    break
+                }
+                let flusher = fileCacheFlusher
+                let read = readTelemetry
+                let cachedBefore = read()
+                let outcome = await Task.detached(priority: .userInitiated) { flusher.flush() }.value
+                let cachedAfter = read()
+                var notes: [String] = []
+                switch outcome {
+                case .flushed:
+                    notes.append("Cached files \(Bytes.format(cachedBefore.cachedFileBytes)) → \(Bytes.format(cachedAfter.cachedFileBytes)), free \(Bytes.format(cachedBefore.freeBytes)) → \(Bytes.format(cachedAfter.freeBytes)).")
+                case .cancelled: notes.append("Not flushed: the administrator prompt was dismissed.")
+                case .failed(let reason): notes.append("Not flushed: \(reason)")
+                case .unavailable: notes.append("Not flushed: purge is not available.")
+                }
+                results.append(ReclaimStepResult(kind: step.kind, title: step.title, done: outcome == .flushed ? 1 : 0, attempted: 1, notes: notes))
             case .containerVM:
                 if let result = await refreshContainerVM(confirmed: true, initiator: initiator) {
                     if let report = result.report {
@@ -159,6 +187,8 @@ extension PepelEngine {
                     "pressure": "\(before.pressure.rawValue) → \(after.pressure.rawValue)",
                     "swap": "\(Bytes.format(before.swapUsedBytes)) → \(Bytes.format(after.swapUsedBytes))",
                     "compressed": "\(Bytes.format(before.compressedBytes)) → \(Bytes.format(after.compressedBytes))",
+                    "free": "\(Bytes.format(before.freeBytes)) → \(Bytes.format(after.freeBytes))",
+                    "cachedFiles": "\(Bytes.format(before.cachedFileBytes)) → \(Bytes.format(after.cachedFileBytes))",
                 ]))
         return report
     }

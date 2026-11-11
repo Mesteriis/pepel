@@ -189,7 +189,7 @@ public struct PopoverView: View {
                     Spacer()
                     Button(plan.steps.isEmpty ? "Close" : "Cancel") { model.cancelReclaim() }.buttonStyle(QuietButtonStyle())
                     if !plan.steps.isEmpty {
-                        Button("Free up to \(Bytes.format(plan.estimatedBytes(model.reclaimSelection)))") { model.confirmReclaim() }
+                        Button(plan.estimatedBytes(model.reclaimSelection) > 0 ? "Free up to \(Bytes.format(plan.estimatedBytes(model.reclaimSelection)))" : "Free memory") { model.confirmReclaim() }
                             .buttonStyle(CopperButtonStyle()).disabled(model.reclaimSelection.isEmpty)
                     }
                 }
@@ -212,7 +212,7 @@ public struct PopoverView: View {
             .accessibilityHint("Lists what would be stopped. Nothing happens until you confirm.")
             if let report = model.reclaimReport {
                 let done = report.results.reduce(0) { $0 + $1.done }
-                Text("Last time: memory used \(Bytes.format(report.before.memoryUsedBytes)) → \(Bytes.format(report.after.memoryUsedBytes)), swap \(Bytes.format(report.before.swapUsedBytes)) → \(Bytes.format(report.after.swapUsedBytes)); \(done) stopped.")
+                Text("Last time: memory used \(Bytes.format(report.before.memoryUsedBytes)) → \(Bytes.format(report.after.memoryUsedBytes)), free \(Bytes.format(report.before.freeBytes)) → \(Bytes.format(report.after.freeBytes)), swap \(Bytes.format(report.before.swapUsedBytes)) → \(Bytes.format(report.after.swapUsedBytes)); \(done) done.")
                     .font(.system(size: 10)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
         }

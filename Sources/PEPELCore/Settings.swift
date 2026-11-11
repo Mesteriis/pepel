@@ -89,6 +89,9 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     /// holds beyond what its containers use, then starts the same containers again. Skipped while
     /// an agent session is working, while a kept container runs, or when there is little to return.
     public var refreshContainerVMNightly = false
+    /// Under memory pressure, act sooner: shorter sleep and idle thresholds, and the Docker VM may
+    /// be restarted outside its night window. Only tightens rules that are already switched on.
+    public var adaptToMemoryPressure = false
     /// Local hour (0–23) at which the nightly restart may start; it has two hours to find a quiet moment.
     public var vmRefreshHour = 4
     /// The VM is only restarted when it is charged at least this much more than its containers use.
@@ -153,5 +156,20 @@ public struct PepelSettings: Codable, Sendable, Equatable {
             let settings = try? JSONDecoder().decode(PepelSettings.self, from: mergedData)
         else { return defaults }
         return settings
+    }
+}
+
+extension PepelSettings {
+    /// The settings in force at a given memory pressure. With `adaptToMemoryPressure` on, waiting
+    /// periods halve under elevated pressure and quarter under critical pressure, never below a
+    /// floor that keeps a session someone just stepped away from safe.
+    public func adapted(to pressure: MemoryPressureLevel) -> PepelSettings {
+        guard adaptToMemoryPressure, pressure != .normal else { return self }
+        let divisor = pressure == .critical ? 4 : 2
+        var copy = self
+        copy.agentSleepMinutes = max(30, agentSleepMinutes / divisor)
+        copy.projectIdleGraceMinutes = max(15, projectIdleGraceMinutes / divisor)
+        copy.appLeftoverGraceMinutes = max(2, appLeftoverGraceMinutes / divisor)
+        return copy
     }
 }

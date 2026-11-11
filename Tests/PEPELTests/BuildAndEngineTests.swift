@@ -549,6 +549,79 @@ struct EngineTests {
         #expect(empty.steps.isEmpty)
     }
 
+    final class FlushCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = 0
+        func bump() { lock.lock(); value += 1; lock.unlock() }
+        var count: Int { lock.lock(); defer { lock.unlock() }; return value }
+    }
+
+    @Test("The file cache is flushed only for a person, only when asked, and a dismissed prompt is reported as such")
+    func fileCacheFlush() async throws {
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: FakeProcessSource(processes: []), telemetry: { SystemTelemetry(cachedFileBytes: 6 * Bytes.gb, freeBytes: Bytes.gb) })
+
+        // A redirected engine has no flusher: a test must never raise an administrator prompt.
+        #expect(await engine.reclaimPlan().steps.isEmpty)
+
+        let counter = FlushCounter()
+        await engine.setFileCacheFlusher(FileCacheFlusher(isAvailable: true) { counter.bump(); return .flushed })
+        let plan = await engine.reclaimPlan()
+        #expect(plan.steps.map(\.kind) == [.fileCache] && plan.defaultSelection == ["fileCache"])
+        #expect(plan.estimatedBytes(plan.defaultSelection) == 0, "cached files are not counted as memory given back")
+        #expect(counter.count == 0)
+
+        for initiator in [Initiator.agent, .automatic] {
+            let refused = await engine.reclaim(["fileCache"], initiator: initiator)
+            #expect(refused.results.first?.done == 0)
+        }
+        #expect(counter.count == 0, "neither an agent nor the automatic pass flushes the cache")
+
+        let done = await engine.reclaim(["fileCache"], initiator: .user)
+        #expect(done.results.first?.done == 1 && counter.count == 1)
+
+        await engine.setFileCacheFlusher(FileCacheFlusher(isAvailable: true) { .cancelled })
+        let cancelled = await engine.reclaim(["fileCache"], initiator: .cli)
+        #expect(cancelled.results.first?.done == 0 && cancelled.results.first?.notes.first?.contains("dismissed") == true)
+    }
+
+    @Test("Under memory pressure thresholds shorten only when the setting is on, and never below their floors")
+    func pressureAdaptation() {
+        var settings = PepelSettings()
+        #expect(settings.adapted(to: .critical).agentSleepMinutes == 120, "off by default")
+        settings.adaptToMemoryPressure = true
+        #expect(settings.adapted(to: .normal).agentSleepMinutes == 120)
+        #expect(settings.adapted(to: .elevated).agentSleepMinutes == 60 && settings.adapted(to: .elevated).projectIdleGraceMinutes == 30)
+        #expect(settings.adapted(to: .critical).agentSleepMinutes == 30 && settings.adapted(to: .critical).projectIdleGraceMinutes == 15)
+        settings.agentSleepMinutes = 40
+        #expect(settings.adapted(to: .critical).agentSleepMinutes == 30)
+
+        // The Docker VM: outside the night window it restarts only under pressure with the setting on.
+        let policy = CleanupPolicyEngine()
+        var report = ContainerReport(product: "Docker Desktop", vmLimitBytes: 32 * Bytes.gb, cpus: 8, running: 0, total: 0, groups: [], hostFootprintBytes: 30 * Bytes.gb)
+        report.baselineOverheadBytes = 0
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let noon = Date(timeIntervalSince1970: TimeInterval(1_800_000_000 - 1_800_000_000 % 86_400 + 12 * 3600))
+        settings.refreshContainerVMNightly = true
+        func verdict(_ pressure: MemoryPressureLevel, hoursSinceLast: Double, working: Int = 0) -> CleanupVerdict {
+            policy.evaluateVMRefresh(
+                report, workingSessions: working, initiator: .automatic, settings: settings, lastRefresh: noon.addingTimeInterval(-hoursSinceLast * 3600),
+                pressure: pressure, now: noon, calendar: calendar
+            ).verdict
+        }
+        #expect(report.excessBytes >= settings.vmRefreshMinimumExcessBytes)
+        #expect(verdict(.normal, hoursSinceLast: 8) == .denied)
+        #expect(verdict(.elevated, hoursSinceLast: 8) == .allowed)
+        #expect(verdict(.elevated, hoursSinceLast: 3) == .denied, "not more often than every six hours")
+        #expect(verdict(.critical, hoursSinceLast: 8, working: 1) == .denied, "never under a working session")
+        settings.adaptToMemoryPressure = false
+        #expect(verdict(.critical, hoursSinceLast: 8) == .denied)
+    }
+
     @Test("The engine notices an application quitting, reports what it left, and terminates it only when enabled")
     func engineHandlesLeftovers() async throws {
         let f = Fixture()

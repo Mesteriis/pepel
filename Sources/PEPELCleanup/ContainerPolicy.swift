@@ -165,7 +165,8 @@ extension CleanupPolicyEngine {
     ///   - userIdleSeconds: time since the last keyboard or pointer input.
     public func evaluateVMRefresh(
         _ report: ContainerReport, workingSessions: Int, initiator: Initiator, settings: PepelSettings = PepelSettings(),
-        lastRefresh: Date? = nil, userIdleSeconds: TimeInterval = 0, now: Date = Date(), calendar: Calendar = .current
+        lastRefresh: Date? = nil, userIdleSeconds: TimeInterval = 0, pressure: MemoryPressureLevel = .normal, now: Date = Date(),
+        calendar: Calendar = .current
     ) -> VMRefreshDecision {
         var denials: [String] = []
         var confirmations: [String] = []
@@ -181,14 +182,17 @@ extension CleanupPolicyEngine {
         case .automatic:
             if !settings.refreshContainerVMNightly || settings.paused { denials.append("The nightly VM restart is not enabled.") }
             let sinceLast = lastRefresh.map { now.timeIntervalSince($0) }
-            if let sinceLast, sinceLast < 20 * 3600 {
-                denials.append("The VM was restarted \(TimeFormat.age(sinceLast)) ago; at most once a day.")
+            // Under memory pressure the restart does not wait for the night, but still not more
+            // often than every six hours, and every other condition below stays.
+            let urgent = settings.adaptToMemoryPressure && pressure != .normal
+            if let sinceLast, sinceLast < (urgent ? 6 : 20) * 3600 {
+                denials.append("The VM was restarted \(TimeFormat.age(sinceLast)) ago; at most \(urgent ? "every six hours under memory pressure" : "once a day").")
             }
             // In its night window, or catching up after a night the Mac slept through.
             let hour = calendar.component(.hour, from: now)
             let inWindow = (0..<2).contains((hour - settings.vmRefreshHour + 24) % 24)
             let overdue = (sinceLast ?? .infinity) > 30 * 3600 && userIdleSeconds >= 20 * 60
-            if !inWindow && !overdue {
+            if !inWindow && !overdue && !urgent {
                 denials.append("Outside the night window (\(settings.vmRefreshHour):00–\((settings.vmRefreshHour + 2) % 24):00) and not overdue.")
             }
             if report.excessBytes < settings.vmRefreshMinimumExcessBytes {
@@ -307,5 +311,17 @@ public struct ContainerVMRefresher: Sendable {
                 kind: .container, initiator: initiator.rawValue, subject: "Docker Desktop VM",
                 outcome: report.restarted ? (report.missing.isEmpty ? "restarted" : "restarted, \(report.missing.count) containers not back") : "restart failed",
                 detail: ["steps": report.steps.joined(separator: " "), "missing": report.missing.joined(separator: ", ")]))
+    }
+}
+
+extension CleanupPolicyEngine {
+    /// Flushing the file cache asks for an administrator password, so only a person can start it.
+    /// Returns why it is refused, or nil when it may go ahead.
+    public func cacheFlushDenial(initiator: Initiator) -> String? {
+        switch initiator {
+        case .user, .cli: return nil
+        case .agent: return "Agents cannot have the file cache flushed."
+        case .automatic: return "The file cache is only flushed when you ask: it needs your administrator password."
+        }
     }
 }

@@ -7,7 +7,7 @@ PEPEL runs as the logged-in user and asks for nothing more.
 | Permission | Requested | Why / what happens without it |
 |---|---|---|
 | Full Disk Access | No | Folders macOS protects are reported as unreadable; their sizes become lower bounds. `~/Documents`, `~/Desktop` and `~/Downloads` are not scanned by default so no privacy prompt appears. Adding one of them as a project root makes macOS ask once. |
-| Administrator rights | No | Only the current user's processes are inspected or signalled. |
+| Administrator rights | Only for "Flush the file cache" | Only the current user's processes are inspected or signalled. Flushing the file cache runs the system's `purge`, which needs an administrator: macOS shows its standard prompt each time, PEPEL stores no password and installs no helper. Dismiss the prompt and the step is skipped. |
 | Accessibility | No | Not used. |
 | Notifications | On first alert | Without it PEPEL still shows alerts in the popover and dashboard. |
 | Login item | When you enable "Launch at login" | Uses `SMAppService`; macOS may ask for approval in System Settings. |
@@ -77,7 +77,9 @@ and there is no recursive-delete command line anywhere in the project.
   specific request; never automatically.
 - Memory pressure, memory used and swap are sampled before and after and written to the audit
   log. PEPEL reports the observed change; it does not claim the process's footprint was freed.
-- No `purge`, no memory ballooning, no undocumented kernel calls.
+- No memory ballooning and no undocumented kernel calls. `purge` is used only by the
+  "Flush the file cache" step described below, never as a substitute for stopping what holds
+  memory and never automatically.
 
 ### Free memory
 
@@ -87,9 +89,25 @@ containers of projects no agent works in, and a Docker VM restart. It first show
 does nothing until confirmed. Each step goes through the same policy decision as when done one
 by one, so anything policy refuses is reported and skipped. Idle (not yet sleeping) sessions and,
 while a session is working or a container is kept, the VM restart are offered but not
-preselected; working sessions are never offered. Agents cannot run it. It does not flush the
-file cache: macOS gives that memory up on demand, so flushing only changes the "free" figure.
-The result is the measured before/after of memory used, compressed memory, swap and pressure.
+preselected; working sessions are never offered. Agents cannot run it.
+
+The last step, **Flush the file cache**, runs `/usr/sbin/purge` through the macOS administrator
+prompt (a fixed command line; nothing is interpolated into it). It turns cached file pages into
+free pages and nothing else: memory used by applications, compressed memory and swap are
+unchanged, and macOS fills the cache again as files are read. PEPEL therefore does not count it
+in "up to N GB" and reports it separately as cached files and free memory before and after. Only
+a person can start it; the automatic pass and agents are refused by policy.
+
+The result is the measured before/after of memory used, free memory, cached files, compressed
+memory, swap and pressure.
+
+### Under memory pressure
+
+With `adaptToMemoryPressure` on (off by default), waiting periods of rules that are already
+enabled shorten: half under elevated pressure, a quarter under critical pressure, with floors of
+30 minutes for an agent session and 15 minutes for a project's containers. The Docker VM may
+then restart outside its night window, at most every six hours, and still never while an agent
+session is working or a kept container is up.
 
 ## Local agent API
 
