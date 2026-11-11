@@ -214,7 +214,7 @@ public struct ContainerReport: Codable, Sendable, Hashable {
 // MARK: - Free memory
 
 public enum ReclaimStepKind: String, Codable, Sendable, CaseIterable {
-    case abandonedProcesses, appLeftovers, sleepingAgents, freezeAgents, idleAgents, grownApps, unusedApps, dormantProcesses, serviceBranches, simulators, idleContainers, containerVM, fileCache
+    case abandonedProcesses, appLeftovers, sleepingAgents, freezeAgents, idleAgents, grownApps, unusedApps, dormantProcesses, serviceBranches, browserTabs, simulators, idleContainers, containerVM, fileCache
 }
 
 /// One thing "Free memory" can do, with what it would act on and what it could give back.
@@ -560,6 +560,30 @@ public struct ServiceBranch: Codable, Sendable, Identifiable, Hashable {
         self.processCount = processCount
         self.footprintBytes = footprintBytes
         self.startedAt = startedAt
+        self.idleFor = idleFor
+    }
+}
+
+// MARK: - Browser tabs
+
+/// One renderer process of a browser: a tab, or the tabs of one site.
+public struct BrowserTab: Codable, Sendable, Identifiable, Hashable {
+    public var root: ProcessIdentity
+    public var browser: String
+    public var bundlePath: String
+    public var footprintBytes: Int64
+    public var residentBytes: Int64
+    /// How long it has used almost no CPU; nil when it was busy or not watched long enough.
+    public var idleFor: TimeInterval?
+
+    public var id: ProcessIdentity { root }
+
+    public init(root: ProcessIdentity, browser: String, bundlePath: String, footprintBytes: Int64, residentBytes: Int64, idleFor: TimeInterval?) {
+        self.root = root
+        self.browser = browser
+        self.bundlePath = bundlePath
+        self.footprintBytes = footprintBytes
+        self.residentBytes = residentBytes
         self.idleFor = idleFor
     }
 }

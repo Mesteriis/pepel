@@ -48,7 +48,7 @@ extension CleanupPolicyEngine {
         // …and, only when a person asks, a process that lives in swap and does nothing.
         let dormant = target.dormant
         // …and a language server whose editor is gone.
-        if !target.role.isDeveloperWorkload && !leftover && !dormant && !target.orphanedTool && !target.staleServiceBranch { denials.append("Not a developer workload; PEPEL leaves applications and system processes alone.") }
+        if !target.role.isDeveloperWorkload && !leftover && !dormant && !target.orphanedTool && !target.staleServiceBranch && !target.idleBrowserTab { denials.append("Not a developer workload; PEPEL leaves applications and system processes alone.") }
 
         switch target.eligibility {
         case .never(let reason):
@@ -75,7 +75,9 @@ extension CleanupPolicyEngine {
         case .agent:
             denials.append("Agents cannot request process termination.")
         case .automatic:
-            if target.staleServiceBranch {
+            if target.idleBrowserTab {
+                denials.append("Browser tabs are only unloaded when you ask.")
+            } else if target.staleServiceBranch {
                 denials.append("What an agent's server started is only ended when you ask: PEPEL infers that it is left behind, it cannot know.")
             } else if dormant, !sleepingAgent, !leftover {
                 denials.append("A process living in swap is only ended when you ask: being untouched does not prove it is unwanted.")

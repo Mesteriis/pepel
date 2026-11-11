@@ -310,6 +310,21 @@ public actor PepelEngine {
             excluded.insert(own.identity)
             excluded.formUnion(processTree.ancestors(of: own).map(\.identity))
         }
+        state.browserTabs = BrowserTabs.find(processes: processes, history: history, idleAfter: TimeInterval(settings.tabIdleMinutes) * 60, now: now)
+        state.idleTabs = state.browserTabs.filter { $0.idleFor != nil }.compactMap { tab -> ProcessAssessment? in
+            guard let renderer = processTree.process(tab.root) else { return nil }
+            var assessment = ProcessAssessment(
+                process: renderer, role: .userApp, lifecycle: .abandonedSubprocess, confidence: .probable, projectID: nil, projectConfidence: .unknown,
+                evidence: [
+                    "A process of \(tab.browser) that renders one tab, or the tabs of one site.",
+                    "It has used almost no CPU for \(TimeFormat.age(tab.idleFor ?? 0)), so it is not the tab in front and nothing is playing in it.",
+                    "Ending it unloads those tabs. They stay in the tab strip and load again when you open them; unsent form input and the scroll position are lost.",
+                ],
+                eligibility: .approvalRequired(warning: "Unsent form input in those tabs is lost."), descendantCount: 0, subtreeFootprintBytes: tab.footprintBytes)
+            assessment.idleBrowserTab = true
+            return assessment
+        }
+        excluded.formUnion(state.browserTabs.map(\.root))
         state.serviceBranches = ServiceBranches.find(
             processes: processes, services: sessions, history: history, idleAfter: TimeInterval(settings.serviceBranchIdleMinutes) * 60, now: now)
         state.staleBranches = state.serviceBranches.filter(\.isStale).compactMap { branch -> ProcessAssessment? in
@@ -357,7 +372,8 @@ public actor PepelEngine {
         }
         if now.timeIntervalSince(lastObservationWrite) >= 60 {
             lastObservationWrite = now
-            store.recordObservations(processes.filter { developer.contains($0.identity) }, at: now)
+            // Browser tab processes too, so the command-line tool can tell which have been idle.
+            store.recordObservations(processes.filter { developer.contains($0.identity) || BrowserTabs.isTabRenderer($0) }, at: now)
         }
         if now.timeIntervalSince(lastTelemetryWrite) >= 300 {
             lastTelemetryWrite = now

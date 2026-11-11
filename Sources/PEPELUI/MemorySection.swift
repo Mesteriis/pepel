@@ -3,6 +3,7 @@ import SwiftUI
 
 struct MemorySection: View {
     @Environment(AppModel.self) private var model
+    @State private var confirmTabs = false
     @State private var search = ""
     @State private var showAgentOwned = false
     @State private var expandedOwners = false
@@ -16,6 +17,7 @@ struct MemorySection: View {
                 owners(live)
                 growth(live)
                 unused(live)
+                tabs(live)
                 dormant(live)
                 simulators(live)
                 containers(live)
@@ -39,6 +41,40 @@ struct MemorySection: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(((model.pendingApplication?.reasons ?? []) + (model.pendingApplication?.warnings ?? [])).joined(separator: "\n"))
+        }
+    }
+
+    /// Browser tab processes, with the idle ones offered for unloading.
+    @ViewBuilder private func tabs(_ live: LiveState) -> some View {
+        let idle = live.browserTabs.filter { $0.idleFor != nil }
+        if !live.browserTabs.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Caption("Browser tabs")
+                    Spacer()
+                    if !idle.isEmpty {
+                        Text("\(Bytes.format(idle.reduce(0) { $0 + $1.footprintBytes })) in idle tabs").font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(Theme.amber)
+                        Button("Unload \(idle.count) idle…") { confirmTabs = true }.buttonStyle(QuietButtonStyle())
+                    }
+                }
+                ForEach(live.browserTabs.prefix(10)) { tab in
+                    HStack(spacing: 10) {
+                        Text(tab.browser).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                        Text("tab process \(tab.root.pid) · " + (tab.idleFor.map { "idle \(TimeFormat.age($0))" } ?? "busy or newly seen")).font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
+                        Spacer()
+                        Text(Bytes.format(tab.footprintBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit()
+                    }
+                }
+                Text("Unloading ends the idle tab processes. The tabs stay in the tab strip and load again when you open them; unsent form input and scroll positions are lost. The tab in front and tabs playing something are busy and never included.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+            .panel()
+            .confirmationDialog("Unload \(idle.count) idle browser tab process\(idle.count == 1 ? "" : "es")?", isPresented: $confirmTabs, titleVisibility: .visible) {
+                Button("Unload") { model.unloadIdleTabs() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("The tabs stay and load again when opened. Unsent form input and scroll positions are lost.")
+            }
         }
     }
 

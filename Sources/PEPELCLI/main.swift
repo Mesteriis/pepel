@@ -149,6 +149,28 @@ case "builds":
 case "apps":
     let live = await engine.refreshLive()
     let apps = live.memoryOwners.filter { $0.kind == .application }
+    if arguments.positional.first == "tabs" {
+        let settings = await engine.currentSettings()
+        let idle = live.browserTabs.filter { $0.idleFor != nil }
+        if arguments.positional.dropFirst().first == "unload" {
+            guard !idle.isEmpty else { print("No browser tab process has been idle for \(settings.tabIdleMinutes) minutes (PEPEL needs to have watched it that long)."); break }
+            print("\(idle.count) idle tab processes hold \(Bytes.format(idle.reduce(0) { $0 + $1.footprintBytes })). The tabs stay and load again when opened; unsent form input and scroll positions are lost.")
+            guard arguments.flags.contains("yes") || Out.confirm("Unload them?") else { print("Nothing was unloaded."); break }
+            var done = 0
+            for item in live.idleTabs {
+                if case .completed(let report) = await engine.terminate(item.process.identity, confirmed: true, force: false, initiator: .cli), report.exited { done += 1 }
+            }
+            print("Unloaded \(done) of \(live.idleTabs.count).")
+            break
+        }
+        if arguments.json { Out.json(live.browserTabs); break }
+        if live.browserTabs.isEmpty { print("No browser tab process holds 150 MB or more."); break }
+        Out.table(
+            ["PID", "CHARGED", "IN RAM", "IDLE", "BROWSER"],
+            live.browserTabs.map { [String($0.root.pid), Bytes.format($0.footprintBytes), Bytes.format($0.residentBytes), $0.idleFor.map { TimeFormat.age($0) } ?? "busy or newly seen", $0.browser] })
+        print("\n`pepel apps tabs unload` unloads the idle ones (after \(settings.tabIdleMinutes) minutes without CPU use).")
+        break
+    }
     if arguments.positional.first == "unused" {
         let settings = await engine.currentSettings()
         if arguments.json { Out.json(live.unusedApplications); break }

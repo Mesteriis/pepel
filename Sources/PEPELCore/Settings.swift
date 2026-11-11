@@ -106,6 +106,8 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     public var memoryBudgets: [MemoryBudget] = []
     /// An older copy of a program inside an agent's server counts as left behind after this long idle.
     public var serviceBranchIdleMinutes = 120
+    /// A browser tab's process counts as idle after this long without CPU use.
+    public var tabIdleMinutes = 30
     public var freezeIdleAgents = false
     public var freezeAfterMinutes = 20
     /// How often a frozen session is woken for a moment to see whether work is waiting.

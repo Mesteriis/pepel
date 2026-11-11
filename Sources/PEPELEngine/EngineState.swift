@@ -44,6 +44,9 @@ public struct LiveState: Codable, Sendable {
     public var serviceBranches: [ServiceBranch] = []
     /// The stale ones among them, assessed so they can be ended.
     public var staleBranches: [ProcessAssessment] = []
+    /// Renderer processes of browsers, idle ones first.
+    public var browserTabs: [BrowserTab] = []
+    public var idleTabs: [ProcessAssessment] = []
     /// Process trees PEPEL has suspended.
     public var frozen: [FrozenTree] = []
 

@@ -93,6 +93,7 @@ enum Out {
           pepel memory swapped             Processes that live almost entirely in swap and do nothing
           pepel memory growth              Applications, sessions and tools whose memory keeps growing
           pepel apps [restart|quit <name>] Applications by memory; ask one to quit, or to quit and open again
+          pepel apps tabs [unload]         Browser tab processes by memory; unload the idle ones
           pepel apps unused                Open applications not used for hours and idle in the background
           pepel memory                     Memory pressure, swap and the largest consumers
           pepel processes [--all]          Developer processes and whether they look abandoned

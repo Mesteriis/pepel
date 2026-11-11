@@ -276,6 +276,7 @@ struct SettingsSection: View {
                 Text("Covers helpers and child processes PEPEL saw the application start, or that run from inside its bundle. System-managed components, agent sessions and container runtimes are never included.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
                 stepper("List an open application as unused after", s.unusedApplicationHours, 1...168, suffix: " h without being in front") { v in model.updateSettings { $0.unusedApplicationHours = v } }
+                stepper("Call a browser tab idle after", s.tabIdleMinutes, 5...720, step: 5, suffix: " min without CPU use") { v in model.updateSettings { $0.tabIdleMinutes = v } }
                 Text("Never list as unused:").font(.system(size: 11)).foregroundStyle(Theme.secondary)
                 ForEach(s.keepApplications, id: \.self) { name in
                     HStack {

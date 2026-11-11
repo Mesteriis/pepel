@@ -985,6 +985,47 @@ struct EngineTests {
         #expect(Set(source.snapshot().map(\.pid)) == [500, 530, 540, 550, 560])
     }
 
+    @Test("Only idle tab processes of a real browser are offered for unloading, and only a person can unload them")
+    func browserTabs() async throws {
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        let now = Date()
+        let helper = "/Applications/Dia.app/Contents/Frameworks/Core.framework/Helpers/Browser Helper"
+        func renderer(_ pid: Int32, path: String = helper, extra: [String] = [], mb: Int64 = 400, cpu: UInt64 = 0) -> ProcessSnapshot {
+            process(pid, parent: 600, name: "Browser Helper", path: path, args: [path, "--type=renderer"] + extra, cpu: cpu * 1_000_000_000, footprint: mb * 1_000_000)
+        }
+        let main = process(600, name: "Dia", path: "/Applications/Dia.app/Contents/MacOS/Dia", footprint: 600_000_000)
+        let idle = renderer(601)
+        let busy = renderer(602, cpu: 300)
+        let small = renderer(603, mb: 40)
+        let extensionHost = renderer(604, extra: ["--extension-process"])
+        let gpu = process(605, parent: 600, name: "Browser Helper", path: helper, args: [helper, "--type=gpu-process"], footprint: 500_000_000)
+        let electron = renderer(606, path: "/Applications/Notes.app/Contents/Frameworks/Notes Helper.app/Contents/MacOS/Notes Helper")
+        let unwatched = renderer(607)
+        let all = [main, idle, busy, small, extensionHost, gpu, electron, unwatched]
+        for minutesAgo in [90.0, 60, 30, 1] {
+            store.recordObservations(all.filter { $0.pid != 607 }.map { p in var copy = p; copy.cpuTimeNs = 0; return copy }, at: now.addingTimeInterval(-minutesAgo * 60))
+        }
+        let source = FakeProcessSource(processes: all)
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: source, telemetry: { SystemTelemetry() })
+        let live = await engine.refreshLive()
+        #expect(Set(live.browserTabs.map(\.root.pid)) == [601, 602, 607], "not the small one, the extension host, the GPU process or an Electron application")
+        #expect(live.idleTabs.map(\.process.pid) == [601], "602 used CPU; 607 has not been watched long enough")
+        #expect(live.dormant.isEmpty && live.browserTabs.first?.browser == "Dia")
+
+        _ = try await engine.update { $0.autoTerminateAbandoned = true }
+        _ = await engine.automaticPass()
+        #expect(source.signals.isEmpty)
+        if case .denied = await engine.terminate(idle.identity, confirmed: true, force: false, initiator: .agent) {} else { Issue.record("agents must be denied") }
+        if case .needsConfirmation = await engine.terminate(idle.identity, confirmed: false, force: false, initiator: .user) {} else { Issue.record("must ask first") }
+        let plan = await engine.reclaimPlan()
+        #expect(plan.steps.contains { $0.kind == .browserTabs && !$0.selectedByDefault && $0.estimatedBytes == 400_000_000 })
+        _ = await engine.reclaim(["browserTabs"])
+        #expect(source.signals.map(\.pid) == [601] && source.snapshot().count == 7)
+    }
+
     final class FlushCounter: @unchecked Sendable {
         private let lock = NSLock()
         private var value = 0

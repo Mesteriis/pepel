@@ -109,6 +109,16 @@ extension PepelEngine {
                     estimatedBytes: live.staleBranches.reduce(0) { $0 + $1.subtreeFootprintBytes }, selectedByDefault: false))
         }
 
+        if !live.idleTabs.isEmpty {
+            let browsers = Set(live.browserTabs.filter { $0.idleFor != nil }.map(\.browser)).sorted().joined(separator: ", ")
+            steps.append(
+                ReclaimStep(
+                    kind: .browserTabs, title: "Unload idle browser tabs",
+                    detail: "Tab processes of \(browsers) that have used almost no CPU for \(settings.tabIdleMinutes) minutes. The tabs stay and load again when opened; unsent form input and scroll positions are lost.",
+                    targets: live.browserTabs.filter { $0.idleFor != nil }.map { "\($0.browser) tab process \($0.root.pid) (\(Bytes.format($0.footprintBytes)), idle \(TimeFormat.age($0.idleFor ?? 0)))" },
+                    estimatedBytes: live.idleTabs.reduce(0) { $0 + $1.subtreeFootprintBytes }, selectedByDefault: false))
+        }
+
         if !live.simulators.isEmpty, simulatorShutdown != nil {
             steps.append(
                 ReclaimStep(
@@ -232,6 +242,8 @@ extension PepelEngine {
                 results.append(await terminate((live?.dormant ?? []).filter { !$0.eligibility.isNever }.map(\.process.identity), kind: step.kind, title: step.title))
             case .serviceBranches:
                 results.append(await terminate((live?.staleBranches ?? []).map(\.process.identity), kind: step.kind, title: step.title))
+            case .browserTabs:
+                results.append(await terminate((live?.idleTabs ?? []).map(\.process.identity), kind: step.kind, title: step.title))
             case .simulators:
                 var done = 0
                 var notes: [String] = []

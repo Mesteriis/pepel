@@ -496,6 +496,19 @@ public final class AppModel {
         }
     }
 
+    public func unloadIdleTabs() {
+        Task {
+            var done = 0
+            let idle = live?.idleTabs ?? []
+            for item in idle {
+                if case .completed(let report) = await engine.terminate(item.process.identity, confirmed: true, force: false, initiator: .user), report.exited { done += 1 }
+            }
+            message = "Unloaded \(done) of \(idle.count) idle browser tab processes."
+            live = await engine.live
+            refreshSecondary()
+        }
+    }
+
     // MARK: Docker VM memory limit
 
     public var pendingVMLimit: VMLimitDecision?
