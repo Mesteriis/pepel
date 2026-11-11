@@ -12,17 +12,17 @@ public struct OtherPlaces: Sendable {
 
     /// Location, what it is, and whether each folder inside is listed separately.
     static let places: [(path: String, title: String, note: String, perEntry: Bool)] = [
-        (".android/avd", "Android emulators", "One folder per virtual device, with its disk image.", true),
-        (".rustup/toolchains", "Rust toolchains", "`rustup toolchain uninstall <name>` removes one.", true),
-        (".pyenv/versions", "Python versions (pyenv)", "`pyenv uninstall <version>` removes one.", true),
-        (".local/share/mise/installs", "Language versions (mise)", "`mise uninstall <tool>@<version>` removes one.", true),
-        (".nvm/versions/node", "Node versions (nvm)", "`nvm uninstall <version>` removes one.", true),
-        (".gradle", "Gradle home", "Gradle removes cache entries unused for 30 days by itself.", false),
-        (".m2/repository", "Maven repository", "Downloaded artifacts; fetched again when needed.", false),
-        ("Library/Developer/Xcode/iOS DeviceSupport", "Xcode device support", "Symbols for devices that were connected; recreated when a device connects.", true),
-        ("Library/Developer/CoreSimulator/Caches", "Simulator caches", "Recreated by the simulator.", false),
-        ("Library/Application Support/MobileSync/Backup", "iPhone and iPad backups", "Managed in Finder › device › Manage Backups.", true),
-        (".local/share", "Application data in ~/.local/share", "Data of command-line tools; not a cache.", true),
+        (".android/avd", L("Android emulators"), L("One folder per virtual device, with its disk image."), true),
+        (".rustup/toolchains", L("Rust toolchains"), L("`rustup toolchain uninstall <name>` removes one."), true),
+        (".pyenv/versions", L("Python versions (pyenv)"), L("`pyenv uninstall <version>` removes one."), true),
+        (".local/share/mise/installs", L("Language versions (mise)"), L("`mise uninstall <tool>@<version>` removes one."), true),
+        (".nvm/versions/node", L("Node versions (nvm)"), L("`nvm uninstall <version>` removes one."), true),
+        (".gradle", L("Gradle home"), L("Gradle removes cache entries unused for 30 days by itself."), false),
+        (".m2/repository", L("Maven repository"), L("Downloaded artifacts; fetched again when needed."), false),
+        ("Library/Developer/Xcode/iOS DeviceSupport", L("Xcode device support"), L("Symbols for devices that were connected; recreated when a device connects."), true),
+        ("Library/Developer/CoreSimulator/Caches", L("Simulator caches"), L("Recreated by the simulator."), false),
+        ("Library/Application Support/MobileSync/Backup", L("iPhone and iPad backups"), L("Managed in Finder › device › Manage Backups."), true),
+        (".local/share", L("Application data in ~/.local/share"), L("Data of command-line tools; not a cache."), true),
     ]
 
     public func measure(minimumBytes: Int64 = 200 * Bytes.mb) -> [OtherPlace] {

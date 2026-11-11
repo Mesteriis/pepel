@@ -47,23 +47,25 @@ public struct ProjectBuildSummary: Codable, Sendable, Identifiable, Hashable {
     /// "Makosh has 11 detected build generations consuming 142 GB. Three are protected, …"
     public var narrative: String {
         let count = generations.count
-        var text = "\(name) has \(count) detected build generation\(count == 1 ? "" : "s") consuming \(Bytes.format(totalBytes))."
-        func clause(_ n: Int, _ singular: String, _ plural: String) -> String? {
-            n == 0 ? nil : "\(NumberWords.spell(n)) \(n == 1 ? singular : plural)"
-        }
-        let parts = [
-            clause(protectedCount, "is protected", "are protected"),
-            clause(activeCount, "appears active", "appear active"),
-            clause(candidateCount, "is a candidate for cleanup", "are candidates for cleanup"),
-        ].compactMap { $0 }
-        if !parts.isEmpty {
-            let joined = parts.count > 1 ? parts.dropLast().joined(separator: ", ") + ", and " + parts[parts.count - 1] : parts[0]
-            text += " " + joined.prefix(1).uppercased() + joined.dropFirst() + "."
-        }
+        var text = L("\(name) has \(count) detected build generations consuming \(Bytes.format(totalBytes)).")
+        // One whole sentence per combination, so a translation can agree each count with its verb.
+        let protected = protectedCount, active = activeCount, candidates = candidateCount
+        let breakdown: String? =
+            switch (protected > 0, active > 0, candidates > 0) {
+            case (true, true, true): L("\(protected) are protected, \(active) appear active, and \(candidates) are candidates for cleanup.")
+            case (true, true, false): L("\(protected) are protected, and \(active) appear active.")
+            case (true, false, true): L("\(protected) are protected, and \(candidates) are candidates for cleanup.")
+            case (false, true, true): L("\(active) appear active, and \(candidates) are candidates for cleanup.")
+            case (true, false, false): L("\(protected) are protected.")
+            case (false, true, false): L("\(active) appear active.")
+            case (false, false, true): L("\(candidates) are candidates for cleanup.")
+            case (false, false, false): nil
+            }
+        if let breakdown { text += " " + breakdown }
         if let budgetBytes, overBudget {
-            text += " This is over the \(Bytes.format(budgetBytes)) budget."
+            text += " " + L("This is over the \(Bytes.format(budgetBytes)) budget.")
         } else if let budgetBytes, nearBudget {
-            text += " This is close to the \(Bytes.format(budgetBytes)) budget."
+            text += " " + L("This is close to the \(Bytes.format(budgetBytes)) budget.")
         }
         return text
     }
@@ -143,11 +145,11 @@ public enum BuildGuardian {
             let verdicts =
                 group == unattributedGroup
                 ? Dictionary(uniqueKeysWithValues: inputs.map { input -> (String, RetentionVerdict) in
-                    if input.isActive { return (input.id, .keep(reason: "Build is active.")) }
-                    if input.isPinned { return (input.id, .keep(reason: "Pinned by you.")) }
+                    if input.isActive { return (input.id, .keep(reason: L("Build is active."))) }
+                    if input.isPinned { return (input.id, .keep(reason: L("Pinned by you."))) }
                     return (input.id, input.sourceMissing
-                        ? .candidate(reason: "The source it was built from no longer exists.")
-                        : .keep(reason: "Not associated with a known project; retention rules are not applied."))
+                        ? .candidate(reason: L("The source it was built from no longer exists."))
+                        : .keep(reason: L("Not associated with a known project; retention rules are not applied.")))
                 })
                 : RetentionEngine.evaluate(inputs, policy: policy, now: now)
 
@@ -157,15 +159,15 @@ public enum BuildGuardian {
                     configuration: item.build?.configuration, branch: item.build?.branch, commit: item.build?.commit,
                     status: statuses[item.id] ?? .unknown, timestamp: item.lastModified, sizeBytes: item.occupiedBytes,
                     sizeIsApproximate: item.size?.isApproximate ?? true,
-                    activeReason: activity[item.id] ?? (statuses[item.id] == .running ? "A wrapped build is running." : nil),
+                    activeReason: activity[item.id] ?? (statuses[item.id] == .running ? L("A wrapped build is running.") : nil),
                     isPinned: pinned.contains(item.path), reproducible: item.reproducible,
-                    verdict: verdicts[item.id] ?? .keep(reason: "Not evaluated."))
+                    verdict: verdicts[item.id] ?? .keep(reason: L("Not evaluated.")))
             }.sorted { ($0.timestamp ?? .distantPast) > ($1.timestamp ?? .distantPast) }
             for g in generations { verdictByItem[g.id] = g.verdict }
 
             summaries.append(
                 ProjectBuildSummary(
-                    id: group, name: group == unattributedGroup ? "Unattributed builds" : (groupName(group) ?? (group as NSString).lastPathComponent),
+                    id: group, name: group == unattributedGroup ? L("Unattributed builds") : (groupName(group) ?? (group as NSString).lastPathComponent),
                     attributed: group != unattributedGroup, generations: generations,
                     totalBytes: generations.reduce(0) { $0 + $1.sizeBytes },
                     budgetBytes: group == unattributedGroup ? nil : policy.budgetBytes, policy: policy))
@@ -178,11 +180,11 @@ public enum BuildGuardian {
             case .keep(let reason):
                 // Kept generations stay reviewable, never automatic.
                 copy.safety = .review
-                copy.safetyReason = "Retention keeps it: \(reason)"
+                copy.safetyReason = L("Retention keeps it: \(reason)")
             case .candidate(let reason):
                 let sourceGone = item.build?.sourceMissing ?? false
                 copy.safety = sourceGone || settings.retentionCandidatesAreSafe ? .safe : .review
-                copy.safetyReason = "Retention candidate: \(reason)"
+                copy.safetyReason = L("Retention candidate: \(reason)")
             }
             return copy
         }

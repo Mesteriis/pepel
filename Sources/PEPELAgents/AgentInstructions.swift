@@ -84,9 +84,9 @@ public enum AgentInstructions {
         let text = block(settings: settings, cli: cli)
         return targets(home: home).map { target in
             let directory = (target.path as NSString).deletingLastPathComponent
-            guard PathUtil.isDirectory(PathUtil.canonical(directory)) else { return (target, .skipped("\(target.agent.displayName) is not installed.")) }
+            guard PathUtil.isDirectory(PathUtil.canonical(directory)) else { return (target, .skipped(L("\(target.agent.displayName) is not installed."))) }
             let existing = try? String(contentsOfFile: target.path, encoding: .utf8)
-            if existing == nil, !target.createIfMissing { return (target, .skipped("No instruction file to extend.")) }
+            if existing == nil, !target.createIfMissing { return (target, .skipped(L("No instruction file to extend."))) }
             let updated = applying(text, to: existing ?? "")
             if updated == existing { return (target, .unchanged) }
             backup(target.path, into: backupDirectory)
@@ -94,7 +94,7 @@ public enum AgentInstructions {
                 try updated.write(toFile: PathUtil.canonical(target.path), atomically: true, encoding: .utf8)
                 return (target, existing.map(isInstalled) == true ? .updated : .installed)
             } catch {
-                return (target, .skipped("Could not write: \(error.localizedDescription)"))
+                return (target, .skipped(L("Could not write: \(error.localizedDescription)")))
             }
         }
     }
@@ -106,7 +106,7 @@ public enum AgentInstructions {
                 try removing(from: existing).write(toFile: PathUtil.canonical(target.path), atomically: true, encoding: .utf8)
                 return (target, .removed)
             } catch {
-                return (target, .skipped("Could not write: \(error.localizedDescription)"))
+                return (target, .skipped(L("Could not write: \(error.localizedDescription)")))
             }
         }
     }

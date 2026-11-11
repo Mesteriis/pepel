@@ -5,8 +5,8 @@ import PEPELCore
 /// and nothing is ever removed except through `docker … prune`.
 public struct DockerAnalyzer: StorageAnalyzer {
     public let id = "docker"
-    public let displayName = "Docker and containers"
-    public let detection = "`docker system df` for volumes (shown, never removed); fixed locations for Colima and Lima disks. Containers, images and build cache are under `pepel docker`."
+    public let displayName = L("Docker and containers")
+    public let detection = L("`docker system df` for volumes (shown, never removed); fixed locations for Colima and Lima disks. Containers, images and build cache are under `pepel docker`.")
 
     public init() {}
 
@@ -31,17 +31,17 @@ public struct DockerAnalyzer: StorageAnalyzer {
 
     public func discover(_ context: ScanContext) async -> AnalyzerOutput {
         var output = AnalyzerOutput()
-        for (relative, title) in [(".colima", "Colima virtual machines"), (".lima", "Lima virtual machines")] {
+        for (relative, title) in [(".colima", L("Colima virtual machines")), (".lima", L("Lima virtual machines"))] {
             guard let path = context.homeDirectory(relative) else { continue }
             output.items.append(
                 item(
                     context, category: .container, path: path, title: title,
-                    explanation: "Virtual machine disks holding images, containers and volumes. Manage them with the tool that created them.",
-                    safety: .protected, reason: "May contain database volumes.", reproducible: false, method: .none))
+                    explanation: L("Virtual machine disks holding images, containers and volumes. Manage them with the tool that created them."),
+                    safety: .protected, reason: L("May contain database volumes."), reproducible: false, method: .none))
         }
         guard context.tools.locate("docker") != nil else { return output }
         guard let result = context.tools.run("docker", ["system", "df", "--format", "{{json .}}"], timeout: 8), result.status == 0 else {
-            output.issues.append("Docker is installed but its daemon did not answer; Docker resources were not inspected.")
+            output.issues.append(L("Docker is installed but its daemon did not answer; Docker resources were not inspected."))
             return output
         }
         for line in result.output.split(separator: "\n") {
@@ -56,13 +56,13 @@ public struct DockerAnalyzer: StorageAnalyzer {
             guard type == "Local Volumes" else { continue }
             switch type {
             case "Build Cache":
-                entry = toolItem("build-cache", "Docker build cache", "Cached build layers. Docker rebuilds layers as needed; the next image builds are slower.", .review, "Reproducible by rebuilding.", .tool(.dockerBuildCache), .toolCache)
+                entry = toolItem("build-cache", L("Docker build cache"), L("Cached build layers. Docker rebuilds layers as needed; the next image builds are slower."), .review, L("Reproducible by rebuilding."), .tool(.dockerBuildCache), .toolCache)
             case "Containers":
-                entry = toolItem("stopped-containers", "Stopped Docker containers", "Containers that are not running. Their writable layers are lost when removed; named volumes are kept.", .review, "Stopped containers can still hold files you want.", .tool(.dockerStoppedContainers), .container)
+                entry = toolItem("stopped-containers", L("Stopped Docker containers"), L("Containers that are not running. Their writable layers are lost when removed; named volumes are kept."), .review, L("Stopped containers can still hold files you want."), .tool(.dockerStoppedContainers), .container)
             case "Images":
-                entry = toolItem("dangling-images", "Dangling Docker images", "Untagged image layers no container uses. Tagged images are left alone even when unused.", .review, "Only untagged layers are pruned; the figure Docker reports also includes unused tagged images.", .tool(.dockerDanglingImages), .container)
+                entry = toolItem("dangling-images", L("Dangling Docker images"), L("Untagged image layers no container uses. Tagged images are left alone even when unused."), .review, L("Only untagged layers are pruned; the figure Docker reports also includes unused tagged images."), .tool(.dockerDanglingImages), .container)
             case "Local Volumes":
-                entry = toolItem("volumes", "Docker volumes", "Named and anonymous volumes. They often hold databases.", .protected, "Volumes are never removed by PEPEL.", .none, .containerVolume)
+                entry = toolItem("volumes", L("Docker volumes"), L("Named and anonymous volumes. They often hold databases."), .protected, L("Volumes are never removed by PEPEL."), .none, .containerVolume)
             default:
                 continue
             }
@@ -87,20 +87,20 @@ public struct DockerAnalyzer: StorageAnalyzer {
 /// visibility and always protected; only clearly temporary output is ever proposed.
 public struct AIToolsAnalyzer: StorageAnalyzer {
     public let id = "ai-tools"
-    public let displayName = "AI tools and local models"
-    public let detection = "Fixed home-directory locations of each tool. Their contents are sized but never interpreted."
+    public let displayName = L("AI tools and local models")
+    public let detection = L("Fixed home-directory locations of each tool. Their contents are sized but never interpreted.")
 
     public init() {}
 
     private static let protectedLocations: [(path: String, title: String, category: ArtifactCategory, text: String)] = [
-        (".claude", "Claude Code state", .agentState, "Sessions, history, settings and credentials of Claude Code."),
-        (".codex", "Codex state", .agentState, "Sessions, history, settings and credentials of Codex."),
-        (".local/share/opencode", "OpenCode state", .agentState, "Sessions and history of OpenCode."),
-        (".config/opencode", "OpenCode configuration", .agentState, "Configuration and credentials of OpenCode."),
-        (".hermes", "Hermes state", .agentState, "Sessions, memory and configuration of Hermes."),
-        (".ollama/models", "Ollama models", .modelWeights, "Model weights pulled by Ollama. Re-downloading can take hours."),
-        (".cache/huggingface", "Hugging Face cache", .modelWeights, "Models and datasets downloaded through Hugging Face libraries, including MLX models."),
-        (".lmstudio/models", "LM Studio models", .modelWeights, "Model weights downloaded by LM Studio."),
+        (".claude", L("Claude Code state"), .agentState, L("Sessions, history, settings and credentials of Claude Code.")),
+        (".codex", L("Codex state"), .agentState, L("Sessions, history, settings and credentials of Codex.")),
+        (".local/share/opencode", L("OpenCode state"), .agentState, L("Sessions and history of OpenCode.")),
+        (".config/opencode", L("OpenCode configuration"), .agentState, L("Configuration and credentials of OpenCode.")),
+        (".hermes", L("Hermes state"), .agentState, L("Sessions, memory and configuration of Hermes.")),
+        (".ollama/models", L("Ollama models"), .modelWeights, L("Model weights pulled by Ollama. Re-downloading can take hours.")),
+        (".cache/huggingface", L("Hugging Face cache"), .modelWeights, L("Models and datasets downloaded through Hugging Face libraries, including MLX models.")),
+        (".lmstudio/models", L("LM Studio models"), .modelWeights, L("Model weights downloaded by LM Studio.")),
     ]
 
     public func supportedPaths(_ context: ScanContext) -> [String] {
@@ -115,15 +115,15 @@ public struct AIToolsAnalyzer: StorageAnalyzer {
                 item(
                     context, category: location.category, path: path, title: location.title, explanation: location.text,
                     safety: .protected,
-                    reason: location.category == .modelWeights ? "Reusable model weights are kept." : "Agent state and credentials are never touched.",
+                    reason: location.category == .modelWeights ? L("Reusable model weights are kept.") : L("Agent state and credentials are never touched."),
                     reproducible: false, method: .none))
         }
         if let cache = context.homeDirectory("Library/Caches/claude-cli-nodejs") {
             output.items.append(
                 item(
-                    context, category: .toolCache, path: cache, title: "Claude Code cache",
-                    explanation: "Cache directory of the Claude Code CLI in ~/Library/Caches. macOS itself may purge this location.",
-                    safety: .review, reason: "A cache by location, but its contents are not documented."))
+                    context, category: .toolCache, path: cache, title: L("Claude Code cache"),
+                    explanation: L("Cache directory of the Claude Code CLI in ~/Library/Caches. macOS itself may purge this location."),
+                    safety: .review, reason: L("A cache by location, but its contents are not documented.")))
         }
         // Scratch directories agents create under the system temporary folder (claude-<uid>/<session>).
         for base in [context.sharedTemporaryDirectory + "/claude-\(getuid())", context.temporaryDirectory + "/claude-\(getuid())"] {
@@ -135,9 +135,9 @@ public struct AIToolsAnalyzer: StorageAnalyzer {
                 else { continue }
                 output.items.append(
                     item(
-                        context, category: .temporary, path: path, title: "Agent scratch \(name.prefix(24))",
-                        explanation: "Temporary working files of an agent session, untouched for more than three days. The association with a finished session is a heuristic.",
-                        safety: .review, reason: "Temporary by location; PEPEL cannot verify that the session is finished.", reproducible: false))
+                        context, category: .temporary, path: path, title: L("Agent scratch \(name.prefix(24))"),
+                        explanation: L("Temporary working files of an agent session, untouched for more than three days. The association with a finished session is a heuristic."),
+                        safety: .review, reason: L("Temporary by location; PEPEL cannot verify that the session is finished."), reproducible: false))
             }
         }
         return output

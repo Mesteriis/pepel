@@ -120,11 +120,11 @@ public enum DockerCleanKind: String, Codable, Sendable, CaseIterable, Identifiab
 
     public var title: String {
         switch self {
-        case .containers: "Stopped containers"
-        case .images: "Images no container uses"
-        case .buildCache: "Build cache"
-        case .networks: "Unused networks"
-        case .volumes: "Anonymous volumes no container mounts"
+        case .containers: L("Stopped containers")
+        case .images: L("Images no container uses")
+        case .buildCache: L("Build cache")
+        case .networks: L("Unused networks")
+        case .volumes: L("Anonymous volumes no container mounts")
         }
     }
 
@@ -184,9 +184,9 @@ public struct DockerCleanupPlan: Codable, Sendable, Hashable {
             guard let stopped = container.finishedAt ?? container.createdAt, stopped <= cutoff else { recent += 1; return false }
             return true
         }
-        if kept > 0 { skipped.append("\(kept) stopped container\(kept == 1 ? " is" : "s are") on the keep list.") }
-        if inUse > 0 { skipped.append("\(inUse) stopped container\(inUse == 1 ? " belongs" : "s belong") to a compose project that is running or that an agent is working in.") }
-        if recent > 0 { skipped.append("\(recent) stopped container\(recent == 1 ? "" : "s") stopped less than \(days) days ago.") }
+        if kept > 0 { skipped.append(L("\(kept) stopped containers are on the keep list.")) }
+        if inUse > 0 { skipped.append(L("\(inUse) stopped containers belong to a compose project that is running or that an agent is working in.")) }
+        if recent > 0 { skipped.append(L("\(recent) stopped containers stopped less than \(days) days ago.")) }
 
         // An image is free once every container that uses it is going away too.
         let leaving = Set(containers.map(\.id))
@@ -197,12 +197,12 @@ public struct DockerCleanupPlan: Codable, Sendable, Hashable {
             guard let arrived = image.arrivedAt ?? image.createdAt, arrived <= cutoff else { freshImages += 1; return false }
             return true
         }
-        if freshImages > 0 { skipped.append("\(freshImages) unused image\(freshImages == 1 ? " was" : "s were") pulled or built less than \(days) days ago.") }
+        if freshImages > 0 { skipped.append(L("\(freshImages) unused images were pulled or built less than \(days) days ago.")) }
 
         // A named volume is somebody's data by name and is never a candidate. An anonymous one that
         // nothing mounts is what a removed container left behind.
         let named = report.volumes.filter { $0.links == 0 && !$0.isAnonymous }.count
-        if named > 0 { skipped.append("\(named) named volume\(named == 1 ? " is" : "s are") not mounted by any container; PEPEL never removes named volumes.") }
+        if named > 0 { skipped.append(L("\(named) named volumes are not mounted by any container; PEPEL never removes named volumes.")) }
         let volumes = report.volumes.filter { volume in
             guard volume.links == 0, volume.isAnonymous, !keep.contains(volume.name), volume.composeProject.map(keep.contains) != true else { return false }
             if let project = volume.composeProject, running.contains(project) || activeProjects.contains(project) { return false }

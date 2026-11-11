@@ -7,17 +7,17 @@ public struct RuleAction: Codable, Sendable, Identifiable, Hashable {
 
         public var title: String {
             switch self {
-            case .docker: "Docker"
-            case .staleProjects: "Projects left untouched"
-            case .toolCaches: "Tool caches"
-            case .appCaches: "Application caches"
-            case .logs: "Old logs"
-            case .temp: "Temporary folder"
-            case .emulators: "Android emulators"
-            case .systemImages: "Android system images"
-            case .toolBackups: "Clausona backups"
-            case .screenshots: "Screenshots"
-            case .downloads: "Downloads"
+            case .docker: L("Docker")
+            case .staleProjects: L("Projects left untouched")
+            case .toolCaches: L("Tool caches")
+            case .appCaches: L("Application caches")
+            case .logs: L("Old logs")
+            case .temp: L("Temporary folder")
+            case .emulators: L("Android emulators")
+            case .systemImages: L("Android system images")
+            case .toolBackups: L("Clausona backups")
+            case .screenshots: L("Screenshots")
+            case .downloads: L("Downloads")
             }
         }
 
@@ -138,17 +138,17 @@ public enum SettingsPreset: String, Codable, Sendable, CaseIterable {
 
     public var title: String {
         switch self {
-        case .careful: "Careful"
-        case .normal: "Normal"
-        case .aggressive: "Aggressive"
+        case .careful: L("Careful")
+        case .normal: L("Normal")
+        case .aggressive: L("Aggressive")
         }
     }
 
     public var summary: String {
         switch self {
-        case .careful: "Nothing is removed on its own. PEPEL finds and reports; you decide."
-        case .normal: "Daily rules remove what is rebuilt or downloaded again after a month or two unused. Screenshots go to the Trash after a week."
-        case .aggressive: "Daily rules act after two weeks unused, caches are capped at 10 GB, screenshots go after a day and downloads after a month, to the Trash."
+        case .careful: L("Nothing is removed on its own. PEPEL finds and reports; you decide.")
+        case .normal: L("Daily rules remove what is rebuilt or downloaded again after a month or two unused. Screenshots go to the Trash after a week.")
+        case .aggressive: L("Daily rules act after two weeks unused, caches are capped at 10 GB, screenshots go after a day and downloads after a month, to the Trash.")
         }
     }
 
@@ -240,13 +240,15 @@ public struct SelfUsage: Codable, Sendable, Hashable {
     public func warning(memoryLimitMB: Int) -> String? {
         let cpu = cpuPercent ?? 0
         if memoryLimitMB > 0, footprintBytes > Int64(memoryLimitMB) * Bytes.mb {
-            return "PEPEL itself holds \(Bytes.format(footprintBytes))" + (heavyTasks.isEmpty ? "." : " while \(heavyTasks.joined(separator: ", ")) runs.")
+            return heavyTasks.isEmpty
+                ? L("PEPEL itself holds \(Bytes.format(footprintBytes)).")
+                : L("PEPEL itself holds \(Bytes.format(footprintBytes)) while \(heavyTasks.joined(separator: ", ")) runs.")
         }
         if cpu >= 80, !heavyTasks.isEmpty {
-            return "\(heavyTasks.joined(separator: ", ")) keeps PEPEL at \(Int(cpu.rounded()))% CPU; stop it if the Mac feels slow."
+            return L("\(heavyTasks.joined(separator: ", ")) keeps PEPEL at \(Int(cpu.rounded()))% CPU; stop it if the Mac feels slow.")
         }
         if cpu >= 50, heavyTasks.isEmpty {
-            return "PEPEL uses \(Int(cpu.rounded()))% CPU with no scan running."
+            return L("PEPEL uses \(Int(cpu.rounded()))% CPU with no scan running.")
         }
         return nil
     }

@@ -5,7 +5,7 @@ import PEPELCore
 public struct XcodeDerivedDataAnalyzer: StorageAnalyzer {
     public let id = "xcode.derived-data"
     public let displayName = "Xcode DerivedData"
-    public let detection = "Folders in ~/Library/Developer/Xcode/DerivedData; the owning workspace is read from each folder's info.plist."
+    public let detection = L("Folders in ~/Library/Developer/Xcode/DerivedData; the owning workspace is read from each folder's info.plist.")
 
     public init() {}
 
@@ -17,7 +17,7 @@ public struct XcodeDerivedDataAnalyzer: StorageAnalyzer {
         var output = AnalyzerOutput()
         guard let root = context.homeDirectory("Library/Developer/Xcode/DerivedData") else { return output }
         guard let names = PathUtil.list(root) else {
-            output.issues.append("DerivedData could not be read.")
+            output.issues.append(L("DerivedData could not be read."))
             return output
         }
         for name in names.sorted() {
@@ -29,8 +29,8 @@ public struct XcodeDerivedDataAnalyzer: StorageAnalyzer {
                 output.items.append(
                     item(
                         context, category: .toolCache, path: path, title: name,
-                        explanation: "Compiler cache shared by all Xcode projects. Xcode rebuilds it on demand; the next builds are slower.",
-                        safety: .review, reason: "Shared cache; removing it slows the next build of every project."))
+                        explanation: L("Compiler cache shared by all Xcode projects. Xcode rebuilds it on demand; the next builds are slower."),
+                        safety: .review, reason: L("Shared cache; removing it slows the next build of every project.")))
             }
         }
         return output
@@ -45,10 +45,10 @@ public struct XcodeDerivedDataAnalyzer: StorageAnalyzer {
         var result = item(
             context, category: .buildOutput, path: path, title: displayName.isEmpty ? name : displayName,
             explanation: sourceExists
-                ? "Build products, indexes and logs for \(PathUtil.display(workspace, home: context.home)). Xcode recreates them on the next build."
-                : "Built from \(PathUtil.display(workspace, home: context.home)), which no longer exists. Nothing can use these products any more.",
+                ? L("Build products, indexes and logs for \(PathUtil.display(workspace, home: context.home)). Xcode recreates them on the next build.")
+                : L("Built from \(PathUtil.display(workspace, home: context.home)), which no longer exists. Nothing can use these products any more."),
             safety: sourceExists ? .review : .safe,
-            reason: sourceExists ? "Reproducible; removing it forces a full rebuild and re-index." : "The source workspace was deleted or moved.",
+            reason: sourceExists ? L("Reproducible; removing it forces a full rebuild and re-index.") : L("The source workspace was deleted or moved."),
             build: BuildMetadata(
                 system: .xcode, configuration: configurations.isEmpty ? nil : configurations.joined(separator: ", "),
                 branch: branch, commit: commit, sourcePath: workspace, sourceMissing: !sourceExists))
@@ -59,12 +59,12 @@ public struct XcodeDerivedDataAnalyzer: StorageAnalyzer {
     }
 
     public func validate(_ item: StorageItem) -> String? {
-        guard let identity = PathUtil.identity(item.path) else { return "The path no longer exists." }
-        if identity.isSymlink { return "The path is now a symbolic link." }
+        guard let identity = PathUtil.identity(item.path) else { return L("The path no longer exists.") }
+        if identity.isSymlink { return L("The path is now a symbolic link.") }
         guard (item.path as NSString).deletingLastPathComponent.hasSuffix("/Library/Developer/Xcode/DerivedData") else {
-            return "The path is not directly inside DerivedData."
+            return L("The path is not directly inside DerivedData.")
         }
-        if item.category == .buildOutput, !PathUtil.exists(item.path + "/info.plist") { return "It no longer looks like a DerivedData build folder." }
+        if item.category == .buildOutput, !PathUtil.exists(item.path + "/info.plist") { return L("It no longer looks like a DerivedData build folder.") }
         return nil
     }
 }
@@ -72,8 +72,8 @@ public struct XcodeDerivedDataAnalyzer: StorageAnalyzer {
 /// Other Xcode-owned locations: archives (kept), device support files, simulator data.
 public struct XcodeSupportAnalyzer: StorageAnalyzer {
     public let id = "xcode.support"
-    public let displayName = "Xcode archives, device support and simulators"
-    public let detection = "Fixed locations under ~/Library/Developer."
+    public let displayName = L("Xcode archives, device support and simulators")
+    public let detection = L("Fixed locations under ~/Library/Developer.")
 
     public init() {}
 
@@ -87,9 +87,9 @@ public struct XcodeSupportAnalyzer: StorageAnalyzer {
         if let archives = context.homeDirectory("Library/Developer/Xcode/Archives") {
             output.items.append(
                 item(
-                    context, category: .archive, path: archives, title: "Xcode Archives",
-                    explanation: "Archived builds with their debug symbols. Needed to symbolicate crash reports of shipped versions; they cannot be recreated exactly.",
-                    safety: .protected, reason: "Archives are not reproducible.", reproducible: false, method: .none))
+                    context, category: .archive, path: archives, title: L("Xcode Archives"),
+                    explanation: L("Archived builds with their debug symbols. Needed to symbolicate crash reports of shipped versions; they cannot be recreated exactly."),
+                    safety: .protected, reason: L("Archives are not reproducible."), reproducible: false, method: .none))
         }
         for platform in ["iOS", "watchOS", "tvOS", "visionOS"] {
             guard let base = context.homeDirectory("Library/Developer/Xcode/\(platform) DeviceSupport") else { continue }
@@ -97,23 +97,23 @@ public struct XcodeSupportAnalyzer: StorageAnalyzer {
                 output.items.append(
                     item(
                         context, category: .simulator, path: base + "/" + name, title: "\(platform) DeviceSupport \(name)",
-                        explanation: "Debug symbols copied from a physical device. Xcode copies them again the next time a device with this OS version is connected.",
-                        safety: .review, reason: "Recoverable by reconnecting the device; that takes several minutes."))
+                        explanation: L("Debug symbols copied from a physical device. Xcode copies them again the next time a device with this OS version is connected."),
+                        safety: .review, reason: L("Recoverable by reconnecting the device; that takes several minutes.")))
             }
         }
         if let caches = context.homeDirectory("Library/Developer/CoreSimulator/Caches") {
             output.items.append(
                 item(
-                    context, category: .simulator, path: caches, title: "Simulator caches",
-                    explanation: "dyld shared caches for simulator runtimes. Regenerated when a simulator next boots.",
-                    safety: .review, reason: "Reproducible; the next simulator boot is slower."))
+                    context, category: .simulator, path: caches, title: L("Simulator caches"),
+                    explanation: L("dyld shared caches for simulator runtimes. Regenerated when a simulator next boots."),
+                    safety: .review, reason: L("Reproducible; the next simulator boot is slower.")))
         }
         if let devices = context.homeDirectory("Library/Developer/CoreSimulator/Devices") {
             output.items.append(
                 item(
-                    context, category: .simulator, path: devices, title: "Simulator devices",
-                    explanation: "Simulator disk images including installed apps and their data.",
-                    safety: .protected, reason: "May contain app data and test state that cannot be recreated.", reproducible: false, method: .none))
+                    context, category: .simulator, path: devices, title: L("Simulator devices"),
+                    explanation: L("Simulator disk images including installed apps and their data."),
+                    safety: .protected, reason: L("May contain app data and test state that cannot be recreated."), reproducible: false, method: .none))
             output.items += unavailableSimulators(context, devices: devices)
         }
         return output
@@ -131,18 +131,18 @@ public struct XcodeSupportAnalyzer: StorageAnalyzer {
         return [
             StorageItem(
                 analyzerID: id, category: .simulator, path: "tool://simctl/unavailable",
-                title: "Unavailable simulators (\(paths.count))",
-                explanation: "Simulator devices whose runtime is no longer installed. They cannot be booted. Removed through simctl.",
-                safety: .review, safetyReason: "Unusable without their runtime, but they may still hold app data.", reproducible: false,
+                title: L("Unavailable simulators (\(paths.count))"),
+                explanation: L("Simulator devices whose runtime is no longer installed. They cannot be booted. Removed through simctl."),
+                safety: .review, safetyReason: L("Unusable without their runtime, but they may still hold app data."), reproducible: false,
                 method: .tool(.simulatorUnavailable), measuredPaths: paths)
         ]
     }
 
     public func validate(_ item: StorageItem) -> String? {
         if item.hasPseudoPath { return nil }
-        guard let identity = PathUtil.identity(item.path) else { return "The path no longer exists." }
-        if identity.isSymlink { return "The path is now a symbolic link." }
-        return item.path.contains("/Library/Developer/") ? nil : "The path is outside ~/Library/Developer."
+        guard let identity = PathUtil.identity(item.path) else { return L("The path no longer exists.") }
+        if identity.isSymlink { return L("The path is now a symbolic link.") }
+        return item.path.contains("/Library/Developer/") ? nil : L("The path is outside ~/Library/Developer.")
     }
 }
 
@@ -150,7 +150,7 @@ public struct XcodeSupportAnalyzer: StorageAnalyzer {
 public struct SwiftPMAnalyzer: StorageAnalyzer {
     public let id = "swiftpm"
     public let displayName = "Swift Package Manager"
-    public let detection = "`.build` directories next to a Package.swift, split per target triple and configuration."
+    public let detection = L("`.build` directories next to a Package.swift, split per target triple and configuration.")
 
     public init() {}
 
@@ -170,8 +170,8 @@ public struct SwiftPMAnalyzer: StorageAnalyzer {
                     output.items.append(
                         item(
                             context, category: .dependencyCache, path: triplePath, title: "\(package) · SwiftPM \(triple)",
-                            explanation: "Dependency sources fetched by SwiftPM. `swift package resolve` downloads them again.",
-                            safety: .review, reason: "Recoverable by downloading; needs network access."))
+                            explanation: L("Dependency sources fetched by SwiftPM. `swift package resolve` downloads them again."),
+                            safety: .review, reason: L("Recoverable by downloading; needs network access.")))
                 default:
                     for configuration in ["debug", "release"] {
                         let path = triplePath + "/" + configuration
@@ -179,8 +179,8 @@ public struct SwiftPMAnalyzer: StorageAnalyzer {
                         output.items.append(
                             item(
                                 context, category: .buildOutput, path: path, title: "\(package) · \(configuration)",
-                                explanation: "SwiftPM \(configuration) build products for \(triple). `swift build` recreates them.",
-                                safety: .review, reason: "Reproducible; removing it forces a full rebuild.",
+                                explanation: L("SwiftPM \(configuration) build products for \(triple). `swift build` recreates them."),
+                                safety: .review, reason: L("Reproducible; removing it forces a full rebuild."),
                                 build: BuildMetadata(
                                     system: .swiftpm, configuration: "\(configuration) (\(triple))", branch: branch, commit: commit,
                                     sourcePath: hit.parent + "/Package.swift")))
@@ -191,17 +191,17 @@ public struct SwiftPMAnalyzer: StorageAnalyzer {
         if let cache = context.homeDirectory("Library/Caches/org.swift.swiftpm") {
             output.items.append(
                 item(
-                    context, category: .dependencyCache, path: cache, title: "SwiftPM shared cache",
-                    explanation: "Repository and manifest cache shared by all packages. SwiftPM refills it as packages are resolved.",
-                    safety: .review, reason: "Recoverable by downloading; needs network access."))
+                    context, category: .dependencyCache, path: cache, title: L("SwiftPM shared cache"),
+                    explanation: L("Repository and manifest cache shared by all packages. SwiftPM refills it as packages are resolved."),
+                    safety: .review, reason: L("Recoverable by downloading; needs network access.")))
         }
         return output
     }
 
     public func validate(_ item: StorageItem) -> String? {
-        guard let identity = PathUtil.identity(item.path) else { return "The path no longer exists." }
-        if identity.isSymlink { return "The path is now a symbolic link." }
+        guard let identity = PathUtil.identity(item.path) else { return L("The path no longer exists.") }
+        if identity.isSymlink { return L("The path is now a symbolic link.") }
         if item.path.hasSuffix("/Library/Caches/org.swift.swiftpm") { return nil }
-        return item.path.contains("/.build/") ? nil : "The path is not inside a SwiftPM .build directory."
+        return item.path.contains("/.build/") ? nil : L("The path is not inside a SwiftPM .build directory.")
     }
 }

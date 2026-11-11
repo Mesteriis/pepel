@@ -63,19 +63,19 @@ public struct TempCleaner: Sendable {
             var entry = TempEntry(path: path, name: name, bytes: inspection.bytes, lastUse: Date(timeIntervalSince1970: TimeInterval(inspection.lastUse)), isDirectory: kind == S_IFDIR)
             let key = name.lowercased()
             if info.st_uid != uid {
-                entry.keptBecause = "It belongs to another user."
+                entry.keptBecause = L("It belongs to another user.")
             } else if key.hasPrefix("com.apple.") || key == "temporaryitems" || key.hasPrefix(".") {
-                entry.keptBecause = "macOS manages it."
+                entry.keptBecause = L("macOS manages it.")
             } else if inspection.hasLiveEndpoint {
-                entry.keptBecause = "It holds a socket or pipe: a program is, or was, connected through it."
+                entry.keptBecause = L("It holds a socket or pipe: a program is, or was, connected through it.")
             } else if lowered.contains(where: { key == $0 || key.hasPrefix($0 + ".") || key.hasPrefix($0 + "-") }) {
-                entry.keptBecause = "A running program uses that name."
+                entry.keptBecause = L("A running program uses that name.")
             } else if busyPaths.contains(where: { $0 == path || $0.hasPrefix(path + "/") }) {
-                entry.keptBecause = "A running program works in it."
+                entry.keptBecause = L("A running program works in it.")
             } else if PathUtil.keepMarker(at: path, stopAt: directory) != nil {
-                entry.keptBecause = "It is marked as not to be cleaned."
+                entry.keptBecause = L("It is marked as not to be cleaned.")
             } else if inspection.lastUse >= cutoff {
-                entry.keptBecause = "Used within the last \(days) days."
+                entry.keptBecause = L("Used within the last \(days) days.")
             }
             return entry
         }

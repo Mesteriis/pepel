@@ -44,27 +44,27 @@ public enum MemoryGuardian {
         let proposalBytes = candidates.reduce(Int64(0)) { $0 + $1.process.footprintBytes }
         let developerBytes = assessments.reduce(Int64(0)) { $0 + $1.process.footprintBytes }
 
-        let swap = telemetry.swapUsedBytes > 0 ? " Swap in use: \(Bytes.format(telemetry.swapUsedBytes))." : ""
+        let swap = telemetry.swapUsedBytes > 0 ? " " + L("Swap in use: \(Bytes.format(telemetry.swapUsedBytes)).") : ""
         let headline: String
         var detail: String
         switch telemetry.pressure {
         case .normal:
-            headline = "Memory is healthy"
-            detail = "macOS reports normal memory pressure. \(Bytes.format(telemetry.cachedFileBytes)) of RAM is file cache, which is released on demand; low free memory is expected and not a problem.\(swap)"
+            headline = L("Memory is healthy")
+            detail = L("macOS reports normal memory pressure. \(Bytes.format(telemetry.cachedFileBytes)) of RAM is file cache, which is released on demand; low free memory is expected and not a problem.") + swap
         case .elevated:
-            headline = "Memory pressure is elevated"
-            detail = "macOS is compressing memory (\(Bytes.format(telemetry.compressedBytes)) compressed).\(swap) The system is still responsive but has little headroom."
+            headline = L("Memory pressure is elevated")
+            detail = L("macOS is compressing memory (\(Bytes.format(telemetry.compressedBytes)) compressed).") + swap + " " + L("The system is still responsive but has little headroom.")
         case .critical:
-            headline = "Memory pressure is critical"
-            detail = "macOS is compressing and swapping heavily (\(Bytes.format(telemetry.compressedBytes)) compressed).\(swap) Applications may stall."
+            headline = L("Memory pressure is critical")
+            detail = L("macOS is compressing and swapping heavily (\(Bytes.format(telemetry.compressedBytes)) compressed).") + swap + " " + L("Applications may stall.")
         }
         if candidates.isEmpty {
             if telemetry.pressure != .normal {
-                detail += " PEPEL found no abandoned developer processes to recover memory from; the largest consumers are listed for your judgement."
+                detail += " " + L("PEPEL found no abandoned developer processes to recover memory from; the largest consumers are listed for your judgement.")
             }
         } else {
             let n = candidates.count
-            detail += " \(n) developer process\(n == 1 ? " looks" : "es look") abandoned, holding up to \(Bytes.format(proposalBytes))."
+            detail += " " + L("\(n) developer processes look abandoned, holding up to \(Bytes.format(proposalBytes)).")
         }
         return MemoryAdvice(
             level: telemetry.pressure, headline: headline, detail: detail, proposals: candidates,

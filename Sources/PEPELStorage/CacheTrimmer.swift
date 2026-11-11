@@ -21,18 +21,18 @@ public struct CacheTrimmer: Sendable {
     }
 
     public static let caches: [Definition] = [
-        .init(id: "go-build", title: "Go build cache", path: "Library/Caches/go-build", style: .files, note: "Compiled packages; Go rebuilds what is missing.", tools: ["go", "compile", "link", "gopls"]),
-        .init(id: "sccache", title: "sccache", path: "Library/Caches/Mozilla.sccache", style: .files, note: "Compiler outputs; recompiled when missing.", tools: ["sccache"]),
+        .init(id: "go-build", title: L("Go build cache"), path: "Library/Caches/go-build", style: .files, note: L("Compiled packages; Go rebuilds what is missing."), tools: ["go", "compile", "link", "gopls"]),
+        .init(id: "sccache", title: "sccache", path: "Library/Caches/Mozilla.sccache", style: .files, note: L("Compiler outputs; recompiled when missing."), tools: ["sccache"]),
         // Unpacked packages are folders whose files belong together, so they go whole or not at all.
-        .init(id: "uv", title: "uv unpacked packages", path: ".cache/uv/archive-v0", style: .entries, note: "One folder per unpacked package; uv downloads and unpacks a missing one again.", tools: ["uv", "uvx"]),
-        .init(id: "pip", title: "pip cache", path: "Library/Caches/pip", style: .files, note: "Downloaded wheels and HTTP cache.", tools: ["pip", "pip3"]),
-        .init(id: "npm", title: "npm cache", path: ".npm/_cacache", style: .files, note: "Downloaded packages; npm fetches a missing one again.", tools: ["npm", "npx"]),
-        .init(id: "yarn", title: "Yarn cache", path: "Library/Caches/Yarn", style: .files, note: "Downloaded packages.", tools: ["yarn"]),
-        .init(id: "bun", title: "Bun install cache", path: ".bun/install/cache", style: .entries, note: "Unpacked packages, one folder each.", tools: ["bun", "bunx"]),
-        .init(id: "cargo-registry", title: "Cargo registry cache", path: ".cargo/registry/cache", style: .files, note: "Downloaded crates; fetched again when needed.", tools: ["cargo", "rustc"]),
-        .init(id: "homebrew", title: "Homebrew downloads", path: "Library/Caches/Homebrew", style: .files, note: "Downloaded bottles and source archives.", tools: ["brew"]),
-        .init(id: "playwright", title: "Playwright browsers", path: "Library/Caches/ms-playwright", style: .entries, note: "One folder per browser build; `playwright install` brings one back.", tools: ["playwright"]),
-        .init(id: "puppeteer", title: "Puppeteer browsers", path: ".cache/puppeteer", style: .entries, note: "Downloaded browser builds.", tools: []),
+        .init(id: "uv", title: L("uv unpacked packages"), path: ".cache/uv/archive-v0", style: .entries, note: L("One folder per unpacked package; uv downloads and unpacks a missing one again."), tools: ["uv", "uvx"]),
+        .init(id: "pip", title: L("pip cache"), path: "Library/Caches/pip", style: .files, note: L("Downloaded wheels and HTTP cache."), tools: ["pip", "pip3"]),
+        .init(id: "npm", title: L("npm cache"), path: ".npm/_cacache", style: .files, note: L("Downloaded packages; npm fetches a missing one again."), tools: ["npm", "npx"]),
+        .init(id: "yarn", title: L("Yarn cache"), path: "Library/Caches/Yarn", style: .files, note: L("Downloaded packages."), tools: ["yarn"]),
+        .init(id: "bun", title: L("Bun install cache"), path: ".bun/install/cache", style: .entries, note: L("Unpacked packages, one folder each."), tools: ["bun", "bunx"]),
+        .init(id: "cargo-registry", title: L("Cargo registry cache"), path: ".cargo/registry/cache", style: .files, note: L("Downloaded crates; fetched again when needed."), tools: ["cargo", "rustc"]),
+        .init(id: "homebrew", title: L("Homebrew downloads"), path: "Library/Caches/Homebrew", style: .files, note: L("Downloaded bottles and source archives."), tools: ["brew"]),
+        .init(id: "playwright", title: L("Playwright browsers"), path: "Library/Caches/ms-playwright", style: .entries, note: L("One folder per browser build; `playwright install` brings one back."), tools: ["playwright"]),
+        .init(id: "puppeteer", title: L("Puppeteer browsers"), path: ".cache/puppeteer", style: .entries, note: L("Downloaded browser builds."), tools: []),
     ]
 
     public let home: String

@@ -6,19 +6,19 @@ public enum ArtifactCategory: String, Codable, Sendable, CaseIterable {
 
     public var displayName: String {
         switch self {
-        case .buildOutput: "Build output"
-        case .dependencyCache: "Dependency cache"
-        case .toolCache: "Tool cache"
-        case .testArtifact: "Test artifact"
-        case .virtualEnvironment: "Virtual environment"
-        case .dependencies: "Installed dependencies"
-        case .simulator: "Simulator data"
-        case .archive: "Archive"
-        case .container: "Container data"
-        case .containerVolume: "Container volume"
-        case .agentState: "Agent state"
-        case .modelWeights: "Model weights"
-        case .temporary: "Temporary files"
+        case .buildOutput: L("Build output")
+        case .dependencyCache: L("Dependency cache")
+        case .toolCache: L("Tool cache")
+        case .testArtifact: L("Test artifact")
+        case .virtualEnvironment: L("Virtual environment")
+        case .dependencies: L("Installed dependencies")
+        case .simulator: L("Simulator data")
+        case .archive: L("Archive")
+        case .container: L("Container data")
+        case .containerVolume: L("Container volume")
+        case .agentState: L("Agent state")
+        case .modelWeights: L("Model weights")
+        case .temporary: L("Temporary files")
         }
     }
 }
@@ -37,7 +37,7 @@ public enum BuildSystem: String, Codable, Sendable, CaseIterable {
         case .cmake: "CMake"
         case .ninja: "Ninja"
         case .make: "Make"
-        case .other: "Other"
+        case .other: L("Other")
         }
     }
 }
@@ -407,7 +407,7 @@ public struct DiskForecast: Codable, Sendable, Hashable {
     }
 
     public func sentence(now: Date = Date()) -> String {
-        "The disk has been filling by about \(Bytes.format(perDayBytes)) a day over the last \(TimeFormat.age(basedOn)). At that rate the \(Bytes.format(availableBytes)) that are available last about \(max(1, Int(fullAt.timeIntervalSince(now) / 86_400))) days."
+        L("The disk has been filling by about \(Bytes.format(perDayBytes)) a day over the last \(TimeFormat.age(basedOn)). At that rate the \(Bytes.format(availableBytes)) that are available last about \(max(1, Int(fullAt.timeIntervalSince(now) / 86_400))) days.")
     }
 }
 
