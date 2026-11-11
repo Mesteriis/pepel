@@ -23,7 +23,7 @@ struct CleanupSection: View {
                 Button {
                     withAnimation(.easeOut(duration: 0.2)) { showBlocked.toggle() }
                 } label: {
-                    Label("\(showBlocked ? "Hide" : "Show") \(blocked.count) blocked item\(blocked.count == 1 ? "" : "s") PEPEL will not touch", systemImage: showBlocked ? "chevron.down" : "chevron.right")
+                    Label(showBlocked ? "Hide \(blocked.count) blocked items PEPEL will not touch" : "Show \(blocked.count) blocked items PEPEL will not touch", systemImage: showBlocked ? "chevron.down" : "chevron.right")
                         .font(.system(size: 12)).foregroundStyle(Theme.secondary)
                 }
                 .buttonStyle(.plain)
@@ -43,7 +43,7 @@ struct CleanupSection: View {
         }
         .onChange(of: model.plan?.id) { _, _ in selectSafe() }
         .confirmationDialog(confirmTitle, isPresented: $confirming, titleVisibility: .visible) {
-            Button("Clean \(selected.count) item\(selected.count == 1 ? "" : "s")", role: .destructive) { model.runCleanup(selected: selected, dryRun: false) }
+            Button("Clean \(selected.count) items", role: .destructive) { model.runCleanup(selected: selected, dryRun: false) }
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(confirmMessage)
@@ -57,15 +57,15 @@ struct CleanupSection: View {
 
     private var chosen: [CleanupDecision] { model.plan?.decisions.filter { selected.contains($0.id) } ?? [] }
     private var chosenBytes: Int64 { chosen.reduce(0) { $0 + $1.item.reclaimableBytes } }
-    private var confirmTitle: String { "Clean up to \(Bytes.format(chosenBytes))?" }
+    private var confirmTitle: String { L("Clean up to \(Bytes.format(chosenBytes))?") }
 
     private var confirmMessage: String {
         let permanent = chosen.filter { !$0.action.isUndoable }.count
         let trashed = chosen.count - permanent
         var parts: [String] = []
-        if permanent > 0 { parts.append("\(permanent) item\(permanent == 1 ? "" : "s") will be removed permanently or through a tool. That cannot be undone.") }
-        if trashed > 0 { parts.append("\(trashed) item\(trashed == 1 ? "" : "s") will move to the Trash and can be restored; space is reclaimed when the Trash is emptied.") }
-        parts.append("The amount freed can be lower than shown where files are shared.")
+        if permanent > 0 { parts.append(L("\(permanent) items will be removed permanently or through a tool. That cannot be undone.")) }
+        if trashed > 0 { parts.append(L("\(trashed) items will move to the Trash and can be restored; space is reclaimed when the Trash is emptied.")) }
+        parts.append(L("The amount freed can be lower than shown where files are shared."))
         return parts.joined(separator: " ")
     }
 
@@ -87,13 +87,13 @@ struct CleanupSection: View {
 
     private var modeText: String {
         switch model.settings.deletionMode {
-        case .automatic: "safe items are removed, review items go to the Trash"
-        case .trash: "everything goes to the Trash"
-        case .permanent: "everything is removed permanently"
+        case .automatic: L("safe items are removed, review items go to the Trash")
+        case .trash: L("everything goes to the Trash")
+        case .permanent: L("everything is removed permanently")
         }
     }
 
-    private func group(_ title: String, _ subtitle: String, _ decisions: [CleanupDecision], tint: Color, selectable: Bool) -> some View {
+    private func group(_ title: LocalizedStringKey, _ subtitle: LocalizedStringKey, _ decisions: [CleanupDecision], tint: Color, selectable: Bool) -> some View {
         let sorted = decisions.sorted { $0.item.reclaimableBytes > $1.item.reclaimableBytes }
         let ids = Set(sorted.map(\.id))
         return VStack(alignment: .leading, spacing: 0) {
@@ -145,8 +145,8 @@ struct CleanupSection: View {
                     Text(reason).font(.system(size: 11)).foregroundStyle(decision.verdict == .denied ? Theme.secondary : Theme.copper).fixedSize(horizontal: false, vertical: true)
                 }
                 if decision.verdict != .denied {
-                    // The action column already says whether this is reversible.
-                    ForEach(decision.warnings.filter { !$0.hasPrefix("This cannot be undone") && !$0.hasPrefix("Space is reclaimed") }, id: \.self) { warning in
+                    // The action column already says whether this is reversible. The engine's warnings may arrive translated.
+                    ForEach(decision.warnings.filter { !Self.reversibilityWarnings.contains($0) && !$0.hasPrefix("This cannot be undone") && !$0.hasPrefix("Space is reclaimed") }, id: \.self) { warning in
                         Text(warning).font(.system(size: 10)).foregroundStyle(Theme.tertiary)
                     }
                 }
@@ -158,6 +158,11 @@ struct CleanupSection: View {
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 6)
+    }
+
+    /// The policy engine's warnings that repeat what the action column says.
+    private static var reversibilityWarnings: Set<String> {
+        [L("This cannot be undone."), L("Space is reclaimed only when the Trash is emptied.")]
     }
 
     private func reportView(_ report: CleanupReport) -> some View {
@@ -206,12 +211,12 @@ struct CleanupSection: View {
 
     private func text(_ outcome: CleanupOutcome) -> String {
         switch outcome.status {
-        case .removed: "removed"
-        case .trashed: "moved to Trash"
-        case .toolRan: "cleaned by its tool"
-        case .wouldApply: "would: \(outcome.action.summary.lowercased())"
-        case .skipped(let reason): "skipped — \(reason)"
-        case .failed(let reason): "failed — \(reason)"
+        case .removed: L("removed")
+        case .trashed: L("moved to Trash")
+        case .toolRan: L("cleaned by its tool")
+        case .wouldApply: L("would: \(outcome.action.summary.lowercased())")
+        case .skipped(let reason): L("skipped — \(reason)")
+        case .failed(let reason): L("failed — \(reason)")
         }
     }
 }

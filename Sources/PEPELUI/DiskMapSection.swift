@@ -143,17 +143,21 @@ struct DiskMapSection: View {
     private func caption(_ level: DiskLevel) -> String {
         var parts: [String] = []
         if level.path == "/", let t = model.live?.telemetry, t.diskTotalBytes > 0 {
-            parts.append("used of \(Bytes.format(t.diskTotalBytes)) · \(Bytes.format(t.diskAvailableBytes)) available")
+            parts.append(L("used of \(Bytes.format(t.diskTotalBytes)) · \(Bytes.format(t.diskAvailableBytes)) available"))
         }
         if level.pending > 0 {
-            parts.append("measuring, \(level.pending) folder\(level.pending == 1 ? "" : "s") left · \(Bytes.format(level.bytes)) so far")
+            parts.append(L("measuring, \(level.pending) folders left · \(Bytes.format(level.bytes)) so far"))
         } else {
-            parts.append("\(level.nodes.count) items · measured \(TimeFormat.ago(level.measuredAt))" + (level.complete ? "" : " · stopped early, sizes are partial"))
+            let ago = TimeFormat.ago(level.measuredAt)
+            parts.append(
+                level.complete
+                    ? L("\(level.nodes.count) items · measured \(ago)")
+                    : L("\(level.nodes.count) items · measured \(ago) · stopped early, sizes are partial"))
         }
         return parts.joined(separator: " · ")
     }
 
-    private func legend(_ text: String, _ color: Color) -> some View {
+    private func legend(_ text: LocalizedStringKey, _ color: Color) -> some View {
         HStack(spacing: 5) {
             RoundedRectangle(cornerRadius: 2, style: .continuous).fill(color).frame(width: 10, height: 10)
                 .overlay(RoundedRectangle(cornerRadius: 2, style: .continuous).strokeBorder(Theme.stroke, lineWidth: 1))
@@ -169,7 +173,7 @@ struct DiskMapSection: View {
         var shown = level.nodes.filter { $0.kind == .restricted || Double($0.bytes) / Double(total) >= smallest }
         let rest = level.nodes.filter { $0.kind != .restricted && Double($0.bytes) / Double(total) < smallest && $0.bytes > 0 }
         if !rest.isEmpty {
-            shown.append(DiskNode(path: level.path, name: "\(rest.count) smaller items", kind: .smallFiles, bytes: rest.reduce(0) { $0 + $1.bytes }, fileCount: rest.reduce(0) { $0 + $1.fileCount }))
+            shown.append(DiskNode(path: level.path, name: L("\(rest.count) smaller items"), kind: .smallFiles, bytes: rest.reduce(0) { $0 + $1.bytes }, fileCount: rest.reduce(0) { $0 + $1.fileCount }))
         }
         return shown.sorted { $0.bytes > $1.bytes }
     }
@@ -220,7 +224,7 @@ struct DiskMapSection: View {
     private var measuring: some View {
         HStack(spacing: 8) {
             ProgressView().controlSize(.mini)
-            Text(model.diskMapLevel.map { $0.pending > 0 ? "Measuring folder by folder: \($0.pending) left" : "Measuring" } ?? "Measuring")
+            Text(model.diskMapLevel.map { $0.pending > 0 ? L("Measuring folder by folder: \($0.pending) left") : L("Measuring") } ?? L("Measuring"))
                 .font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(Theme.text)
         }
         .padding(.horizontal, 10).padding(.vertical, 6)
@@ -246,7 +250,8 @@ struct DiskMapSection: View {
                 if node.kind != .restricted {
                     VStack(alignment: .trailing, spacing: 1) {
                         Text(Bytes.format(node.bytes)).font(.system(size: 14, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.text)
-                        Text(String(format: "%.1f%% of this folder", Double(node.bytes) / Double(max(1, level.bytes)) * 100) + (node.fileCount > 1 ? " · \(node.fileCount.formatted()) files" : ""))
+                        let share = String(format: "%.1f%%", Double(node.bytes) / Double(max(1, level.bytes)) * 100)
+                        Text(node.fileCount > 1 ? L("\(share) of this folder · \(node.fileCount) files") : L("\(share) of this folder"))
                             .font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.tertiary)
                     }
                 }
@@ -259,12 +264,12 @@ struct DiskMapSection: View {
     }
 
     private func explanation(_ node: DiskNode, _ facts: DiskTileFacts) -> String {
-        if node.kind == .restricted { return "Not read: macOS guards this folder. Open it to measure it; macOS may ask for access." }
-        if node.kind == .unmeasured { return "Used according to the disk, but in no folder PEPEL may read: system data, other users, guarded folders, snapshots and swap." }
-        if facts.kept { return "Kept: marked as not to be cleaned, or protected by PEPEL's rules." }
-        if facts.reclaimable > 0 { return "PEPEL can clean \(Bytes.format(min(facts.reclaimable, node.bytes))) of this." }
-        if node.unreadable > 0 { return "\(node.unreadable) entries inside could not be read; the size is a lower bound." }
-        return node.kind == .smallFiles ? "Files and folders too small to draw on their own." : ""
+        if node.kind == .restricted { return L("Not read: macOS guards this folder. Open it to measure it; macOS may ask for access.") }
+        if node.kind == .unmeasured { return L("Used according to the disk, but in no folder PEPEL may read: system data, other users, guarded folders, snapshots and swap.") }
+        if facts.kept { return L("Kept: marked as not to be cleaned, or protected by PEPEL's rules.") }
+        if facts.reclaimable > 0 { return L("PEPEL can clean \(Bytes.format(min(facts.reclaimable, node.bytes))) of this.") }
+        if node.unreadable > 0 { return L("\(node.unreadable) entries inside could not be read; the size is a lower bound.") }
+        return node.kind == .smallFiles ? L("Files and folders too small to draw on their own.") : ""
     }
 
     private func chooseFolder() {
@@ -380,11 +385,11 @@ private struct Leaf: View {
                                 .foregroundStyle(node.kind == .restricted || node.kind == .smallFiles || node.kind == .unmeasured ? Theme.secondary : Theme.text).lineLimit(1).truncationMode(.middle)
                         }
                         if size.height >= 38 {
-                            Text(node.kind == .restricted ? "not read" : Bytes.format(node.bytes)).font(.system(size: 11)).monospacedDigit()
+                            Text(node.kind == .restricted ? L("not read") : Bytes.format(node.bytes)).font(.system(size: 11)).monospacedDigit()
                                 .foregroundStyle(cleanable >= 0.02 && !fact.kept ? Theme.text.opacity(0.85) : Theme.secondary)
                         }
                         if size.width >= 150, size.height >= 76, node.fileCount > 1 {
-                            Text("\(node.fileCount.formatted()) files").font(.system(size: 10)).monospacedDigit().foregroundStyle(Theme.tertiary)
+                            Text("\(node.fileCount) files").font(.system(size: 10)).monospacedDigit().foregroundStyle(Theme.tertiary)
                         }
                     }
                     .padding(.horizontal, 6).padding(.vertical, 4)
@@ -406,7 +411,7 @@ private struct Leaf: View {
                 }
             }
         }
-        .accessibilityLabel("\(node.name), \(node.kind == .restricted ? "not read" : Bytes.format(node.bytes))")
+        .accessibilityLabel("\(node.name), \(node.kind == .restricted ? L("not read") : Bytes.format(node.bytes))")
         .accessibilityHint(node.canOpen ? "Opens this folder." : "")
     }
 }
