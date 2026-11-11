@@ -268,10 +268,52 @@ private struct StorageRow: View {
 struct ProjectsSection: View {
     @Environment(AppModel.self) private var model
     @State private var search = ""
+    @State private var confirmStale = false
+
+    /// Projects nobody has touched for the configured time, with what can be removed from them.
+    @ViewBuilder private var stale: some View {
+        let days = model.settings.staleProjectDays
+        let total = model.staleProjects.reduce(Int64(0)) { $0 + $1.bytes }
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Caption("Untouched for \(days)+ days")
+                Spacer()
+                if model.isCleaningStale { ProgressView().controlSize(.small) }
+                if !model.staleProjects.isEmpty {
+                    Button("Remove artifacts of \(model.staleProjects.count) projects · \(Bytes.format(total))…") { confirmStale = true }
+                        .buttonStyle(CopperButtonStyle(prominent: false)).disabled(model.isCleaningStale)
+                }
+            }
+            if model.staleProjects.isEmpty {
+                Text("No project with removable artifacts has been left untouched that long.").font(.system(size: 12)).foregroundStyle(Theme.secondary)
+            }
+            ForEach(model.staleProjects.prefix(8)) { project in
+                HStack(spacing: 10) {
+                    Text(project.name).font(.system(size: 12, weight: .medium)).lineLimit(1).frame(width: 200, alignment: .leading)
+                    PathText(path: project.id)
+                    Spacer()
+                    Text("touched \(TimeFormat.ago(project.lastActivity))").font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                    Text(Bytes.format(project.bytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)
+                }
+            }
+            if model.staleProjects.count > 8 { Text("and \(model.staleProjects.count - 8) more").font(.system(size: 11)).foregroundStyle(Theme.tertiary) }
+            Text("Environments, installed dependencies and build output only: what installing or building again recreates. Source, git data and configuration are never part of it. \"Touched\" is the newest of git's own bookkeeping and the project's files.")
+                .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+        }
+        .panel()
+        .onAppear { model.refreshStaleProjects() }
+        .confirmationDialog("Remove artifacts of \(model.staleProjects.count) untouched projects?", isPresented: $confirmStale, titleVisibility: .visible) {
+            Button("Remove \(Bytes.format(total))") { model.cleanStaleProjects() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Virtual environments, node_modules and build output are removed. Opening a project again means installing its dependencies again. Anything in use, recently written, pinned or excluded stays.")
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionTitle(title: "Projects", subtitle: "Repositories found under your project roots. Worktrees of one repository are grouped; artifact sizes cover only what PEPEL recognises as generated.")
+            stale
             if let usage = model.storage?.projectUsage, !usage.isEmpty {
                 TextField("Filter projects", text: $search).textFieldStyle(.roundedBorder).font(.system(size: 12)).frame(maxWidth: 280)
                 let rows = usage.filter { search.isEmpty || $0.name.lowercased().contains(search.lowercased()) }

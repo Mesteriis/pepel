@@ -50,7 +50,7 @@ public struct PythonAnalyzer: StorageAnalyzer {
                     item(
                         context, category: .virtualEnvironment, path: hit.path, title: "\(owner) · virtual environment",
                         explanation: "Python virtual environment. It may contain packages installed by hand that no lock file records.",
-                        safety: .review, reason: "Never removed automatically or because of age; recreating it may not restore everything."))
+                        safety: .review, reason: "Recreating it may not restore packages installed by hand; removed on its own only under the rule for projects left untouched."))
             case "build", "dist":
                 guard hit.gitIgnored == true, !hit.siblings.isDisjoint(with: python), !hit.siblings.contains("package.json") else { continue }
                 output.items.append(

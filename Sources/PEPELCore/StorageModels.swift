@@ -157,8 +157,17 @@ public struct StorageItem: Codable, Sendable, Identifiable, Hashable {
     public var toolReportedReclaimable: Int64?
     /// For tool-managed items without a single path: the directories whose sizes add up to the item.
     public var measuredPaths: [String]?
+    /// When the project this artifact belongs to was last worked on. Set only for artifacts that
+    /// are recreated by installing or building again, and that lie inside the project.
+    public var projectLastActivity: Date?
 
     public var id: String { path }
+
+    /// Whether the artifact's project has been left untouched for at least `days`.
+    public func isStale(days: Int, now: Date = Date()) -> Bool {
+        guard let last = projectLastActivity else { return false }
+        return now.timeIntervalSince(last) >= Double(days) * 86_400
+    }
 
     public init(
         analyzerID: String, category: ArtifactCategory, path: String, title: String, explanation: String,
@@ -234,4 +243,21 @@ public struct ScanResult: Codable, Sendable {
 
     /// Safe + review. Protected data is never counted as reclaimable.
     public var reclaimableBytes: Int64 { bytes(.safe) + bytes(.review) }
+}
+
+/// A project nobody has touched for a long time, with what its recreatable artifacts hold.
+public struct StaleProject: Codable, Sendable, Identifiable, Hashable {
+    public var id: String
+    public var name: String
+    public var lastActivity: Date
+    public var bytes: Int64
+    public var itemIDs: [String]
+
+    public init(id: String, name: String, lastActivity: Date, bytes: Int64, itemIDs: [String]) {
+        self.id = id
+        self.name = name
+        self.lastActivity = lastActivity
+        self.bytes = bytes
+        self.itemIDs = itemIDs
+    }
 }

@@ -258,6 +258,13 @@ struct SettingsSection: View {
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
 
+            group("Disk: projects left untouched", "Environments, installed dependencies and build output of projects nobody works on. Source, git data and configuration are never removed.") {
+                toggle("Once a day, remove those artifacts from projects left untouched", s.cleanStaleProjects) { v in model.updateSettings { $0.cleanStaleProjects = v } }
+                stepper("Untouched means no change for", s.staleProjectDays, 1...365, suffix: " days") { v in model.updateSettings { $0.staleProjectDays = v } }
+                Text("A project counts as touched when git's bookkeeping or one of its own files changed, or an agent session is in it. Exclude a project with a protection rule of kind Project below.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+
             group("Build retention", "Defaults for every project. Active and pinned builds are always kept.") {
                 stepper("Keep the last", s.defaultRetention.keepSuccessful, 1...20, suffix: " builds") { v in model.updateSettings { $0.defaultRetention.keepSuccessful = v } }
                 stepper("Keep the last", s.defaultRetention.keepFailed, 0...20, suffix: " failed builds") { v in model.updateSettings { $0.defaultRetention.keepFailed = v } }

@@ -85,6 +85,7 @@ enum Out {
           pepel status                     Disk, memory, builds and reclaimable storage at a glance
           pepel scan                       Scan developer storage now (nothing is removed)
           pepel projects                   Discovered projects and their artifact usage
+          pepel projects stale [clean]     Projects left untouched for N days and what their artifacts hold; remove them
           pepel builds                     Build generations, retention verdicts and budgets
           pepel free [--all] [--no-cache]  Free memory: show what would be stopped and flushed, then do it (--yes) and measure
           pepel free permission [--revoke] Whether PEPEL may flush the file cache without asking; remove that permission

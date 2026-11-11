@@ -114,6 +114,29 @@ case "scan":
     if state.items.contains(where: { state.inUse[$0.id] != nil }) { print("* in use right now") }
     for issue in state.scan.issues { print("note [\(issue.analyzerID)]: \(issue.message)") }
 
+case "projects" where arguments.positional.first == "stale":
+    _ = await currentStorage()
+    let settings = await engine.currentSettings()
+    let days = arguments.options["days"].flatMap { Int($0) } ?? settings.staleProjectDays
+    let stale = await engine.staleProjects(days: days)
+    if arguments.json { Out.json(stale); break }
+    guard !stale.isEmpty else { print("No project with removable artifacts has been left untouched for \(days) days."); break }
+    let total = stale.reduce(Int64(0)) { $0 + $1.bytes }
+    if arguments.positional.dropFirst().first == "clean" {
+        print("\(stale.count) projects untouched for \(days)+ days hold \(Bytes.format(total)) of environments, dependencies and build output.")
+        guard arguments.flags.contains("yes") || Out.confirm("Remove these artifacts? Source, git data and configuration are not touched.") else { print("Nothing was removed."); break }
+        if let report = await engine.cleanStaleProjects(days: days, confirmed: true, initiator: .cli) {
+            print("Removed \(report.succeededCount) of \(report.outcomes.count) items. Disk available: \(Bytes.format(report.diskAvailableBefore)) → \(Bytes.format(report.diskAvailableAfter)).")
+            for outcome in report.outcomes where !outcome.status.succeeded { print("  kept \(PathUtil.display(outcome.path, home: appPaths.home)): \(outcome.status)") }
+        }
+        break
+    }
+    Out.table(
+        ["ARTIFACTS", "ITEMS", "LAST TOUCHED", "PROJECT"],
+        stale.prefix(arguments.flags.contains("all") ? 10_000 : 30).map { [Bytes.format($0.bytes), String($0.itemIDs.count), TimeFormat.ago($0.lastActivity), PathUtil.display($0.id, home: appPaths.home)] })
+    print("\n\(stale.count) projects, \(Bytes.format(total)). `pepel projects stale clean` removes their environments, dependencies and build output (--days N to change the age).")
+    print("Automatic daily removal is \(settings.cleanStaleProjects ? "on" : "off") (cleanStaleProjects). Exclude a project with `pepel protect <path> --kind project`.")
+
 case "projects":
     let state = await currentStorage()
     if arguments.json { Out.json(state.projectUsage); break }

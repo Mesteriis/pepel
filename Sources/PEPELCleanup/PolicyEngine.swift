@@ -216,7 +216,10 @@ public struct CleanupPolicyEngine: Sendable {
         case .agent:
             denials.append("Agents can preview cleanup but cannot run it.")
         case .automatic:
-            if context.settings.monitoringMode != .automaticSafe || context.settings.paused {
+            // Two rules let PEPEL clean on its own: the general "automatic safe" mode, and the
+            // rule for artifacts of projects left untouched.
+            let staleRule = context.settings.cleanStaleProjects && item.isStale(days: context.settings.staleProjectDays, now: context.now)
+            if (context.settings.monitoringMode != .automaticSafe && !staleRule) || context.settings.paused {
                 denials.append("Automatic cleanup is not enabled.")
             }
             if item.safety != .safe { denials.append("Only items classified safe are cleaned automatically.") }

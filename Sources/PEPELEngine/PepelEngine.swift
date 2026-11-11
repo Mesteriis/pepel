@@ -476,7 +476,7 @@ public actor PepelEngine {
             items: scan.items, projects: projectIndex, groupName: { [projectIndex] in projectIndex.groupName($0) }, records: records,
             pinned: pins, activity: usage, settings: settings, now: now, isAlive: { source.identity(of: $0) != nil })
         var adjusted = scan
-        adjusted.items = report.items
+        adjusted.items = applyStaleProjectRule(report.items, now: now)
 
         let dayAgo = store.usage(scope: "project", atOrBefore: now.addingTimeInterval(-86_400))
         let earliest = dayAgo.isEmpty ? store.usage(scope: "project", atOrBefore: now.addingTimeInterval(-600)) : dayAgo

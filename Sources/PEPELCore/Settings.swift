@@ -122,6 +122,10 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     /// stopped containers, images no container uses, build cache, unused networks. Never volumes.
     public var dockerAutoClean = false
     public var dockerUnusedDays = 30
+    /// Once a day, remove environments, dependencies and build output of projects nobody has
+    /// touched for `staleProjectDays`. Source, git metadata and configuration are never part of it.
+    public var cleanStaleProjects = false
+    public var staleProjectDays = 30
     public var freezeIdleAgents = false
     public var freezeAfterMinutes = 20
     /// How often a frozen session is woken for a moment to see whether work is waiting.

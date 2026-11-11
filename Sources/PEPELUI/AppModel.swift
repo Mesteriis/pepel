@@ -511,6 +511,26 @@ public final class AppModel {
         }
     }
 
+    // MARK: Untouched projects
+
+    public var staleProjects: [StaleProject] = []
+    public var isCleaningStale = false
+
+    public func refreshStaleProjects() {
+        Task { staleProjects = await engine.staleProjects() }
+    }
+
+    public func cleanStaleProjects() {
+        isCleaningStale = true
+        Task {
+            let report = await engine.cleanStaleProjects(confirmed: true, initiator: .user)
+            isCleaningStale = false
+            message = report.map { "Removed \($0.succeededCount) of \($0.outcomes.count) items. Disk available \(Bytes.format($0.diskAvailableBefore)) → \(Bytes.format($0.diskAvailableAfter))." } ?? "Nothing to remove."
+            scanNow()
+            refreshSecondary()
+        }
+    }
+
     // MARK: Docker on disk
 
     public var dockerDisk: DockerDiskReport?

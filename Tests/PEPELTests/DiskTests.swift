@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import PEPELCleanup
 @testable import PEPELEngine
+@testable import PEPELProjects
 @testable import PEPELStorage
 
 /// A scripted `docker`: answers from fixtures and records every command line.
@@ -169,5 +170,82 @@ struct DiskTests {
         #expect(!script.calls.dropFirst(before).contains { $0.first == "rmi" }, "not again the same day")
         let asAgent = await engine.cleanDocker(kinds: [.images], confirmed: true, initiator: .agent)
         #expect(asAgent.denial != nil && asAgent.report == nil)
+    }
+}
+
+@Suite("Projects left untouched")
+struct StaleProjectTests {
+    @Test("A project's last activity is the newest of git's bookkeeping and its own files, never its generated directories")
+    func activityProbe() {
+        let f = Fixture()
+        let root = f.gitRepo(f.projects + "/app")
+        f.file(root + "/src/deep/main.py")
+        f.file(root + "/node_modules/pkg/index.js")
+        f.age(root, hours: 24 * 90)
+        let old = ProjectActivityProbe.lastActivity(root: root, gitDirectory: root + "/.git")
+        #expect(old.map { Date().timeIntervalSince($0) > 80 * 86_400 } == true)
+        // A build writing into node_modules is not someone working on the project.
+        f.file(root + "/node_modules/pkg/fresh.js")
+        f.age(root, hours: 24 * 90)
+        f.file(root + "/node_modules/pkg/newer.js")
+        let afterBuild = ProjectActivityProbe.lastActivity(root: root, gitDirectory: root + "/.git", skip: [])
+        #expect(afterBuild.map { Date().timeIntervalSince($0) > 80 * 86_400 } == true)
+        // Editing a source file deep inside is.
+        f.file(root + "/src/deep/main.py", text: "changed")
+        let afterEdit = ProjectActivityProbe.lastActivity(root: root, gitDirectory: root + "/.git")
+        #expect(afterEdit.map { Date().timeIntervalSince($0) < 3600 } == true)
+        #expect(ProjectActivityProbe.lastActivity(root: f.root + "/missing", gitDirectory: nil) == nil)
+    }
+
+    @Test("Artifacts of an untouched project are removed on their own only with the rule on; an active project, its source and a project with an agent stay")
+    func staleProjectRule() async throws {
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        func project(_ name: String, touchedDaysAgo: Double?) -> String {
+            let root = f.gitRepo(f.projects + "/" + name)
+            f.file(root + "/pyproject.toml", text: "[project]\nname='x'")
+            f.file(root + "/src/main.py", text: "print(1)")
+            f.file(root + "/.venv/pyvenv.cfg", text: "home = /usr/bin")
+            f.file(root + "/.venv/lib/site.py", bytes: 4096)
+            f.age(root, hours: 24 * 90)
+            // The environment is equally old everywhere; only the project's own files differ.
+            if let days = touchedDaysAgo {
+                f.file(root + "/src/main.py", text: "print(2)")
+                f.age(root + "/src", hours: 24 * days)
+            }
+            return root
+        }
+        let abandoned = project("abandoned", touchedDaysAgo: nil)
+        let active = project("active", touchedDaysAgo: 2)
+        let occupied = project("occupied", touchedDaysAgo: nil)
+        var settings = PepelSettings()
+        settings.projectRoots = [f.projects]
+        try store.saveSettings(settings)
+        let session = process(10, name: "claude", path: "/Users/x/.local/bin/claude", cwd: occupied)
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [PythonAnalyzer()],
+            processSource: FakeProcessSource(processes: [session]), telemetry: { SystemTelemetry(diskTotalBytes: 2000 * Bytes.gb, diskAvailableBytes: 900 * Bytes.gb) })
+
+        var state = await engine.scan()
+        func venv(_ root: String) -> StorageItem? { state.items.first { $0.path == root + "/.venv" } }
+        #expect(venv(abandoned)?.isStale(days: 30) == true && venv(active)?.isStale(days: 30) == false && venv(occupied)?.isStale(days: 30) == false)
+        #expect(venv(abandoned)?.safety == .review, "only marked while the rule is off")
+        #expect(await engine.staleProjects().map(\.name) == ["abandoned"])
+        #expect(await engine.staleProjects(days: 1).map(\.name).sorted() == ["abandoned", "active"], "a shorter age takes in the project touched two days ago")
+        _ = await engine.automaticPass()
+        #expect(PathUtil.exists(abandoned + "/.venv"))
+
+        // An agent may not have it done.
+        #expect(await engine.cleanStaleProjects(confirmed: true, initiator: .agent)?.succeededCount == 0)
+        #expect(PathUtil.exists(abandoned + "/.venv"))
+
+        _ = try await engine.update { $0.cleanStaleProjects = true }
+        state = await engine.scan()
+        #expect(venv(abandoned)?.safety == .safe && venv(active)?.safety == .review && venv(occupied)?.safety == .review)
+        let result = await engine.automaticPass()
+        #expect(result.cleanup?.succeededCount == 1)
+        #expect(!PathUtil.exists(abandoned + "/.venv") && PathUtil.exists(abandoned + "/src/main.py") && PathUtil.exists(abandoned + "/.git") && PathUtil.exists(abandoned + "/pyproject.toml"))
+        #expect(PathUtil.exists(active + "/.venv") && PathUtil.exists(occupied + "/.venv"))
+        #expect(store.audit(kinds: [.cleanup]).first?.initiator == "automatic")
     }
 }
