@@ -85,6 +85,12 @@ pepel memory growth | swapped    What keeps growing; what lives in swap and does
 pepel apps [unused|restart|quit] Applications by memory; unused ones; ask one to quit or restart
 pepel simulators [shutdown …]    Booted simulators and what they hold
 pepel budget [set <owner> <GB>]  Memory budgets per owner; alerts when exceeded
+pepel agents servers [clean]     What agents' servers started and kept; end old idle copies
+pepel apps tabs [unload]         Browser tab processes; unload the idle ones
+pepel memory system [restart …]  Large macOS components; restart one the system brings back
+pepel memory forecast | swap     Where memory use is heading; what swap takes on disk
+pepel containers pause|unpause   Freeze a project's containers in place, and continue them
+pepel summary [--hours N]        What PEPEL did over the last day and what it left for you
 pepel containers limit [<GiB>]   Show or lower the Docker VM's memory limit
 pepel memory                     Memory pressure, swap and the largest consumers
 pepel processes [--all]          Developer processes and whether they look abandoned

@@ -1113,6 +1113,37 @@ struct EngineTests {
         #expect(SwapReport.read(directory: f.root + "/missing", usedBytes: 0).fileCount == 0)
     }
 
+    @Test("The daily summary says what the audit log recorded in the period, and nothing from outside it")
+    func dailySummary() async throws {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        func entry(_ kind: AuditKind, _ subject: String, _ outcome: String, hoursAgo: Double, initiator: String = "user", bytes: Int64 = 0) -> AuditEntry {
+            var e = AuditEntry(kind: kind, initiator: initiator, subject: subject, outcome: outcome, bytes: bytes)
+            e.timestamp = now.addingTimeInterval(-hoursAgo * 3600)
+            return e
+        }
+        let audit = [
+            entry(.termination, "node (PID 1)", "terminated", hoursAgo: 2, initiator: "automatic"),
+            entry(.termination, "claude (PID 2)", "terminated", hoursAgo: 3),
+            entry(.termination, "Claude Code (PID 3)", "suspended", hoursAgo: 4, initiator: "automatic"),
+            entry(.termination, "Claude Code (PID 3)", "woken", hoursAgo: 3, initiator: "engine"),
+            entry(.termination, "Browser", "restarted", hoursAgo: 5, bytes: 3 * Bytes.gb),
+            entry(.termination, "Free memory", "memory used 40 GB → 38 GB", hoursAgo: 6, bytes: 2 * Bytes.gb),
+            entry(.container, "Docker Desktop VM memory", "measured", hoursAgo: 7, bytes: 20 * Bytes.gb),
+            entry(.container, "app (3 containers)", "stopped", hoursAgo: 8, initiator: "automatic"),
+            entry(.cleanup, "~/Library/Caches/x", "removed", hoursAgo: 9, bytes: 5 * Bytes.gb),
+            entry(.scan, "storage scan", "248 items", hoursAgo: 1),
+            entry(.termination, "old (PID 9)", "terminated", hoursAgo: 30),
+        ]
+        let summary = DailySummary.make(audit: audit, open: ["1 application is open but unused, holding 2 GB."], from: now.addingTimeInterval(-86_400), to: now)
+        #expect(summary.memoryFreedBytes == 22 * Bytes.gb && summary.diskFreedBytes == 5 * Bytes.gb)
+        #expect(summary.done.contains("Ended 2 processes, 1 of them by PEPEL's own rules."), "the one from 30 hours ago is not counted")
+        #expect(summary.done.contains("Suspended agent sessions 1 time and woke them 1 time.") && summary.done.contains("Restarted Browser."))
+        #expect(summary.done.contains { $0.hasPrefix("Restarted the Docker VM 1 time") } && summary.done.contains("Stopped the containers of 1 project."))
+        #expect(summary.done.count == 7 && summary.open.count == 1)
+        let quiet = DailySummary.make(audit: [entry(.scan, "storage scan", "248 items", hoursAgo: 1)], open: [], from: now.addingTimeInterval(-86_400), to: now)
+        #expect(quiet.done.isEmpty && quiet.headline == "PEPEL did not need to do anything.")
+    }
+
     final class FlushCounter: @unchecked Sendable {
         private let lock = NSLock()
         private var value = 0

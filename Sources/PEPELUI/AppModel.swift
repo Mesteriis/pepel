@@ -162,6 +162,7 @@ public final class AppModel {
         case .alerts(let current):
             alerts = current
             notify(current)
+            postDailySummaryIfDue()
         case .automatic(let cleanup, let terminations):
             if let cleanup, cleanup.succeededCount > 0 {
                 Notifier.post(
@@ -506,6 +507,30 @@ public final class AppModel {
             message = "Unloaded \(done) of \(idle.count) idle browser tab processes."
             live = await engine.live
             refreshSecondary()
+        }
+    }
+
+    // MARK: Daily summary
+
+    public var summary: DailySummary?
+    private var lastSummaryDay = UserDefaults.standard.integer(forKey: "PEPELLastSummaryDay")
+
+    public func refreshSummary() {
+        Task { summary = await engine.summary() }
+    }
+
+    /// Once a day, at the chosen hour or the first time PEPEL runs after it.
+    private func postDailySummaryIfDue() {
+        let calendar = Calendar.current, now = Date()
+        let day = calendar.ordinality(of: .day, in: .era, for: now) ?? 0
+        guard settings.dailySummary, settings.notificationsEnabled, day != lastSummaryDay, calendar.component(.hour, from: now) >= settings.dailySummaryHour else { return }
+        lastSummaryDay = day
+        UserDefaults.standard.set(day, forKey: "PEPELLastSummaryDay")
+        Task {
+            let result = await engine.summary()
+            summary = result
+            let open = result.open.isEmpty ? "" : " Still there: " + result.open.prefix(2).joined(separator: " ")
+            Notifier.post(id: "summary-\(day)", title: "PEPEL, last 24 hours", body: result.headline + " " + result.done.prefix(3).joined(separator: " ") + open)
         }
     }
 

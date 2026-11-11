@@ -9,11 +9,15 @@ struct HistorySection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             SectionTitle(title: "History", subtitle: "Recorded measurements only. Growth figures say how far back the data actually reaches.")
+            summary
             growth
             chart
             log
         }
-        .onAppear { model.refreshSecondary() }
+        .onAppear {
+            model.refreshSecondary()
+            model.refreshSummary()
+        }
     }
 
     private func figure(_ label: String, _ value: GrowthFigure?) -> some View {
@@ -61,6 +65,27 @@ struct HistorySection: View {
             }
         }
         .panel()
+    }
+
+    /// What PEPEL did over the last day, in words, with what it left for the user.
+    @ViewBuilder private var summary: some View {
+        if let summary = model.summary {
+            VStack(alignment: .leading, spacing: 6) {
+                Caption("Last 24 hours")
+                Text(summary.headline).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                ForEach(summary.done, id: \.self) { line in
+                    Label(line, systemImage: "circle.fill").labelStyle(BulletLabelStyle()).font(.system(size: 12)).foregroundStyle(Theme.text)
+                }
+                if !summary.open.isEmpty {
+                    Text("Still there").font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.amber).padding(.top, 4)
+                    ForEach(summary.open, id: \.self) { line in
+                        Label(line, systemImage: "circle.fill").labelStyle(BulletLabelStyle()).font(.system(size: 12)).foregroundStyle(Theme.secondary)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .panel()
+        }
     }
 
     private var log: some View {
@@ -150,6 +175,10 @@ struct SettingsSection: View {
                 toggle("Pause all monitoring", s.paused) { v in model.updateSettings { $0.paused = v } }
                 toggle("Work less on battery", s.batteryAware) { v in model.updateSettings { $0.batteryAware = v } }
                 toggle("Notifications", s.notificationsEnabled) { v in model.updateSettings { $0.notificationsEnabled = v } }
+                HStack(spacing: 8) {
+                    toggle("Send a summary of the last 24 hours every day", s.dailySummary) { v in model.updateSettings { $0.dailySummary = v } }
+                    stepper("at", s.dailySummaryHour, 0...23, suffix: ":00") { v in model.updateSettings { $0.dailySummaryHour = v } }
+                }
                 HStack(spacing: 8) {
                     toggle("Quiet hours", s.quietHours.enabled) { v in model.updateSettings { $0.quietHours.enabled = v } }
                     stepper("from", s.quietHours.startHour, 0...23, suffix: ":00") { v in model.updateSettings { $0.quietHours.startHour = v } }

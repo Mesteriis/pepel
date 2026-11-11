@@ -89,6 +89,7 @@ enum Out {
           pepel free [--all] [--no-cache]  Free memory: show what would be stopped and flushed, then do it (--yes) and measure
           pepel free permission [--revoke] Whether PEPEL may flush the file cache without asking; remove that permission
           pepel simulators [shutdown …]    Booted simulators and what they hold; shut one or all down
+          pepel summary [--hours N]        What PEPEL did over the last day and what it left for you
           pepel budget [set <owner> <GB>]  Memory budgets per owner (a name, or kind:agentSession); alerts when exceeded
           pepel memory system [restart …]  Large macOS components; restart one that the system brings back by itself
           pepel memory forecast            Where memory use is heading, when it has been rising steadily

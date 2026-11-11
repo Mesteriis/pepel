@@ -212,7 +212,7 @@ public struct ContainerReport: Codable, Sendable, Hashable {
     }
 
     public var explanation: String {
-        var text = "\(running) running container\(running == 1 ? "" : "s") use \(Bytes.format(usedByContainersBytes)) of a virtual machine limited to \(Bytes.format(vmLimitBytes))."
+        var text = "\(running) running container\(running == 1 ? " uses" : "s use") \(Bytes.format(usedByContainersBytes)) of a virtual machine limited to \(Bytes.format(vmLimitBytes))."
         if excessBytes > (2 << 30) {
             text += " This Mac is charged \(Bytes.format(hostFootprintBytes)) for that machine: Linux keeps memory it once used as cache, and the virtual machine hands it back slowly or not at all. Restarting it would return about \(Bytes.format(excessBytes))."
         } else if hostFootprintBytes > 0 {
@@ -747,5 +747,73 @@ public struct SwapReport: Codable, Sendable, Hashable {
             }
         }
         return SwapReport(fileCount: count, onDiskBytes: bytes, usedBytes: usedBytes, sleepImageBytes: sleep, oldestFile: oldest)
+    }
+}
+
+// MARK: - Daily summary
+
+/// What PEPEL did over a period, and what it noticed but left for the user.
+public struct DailySummary: Codable, Sendable, Hashable {
+    public var from: Date
+    public var to: Date
+    /// One sentence per kind of thing that happened; empty when nothing did.
+    public var done: [String]
+    /// What is still there to act on.
+    public var open: [String]
+    /// Sum of what was measured as given back (memory by Free memory and VM restarts, disk by cleanups).
+    public var memoryFreedBytes: Int64
+    public var diskFreedBytes: Int64
+
+    public init(from: Date, to: Date, done: [String], open: [String], memoryFreedBytes: Int64, diskFreedBytes: Int64) {
+        self.from = from
+        self.to = to
+        self.done = done
+        self.open = open
+        self.memoryFreedBytes = memoryFreedBytes
+        self.diskFreedBytes = diskFreedBytes
+    }
+
+    public var headline: String {
+        if done.isEmpty { return "PEPEL did not need to do anything." }
+        var parts: [String] = []
+        if memoryFreedBytes > 0 { parts.append("\(Bytes.format(memoryFreedBytes)) of memory measured as given back") }
+        if diskFreedBytes > 0 { parts.append("\(Bytes.format(diskFreedBytes)) of disk cleaned") }
+        return parts.isEmpty ? "\(done.count) kind\(done.count == 1 ? "" : "s") of action, nothing measured as given back." : parts.joined(separator: ", ") + "."
+    }
+
+    /// Built from the audit log alone, so it says what was recorded, not what was intended.
+    public static func make(audit: [AuditEntry], open: [String], from: Date, to: Date) -> DailySummary {
+        let entries = audit.filter { $0.timestamp >= from && $0.timestamp <= to }
+        func count(_ kind: AuditKind, _ outcomes: Set<String>, subject: ((String) -> Bool)? = nil) -> [AuditEntry] {
+            entries.filter { $0.kind == kind && outcomes.contains($0.outcome) && (subject?($0.subject) ?? true) }
+        }
+        func plural(_ n: Int, _ one: String, _ many: String) -> String { "\(n) \(n == 1 ? one : many)" }
+        var done: [String] = []
+        let special: Set<String> = ["Free memory", "Free memory, standing instruction", "File cache permission"]
+        let ended = count(.termination, ["terminated", "killed"]) { !special.contains($0) }
+        if !ended.isEmpty {
+            let own = ended.filter { $0.initiator == "automatic" }.count
+            done.append("Ended \(plural(ended.count, "process", "processes"))\(own > 0 ? ", \(own) of them by PEPEL's own rules" : "").")
+        }
+        let suspended = count(.termination, ["suspended"]), woken = count(.termination, ["woken"])
+        if !suspended.isEmpty || !woken.isEmpty { done.append("Suspended agent sessions \(plural(suspended.count, "time", "times")) and woke them \(plural(woken.count, "time", "times")).") }
+        let restarted = count(.termination, ["restarted"]), quit = count(.termination, ["quit"])
+        if !restarted.isEmpty { done.append("Restarted \(restarted.map(\.subject).joined(separator: ", ")).") }
+        if !quit.isEmpty { done.append("Quit \(quit.map(\.subject).joined(separator: ", ")).") }
+        let simulators = count(.termination, ["shut down"])
+        if !simulators.isEmpty { done.append("Shut down \(plural(simulators.count, "simulator", "simulators")).") }
+        let stopped = entries.filter { $0.kind == .container && $0.outcome.hasPrefix("stopped") }, paused = entries.filter { $0.kind == .container && $0.outcome.hasPrefix("paused") }
+        if !stopped.isEmpty { done.append("Stopped the containers of \(plural(stopped.count, "project", "projects")).") }
+        if !paused.isEmpty { done.append("Paused the containers of \(plural(paused.count, "project", "projects")).") }
+        let vm = count(.container, ["measured"])
+        let vmBytes = vm.reduce(Int64(0)) { $0 + $1.bytes }
+        if !vm.isEmpty { done.append("Restarted the Docker VM \(plural(vm.count, "time", "times")), which returned \(Bytes.format(vmBytes)).") }
+        let free = entries.filter { $0.kind == .termination && $0.subject == "Free memory" }
+        let freeBytes = free.reduce(Int64(0)) { $0 + $1.bytes }
+        if !free.isEmpty { done.append("Ran Free memory \(plural(free.count, "time", "times")); memory in use fell by \(Bytes.format(freeBytes)) across them.") }
+        let cleanups = entries.filter { $0.kind == .cleanup }
+        let disk = cleanups.reduce(Int64(0)) { $0 + $1.bytes }
+        if !cleanups.isEmpty { done.append("Cleaned \(plural(cleanups.count, "item", "items")) of developer storage, \(Bytes.format(disk)).") }
+        return DailySummary(from: from, to: to, done: done, open: open, memoryFreedBytes: vmBytes + freeBytes, diskFreedBytes: disk)
     }
 }

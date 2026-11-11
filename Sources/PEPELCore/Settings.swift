@@ -112,6 +112,9 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     public var tabIdleMinutes = 30
     /// Warn when memory is forecast to run short within this many minutes; 0 switches the warning off.
     public var forecastWarnMinutes = 45
+    /// Post a summary of the last day once a day at `dailySummaryHour`.
+    public var dailySummary = false
+    public var dailySummaryHour = 9
     public var freezeIdleAgents = false
     public var freezeAfterMinutes = 20
     /// How often a frozen session is woken for a moment to see whether work is waiting.

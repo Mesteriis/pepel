@@ -257,7 +257,7 @@ struct MemorySection: View {
                     }
                 }
             }
-            Text("Cached files are released on demand, so low free memory is normal. PEPEL never “cleans RAM”; it only helps stop processes nobody is using.")
+            Text("Cached files are released on demand, so low free memory is normal. Free memory stops what nobody is using; flushing the cache only turns cached files into free memory.")
                 .font(.system(size: 11)).foregroundStyle(Theme.tertiary)
         }
         .panel()
@@ -393,7 +393,7 @@ struct MemorySection: View {
                     .foregroundStyle(Theme.text)
                     .help(group.containers.map { "\($0.name): \(Bytes.format($0.memoryBytes))\($0.isKept ? " — kept" : "")" }.joined(separator: "\n"))
                 }
-                Text("The limit is set in \(report.product) › Settings › Resources; PEPEL does not change it. Containers are stopped, never removed. \(report.total - report.running) stopped containers use no memory.")
+                Text("The limit is set in \(report.product) › Settings › Resources; PEPEL can lower it from Settings › Containers. Containers are stopped or paused, never removed. \(report.total - report.running) stopped containers use no memory.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
             .panel()

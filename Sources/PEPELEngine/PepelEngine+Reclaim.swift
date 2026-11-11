@@ -358,4 +358,20 @@ extension PepelEngine {
                 detail: ["steps": selection.sorted().joined(separator: ", ")]))
         return report
     }
+
+    /// What PEPEL did over the last `hours`, and what it sees now that is left to the user.
+    public func summary(hours: Double = 24, now: Date = Date()) async -> DailySummary {
+        let liveState = await refreshLive()
+        func plural(_ n: Int, _ one: String, _ many: String) -> String { "\(n) \(n == 1 ? one : many)" }
+        var open: [String] = []
+        if !liveState.growth.isEmpty { open.append("\(liveState.growth.map(\.name).joined(separator: ", ")) kept growing; a restart returns \(Bytes.format(liveState.growth.reduce(0) { $0 + $1.grownBytes })).") }
+        if !liveState.unusedApplications.isEmpty { open.append("\(plural(liveState.unusedApplications.count, "application is", "applications are")) open but unused, holding \(Bytes.format(liveState.unusedApplications.reduce(0) { $0 + $1.footprintBytes })).") }
+        if !liveState.idleTabs.isEmpty { open.append("\(plural(liveState.idleTabs.count, "idle browser tab process holds", "idle browser tab processes hold")) \(Bytes.format(liveState.idleTabs.reduce(0) { $0 + $1.subtreeFootprintBytes })).") }
+        if !liveState.dormant.isEmpty { open.append("\(plural(liveState.dormant.count, "process lives", "processes live")) in swap, \(Bytes.format(liveState.dormant.reduce(0) { $0 + $1.subtreeFootprintBytes })) charged.") }
+        if !liveState.staleBranches.isEmpty { open.append("\(plural(liveState.staleBranches.count, "old copy", "old copies")) inside agent servers hold \(Bytes.format(liveState.staleBranches.reduce(0) { $0 + $1.subtreeFootprintBytes })).") }
+        if !liveState.restartableSystem.isEmpty { open.append("\(liveState.restartableSystem.map(\.process.name).joined(separator: ", ")) could be restarted to return \(Bytes.format(liveState.restartableSystem.reduce(0) { $0 + $1.subtreeFootprintBytes })).") }
+        if let containers = liveState.containers, containers.excessBytes >= 4 * Bytes.gb { open.append("The Docker VM holds \(Bytes.format(containers.excessBytes)) more than its containers need.") }
+        if !liveState.overBudget.isEmpty { open.append("\(liveState.overBudget.map(\.name).joined(separator: ", ")) \(liveState.overBudget.count == 1 ? "is" : "are") over budget.") }
+        return DailySummary.make(audit: store.audit(limit: 5000), open: open, from: now.addingTimeInterval(-hours * 3600), to: now)
+    }
 }

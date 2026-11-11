@@ -448,7 +448,7 @@ case "containers":
             })
     }
     print("\n\(report.total - report.running) more container\(report.total - report.running == 1 ? " is" : "s are") stopped and use no memory.")
-    print("The limit is set in \(report.product) › Settings › Resources; PEPEL does not change it. `pepel containers refresh-vm` restarts the VM to return its memory.")
+    print("The limit is set in \(report.product) › Settings › Resources; `pepel containers limit <GiB>` lowers it. `pepel containers refresh-vm` restarts the VM to return its memory.")
 
 case "free" where arguments.positional.first == "permission":
     let state = await engine.fileCachePermission()
@@ -781,6 +781,17 @@ case "roots":
     }
     let settings = await engine.currentSettings()
     if arguments.json { Out.json(settings.projectRoots) } else { settings.projectRoots.forEach { print($0) } }
+
+case "summary":
+    let hours = arguments.options["hours"].flatMap { Double($0) } ?? 24
+    let summary = await engine.summary(hours: hours)
+    if arguments.json { Out.json(summary); break }
+    print("Last \(TimeFormat.age(hours * 3600)): \(summary.headline)\n")
+    for line in summary.done { print("  · \(line)") }
+    if !summary.open.isEmpty {
+        print("\nStill there:")
+        for line in summary.open { print("  · \(line)") }
+    }
 
 case "budget":
     var settings = await engine.currentSettings()

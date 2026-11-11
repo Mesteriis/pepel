@@ -177,6 +177,15 @@ registered through the system hot key service, which needs no Accessibility perm
 A **memory budget** (`pepel budget set <owner> <GB>`, by owner name or `kind:<kind>`) raises an
 alert when an owner holds more. It never ends, suspends or restarts anything.
 
+### Forecast, swap and the daily summary
+
+These only report. The **forecast** is a straight line through the last 90 minutes of readings,
+shown only when memory in use rose steadily (at least 20 minutes, 1% of memory an hour, a line
+that explains most of the variation) and would reach 90% of physical memory within three hours;
+that 90% is an estimate of where macOS starts to struggle and is described as such. **Swap on
+disk** is read from `/System/Volumes/VM` (file sizes only). The **daily summary** is built from
+the audit log, so it says what was recorded, and can be sent once a day (`dailySummary`).
+
 ### Under memory pressure
 
 With `adaptToMemoryPressure` on (off by default), waiting periods of rules that are already
@@ -223,6 +232,10 @@ users and accidental callers; the narrow operation set is what limits a particip
   the most the containers were seen to use (14 days) plus 1 GiB, and written to
   `settings-store.json` while Docker Desktop is stopped, keeping every other key. The original
   file is copied to PEPEL's support directory once.
+- It can **pause** a project's containers instead of stopping them (`idleContainerAction`,
+  `pepel containers pause|unpause`). Nothing is lost. PEPEL remembers which containers it paused
+  and resumes exactly those when an agent session starts in the project; containers someone else
+  paused are left alone.
 - It never runs `rm`, `down`, `kill`, `prune` on volumes, or anything else that removes data.
 
 ## Agents' instruction files
