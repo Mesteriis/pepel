@@ -192,6 +192,7 @@ struct SettingsSection: View {
     @State private var newKeep = ""
     @State private var newKeepApp = ""
     @State private var newKeepCache = ""
+    @State private var newKeepEmulator = ""
     @State private var budgetKind = ""
     @State private var budgetName = ""
     @State private var budgetGB = 4
@@ -297,6 +298,31 @@ struct SettingsSection: View {
                     .buttonStyle(QuietButtonStyle()).disabled(newKeepCache.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
                 Text("Caches PEPEL cannot tie to an application, and what removed applications left elsewhere in the Library, are never removed automatically. A folder holding a file named DO_NOT_CLEAN.txt (or .pepel-keep), or carrying the attribute com.avm.do-not-clean, is never cleaned by any rule, nor is anything inside it.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+
+            group("Disk: Android emulators", "Virtual devices in ~/.android/avd. Deleting one removes the apps and data inside it; the system images stay, so it can be created again.") {
+                toggle("Once a day, delete emulators that have not been started", s.cleanAndroidEmulators) { v in model.updateSettings { $0.cleanAndroidEmulators = v } }
+                stepper("Not started means no start for", s.emulatorUnusedDays, 7...365, suffix: " days") { v in model.updateSettings { $0.emulatorUnusedDays = v } }
+                Text("Never delete these emulators:").font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                ForEach(s.keepEmulators, id: \.self) { name in
+                    HStack {
+                        Badge(text: "keep", tint: Theme.copper)
+                        Text(name).font(Theme.mono).foregroundStyle(Theme.text)
+                        Spacer()
+                        Button("Remove") { model.updateSettings { $0.keepEmulators.removeAll { $0 == name } } }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                    }
+                }
+                HStack(spacing: 8) {
+                    TextField("emulator name, for example rune_api37_20260906", text: $newKeepEmulator).textFieldStyle(.roundedBorder).font(.system(size: 12)).frame(maxWidth: 320)
+                    Button("Keep") {
+                        let name = newKeepEmulator.trimmingCharacters(in: .whitespaces)
+                        model.updateSettings { if !$0.keepEmulators.contains(name) { $0.keepEmulators.append(name) } }
+                        newKeepEmulator = ""
+                    }
+                    .buttonStyle(QuietButtonStyle()).disabled(newKeepEmulator.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                Text("A start is read from the device's own files, which the emulator writes every time it runs. A running emulator, one marked with DO_NOT_CLEAN.txt and one on this list are never deleted; each candidate is checked again right before deletion.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
 

@@ -865,3 +865,48 @@ struct LargeFilesTests {
         #expect(PathUtil.exists(f.home + "/vm/old-disk.img"), "only a report")
     }
 }
+
+@Suite("Android emulator rule")
+struct AndroidEmulatorRuleTests {
+    @Test("The daily rule deletes only emulators unused long enough, never running, kept or marked ones, and only when switched on")
+    func rule() async throws {
+        let f = Fixture()
+        let avd = f.home + "/.android/avd"
+        func device(_ name: String, daysOld: Double?) {
+            f.file(avd + "/\(name).ini", text: "path=\(avd)/\(name).avd\ntarget=android-36\n")
+            f.file(avd + "/\(name).avd/userdata-qemu.img", bytes: 1 << 20)
+            if let daysOld { f.age(avd + "/\(name).avd", hours: 24 * daysOld) }
+        }
+        device("old", daysOld: 60)
+        device("older_but_running", daysOld: 90)
+        device("kept_by_list", daysOld: 90)
+        device("kept_by_marker", daysOld: 90)
+        f.file(avd + "/kept_by_marker.avd/DO_NOT_CLEAN.txt")
+        f.age(avd + "/kept_by_marker.avd", hours: 24 * 90)
+        device("recent", daysOld: 10)
+        let qemu = process(900, name: "qemu-system-aarch64", args: ["qemu-system-aarch64", "-avd", "older_but_running"])
+        let store = try PepelStore.inMemory()
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: FakeProcessSource(processes: [qemu]), telemetry: { SystemTelemetry() })
+        _ = try await engine.update { $0.keepEmulators = ["KEPT_BY_LIST"] }
+
+        #expect(Set(await engine.emulatorRuleCandidates().map(\.name)) == ["old", "kept_by_marker"], "the marker is checked at deletion, the list and the age here")
+        _ = await engine.automaticPass()
+        #expect(PathUtil.exists(avd + "/old.avd"), "off by default")
+        #expect(await engine.deleteAndroidEmulator("old", confirmed: true, initiator: .automatic) != nil)
+        #expect(await engine.deleteAndroidEmulator("old", confirmed: true, initiator: .agent) != nil)
+
+        _ = try await engine.update { $0.cleanAndroidEmulators = true }
+        _ = await engine.automaticPass()
+        #expect(!PathUtil.exists(avd + "/old.avd") && !PathUtil.exists(avd + "/old.ini"))
+        for name in ["older_but_running", "kept_by_list", "kept_by_marker", "recent"] { #expect(PathUtil.exists(avd + "/\(name).avd"), "\(name) must stay") }
+        #expect(await engine.deleteAndroidEmulator("recent", confirmed: false, initiator: .automatic)?.contains("waits 30 days") == true)
+        #expect(store.audit(kinds: [.cleanup]).contains { $0.subject == "Android emulator old" && $0.initiator == "automatic" })
+
+        // The age is a setting.
+        _ = try await engine.update { $0.emulatorUnusedDays = 7 }
+        #expect(await engine.emulatorRuleCandidates().map(\.name).contains("recent"))
+    }
+}
+

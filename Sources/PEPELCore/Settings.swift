@@ -145,6 +145,11 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     /// Once a day, remove from the temporary folder what nothing has used for `tempDays`.
     public var cleanTempFiles = false
     public var tempDays = 7
+    /// Once a day, delete Android emulators that have not been started for `emulatorUnusedDays`.
+    public var cleanAndroidEmulators = false
+    public var emulatorUnusedDays = 30
+    /// Emulators never deleted by the rule, by name.
+    public var keepEmulators: [String] = []
     public var freezeIdleAgents = false
     public var freezeAfterMinutes = 20
     /// How often a frozen session is woken for a moment to see whether work is waiting.

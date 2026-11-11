@@ -91,6 +91,7 @@ extension PepelEngine {
         await autoCleanApplicationCaches()
         await autoRemoveOldLogs()
         await autoCleanTemp()
+        await autoCleanEmulators()
         if let stale = await autoCleanStaleProjects(), stale.succeededCount > 0 { cleanup = stale }
         if settings.monitoringMode == .automaticSafe, let storage {
             let safe = Set(storage.items.filter { $0.safety == .safe }.map(\.id))

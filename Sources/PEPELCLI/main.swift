@@ -902,7 +902,20 @@ case "disk":
         break
     }
     if arguments.positional.first == "emulators" {
-        if arguments.positional.dropFirst().first == "delete" {
+        let verb = arguments.positional.dropFirst().first
+        if verb == "keep" || verb == "unkeep" {
+            let names = Array(arguments.positional.dropFirst(2))
+            guard !names.isEmpty else { Out.error("usage: pepel disk emulators keep|unkeep <name> …"); exit(2) }
+            _ = try await engine.update { s in
+                for name in names {
+                    s.keepEmulators.removeAll { $0.caseInsensitiveCompare(name) == .orderedSame }
+                    if verb == "keep" { s.keepEmulators.append(name) }
+                }
+            }
+            print(verb == "keep" ? "The daily rule will never delete \(names.joined(separator: ", "))." : "\(names.joined(separator: ", ")) no longer kept.")
+            break
+        }
+        if verb == "delete" {
             let names = Array(arguments.positional.dropFirst(2))
             guard !names.isEmpty else { Out.error("usage: pepel disk emulators delete <name> … [--yes]"); exit(2) }
             guard arguments.flags.contains("yes") || Out.confirm("Delete \(names.joined(separator: ", ")) for good? Apps and data inside are lost.") else { print("Nothing was deleted."); break }
@@ -915,10 +928,19 @@ case "disk":
         let emulators = await engine.androidEmulators()
         if arguments.json { Out.json(emulators); break }
         guard !emulators.isEmpty else { print("No Android emulators in ~/.android/avd."); break }
+        let candidates = Set(await engine.emulatorRuleCandidates().map(\.name))
         Out.table(
             ["SIZE", "LAST USED", "", "TARGET", "NAME"],
-            emulators.map { [Bytes.format($0.bytes), $0.lastUse.map { TimeFormat.ago($0) } ?? "—", $0.running ? "running" : "", $0.target ?? "—", $0.name] })
+            emulators.map { emulator in
+                let kept = settings.keepEmulators.contains { $0.caseInsensitiveCompare(emulator.name) == .orderedSame }
+                return [
+                    Bytes.format(emulator.bytes), emulator.lastUse.map { TimeFormat.ago($0) } ?? "—",
+                    emulator.running ? "running" : kept ? "kept" : candidates.contains(emulator.name) ? "rule would delete" : "",
+                    emulator.target ?? "—", emulator.name,
+                ]
+            })
         print("\n\(emulators.count) emulators, \(Bytes.format(emulators.reduce(0) { $0 + $1.bytes })). `pepel disk emulators delete <name>` deletes one, as Android Studio does; apps and data inside are lost.")
+        print("Daily rule: \(settings.cleanAndroidEmulators ? "on" : "off") (cleanAndroidEmulators), after \(settings.emulatorUnusedDays) days without a start (emulatorUnusedDays); `pepel disk emulators keep <name>` excludes one.")
         break
     }
     if arguments.positional.first == "temp" {

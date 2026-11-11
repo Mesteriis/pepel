@@ -307,7 +307,10 @@ the usual checks; PEPEL never removes these on its own.
 
 **Android emulators** (`pepel disk emulators`). Listed with size and last use; a person can
 delete chosen ones, which removes the `.avd` folder and its `.ini` as Android Studio does. A
-running emulator (by its process or lock file) and a marked one are refused.
+running emulator (by its process, or by a lock some process holds) and a marked one are refused.
+The daily rule (`cleanAndroidEmulators`, off by default) deletes emulators not started for
+`emulatorUnusedDays` (30), except those named in `keepEmulators`; each candidate is checked again
+right before deletion.
 
 **Large old files and copies** (`pepel disk files`). A report only: files of 500 MB or more not
 opened for 90 days, and files of 100 MB or more with identical contents (same size, then the

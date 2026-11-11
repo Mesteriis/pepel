@@ -456,10 +456,31 @@ extension PepelEngine {
         return await Task.detached(priority: .utility) { emulators.list(running: running) }.value
     }
 
-    /// Deletes one emulator for good. Only a person can ask; a running one is refused.
+    /// Why the daily rule would leave this emulator alone, or nil when it would delete it.
+    func emulatorRuleRefusal(_ emulator: AndroidEmulator, now: Date = Date()) -> String? {
+        if emulator.running { return "It is running." }
+        if settings.keepEmulators.contains(where: { $0.caseInsensitiveCompare(emulator.name) == .orderedSame }) { return "It is on the keep list." }
+        guard let last = emulator.lastUse else { return "PEPEL cannot tell when it was last started." }
+        let unused = now.timeIntervalSince(last)
+        if unused < Double(settings.emulatorUnusedDays) * 86_400 {
+            return "Started \(TimeFormat.age(unused)) ago; the rule waits \(settings.emulatorUnusedDays) days."
+        }
+        return nil
+    }
+
+    /// Deletes one emulator for good. A person can ask for any that is not running; the daily
+    /// rule only for one it is switched on for, unused long enough and not kept.
     public func deleteAndroidEmulator(_ name: String, confirmed: Bool, initiator: Initiator) async -> String? {
-        guard initiator == .user || initiator == .cli else { return "Only you can delete an emulator." }
-        guard confirmed else { return "This needs your confirmation." }
+        switch initiator {
+        case .agent: return "Agents cannot delete emulators."
+        case .automatic:
+            guard settings.cleanAndroidEmulators, !settings.paused else { return "Deleting unused emulators is not enabled." }
+            // Decided again on a fresh reading, right before deleting.
+            guard let emulator = await androidEmulators().first(where: { $0.name == name }) else { return "No such emulator." }
+            if let refusal = emulatorRuleRefusal(emulator) { return refusal }
+        case .user, .cli:
+            guard confirmed else { return "This needs your confirmation." }
+        }
         let emulators = AndroidEmulators(home: paths.home), running = AndroidEmulators.runningNames(processSource.snapshot())
         let bytes = emulators.folder(of: name).map { DirectorySizer().measure($0).allocatedBytes } ?? 0
         if let refusal = await Task.detached(priority: .utility, operation: { emulators.delete(name, running: running) }).value { return refusal }
@@ -473,5 +494,20 @@ extension PepelEngine {
     public nonisolated func largeFiles(days: Int = 90, includeGuarded: Bool = false) async -> LargeFilesReport {
         let finder = LargeFiles(home: paths.home)
         return await Task.detached(priority: .utility) { finder.report(days: days, includeGuarded: includeGuarded) }.value
+    }
+}
+
+extension PepelEngine {
+    /// Emulators the daily rule would delete now, with what it would free.
+    public func emulatorRuleCandidates() async -> [AndroidEmulator] {
+        let now = Date()
+        return await androidEmulators().filter { emulatorRuleRefusal($0, now: now) == nil }
+    }
+
+    func autoCleanEmulators(now: Date = Date()) async {
+        guard settings.cleanAndroidEmulators, !settings.paused, dueDaily("emulators.lastAutoClean", now: now) else { return }
+        for emulator in await emulatorRuleCandidates() {
+            _ = await deleteAndroidEmulator(emulator.name, confirmed: false, initiator: .automatic)
+        }
     }
 }

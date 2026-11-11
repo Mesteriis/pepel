@@ -256,7 +256,16 @@ struct StorageSection: View {
                         }
                         .toggleStyle(.checkbox).disabled(emulator.running)
                         if emulator.running { Badge(text: "running", tint: Theme.forest) }
+                        let kept = model.settings.keepEmulators.contains { $0.caseInsensitiveCompare(emulator.name) == .orderedSame }
+                        if kept { Badge(text: "kept", tint: Theme.copper) }
                         Spacer()
+                        Button(kept ? "Unkeep" : "Keep") {
+                            model.updateSettings { s in
+                                if kept { s.keepEmulators.removeAll { $0.caseInsensitiveCompare(emulator.name) == .orderedSame } } else { s.keepEmulators.append(emulator.name) }
+                            }
+                        }
+                        .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                        .help(kept ? "Let the daily rule delete it when it is unused long enough." : "The daily rule never deletes it.")
                         Text(emulator.lastUse.map { "used \(TimeFormat.ago($0))" } ?? "").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
                         Text(Bytes.format(emulator.bytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)
                     }
