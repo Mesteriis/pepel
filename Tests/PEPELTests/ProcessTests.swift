@@ -546,10 +546,21 @@ struct ProcessTests {
         ]
         #expect(state(housekeeping).state == .sleeping, "hourly housekeeping writes must not keep a session awake")
 
-        // The same small writes, but two of them within a minute: that is someone working.
-        root.diskBytesWritten = 1_060_000
+        // The same housekeeping tick seen through 20-second samples, where its own CPU blip looks
+        // large: still housekeeping, because the write is small.
+        root.diskBytesWritten = 1_020_000
+        root.cpuTimeNs = UInt64(44 * 1e9)
+        let fineGrained = [
+            root.identity: series(
+                minutes: [180, 61, 60.67, 60.33, 60, 1], written: [1_000_000, 1_000_000, 1_012_000, 1_020_000, 1_020_000, 1_020_000],
+                cpuSeconds: [0, 28.6, 29.0, 29.4, 29.5, 43.8], now: now)
+        ]
+        #expect(state(fineGrained).state == .sleeping)
+
+        // Writes in neighbouring minutes that add up: that is someone working.
+        root.diskBytesWritten = 1_090_000
         root.cpuTimeNs = UInt64(43.2 * 1e9)
-        let cluster = [root.identity: series(minutes: [180, 32, 31, 30, 1], written: [1_000_000, 1_000_000, 1_030_000, 1_060_000, 1_060_000], cpuSeconds: [0, 35.5, 35.8, 36.0, 43.0], now: now)]
+        let cluster = [root.identity: series(minutes: [180, 33, 32, 30.5, 1], written: [1_000_000, 1_000_000, 1_045_000, 1_090_000, 1_090_000], cpuSeconds: [0, 35.5, 35.8, 36.0, 43.0], now: now)]
         #expect(state(cluster).state == .idle && state(cluster).evidence.first?.contains("while working") == true)
 
         // Silent for three hours of observation: idle polling CPU only (0.4 % of a core), no writes.

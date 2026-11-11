@@ -16,8 +16,13 @@ import PEPELProcesses
 /// more CPU than its own idle level or wrote again within a few minutes. A real CPU burst, a
 /// newly started process and a running build count on their own.
 public enum AgentActivity {
-    /// Bytes written between two observations that count as a write at all.
-    public static let writeThresholdBytes: UInt64 = 16 * 1024
+    /// Bytes written in an interval, or across a cluster of intervals, that count as work.
+    /// Housekeeping writes of idle sessions were 8–24 KB; working intervals started at 76 KB.
+    public static let writeThresholdBytes: UInt64 = 64 * 1024
+    /// Observations are merged into intervals at least this long before anything is judged.
+    /// The thresholds were measured on minute-long intervals; over a 20-second sample even a
+    /// housekeeping tick looks like a CPU rise.
+    public static let minimumIntervalSeconds: TimeInterval = 60
     /// A write counts as work when CPU in the same interval reaches this, or twice the process's
     /// own median, whichever is higher. Housekeeping writes were seen at up to 0.48 %.
     public static let workingCPUPercent = 0.8
@@ -54,8 +59,20 @@ public enum AgentActivity {
             var written: UInt64
             var noBaseline: Bool
         }
+        // Resample so every interval spans at least a minute (the last one may be shorter).
+        var resampled: [ProcessObservation] = []
+        for point in points {
+            if let last = resampled.last, point.timestamp.timeIntervalSince(last.timestamp) < minimumIntervalSeconds { continue }
+            resampled.append(point)
+        }
+        if let final = points.last, resampled.last?.timestamp != final.timestamp {
+            // Fold the trailing short stretch into the previous interval rather than judging it alone.
+            if resampled.count > 1 { resampled.removeLast() }
+            resampled.append(final)
+        }
+
         var intervals: [Interval] = []
-        for (previous, current) in zip(points, points.dropFirst()) {
+        for (previous, current) in zip(resampled, resampled.dropFirst()) {
             let span = current.timestamp.timeIntervalSince(previous.timestamp)
             guard span > 0 else { continue }
             let cpu = current.cpuTimeNs >= previous.cpuTimeNs ? Double(current.cpuTimeNs - previous.cpuTimeNs) / 1e9 / span * 100 : 0
@@ -78,12 +95,17 @@ public enum AgentActivity {
                 latest = (interval.end, String(format: "%@ (PID %d) used %.0f%% of a core", p.name, p.pid, interval.cpuPercent))
                 continue
             }
-            guard interval.written >= writeThresholdBytes else { continue }
-            func writesNearby(_ other: Int) -> Bool {
-                guard intervals.indices.contains(other), intervals[other].written >= writeThresholdBytes, !intervals[other].noBaseline else { return false }
-                return abs(intervals[other].end.timeIntervalSince(interval.end)) <= writeClusterSeconds
+            guard interval.written > 0 else { continue }
+            /// Bytes written in a neighbouring interval that ended within the cluster window.
+            func nearby(_ other: Int) -> UInt64 {
+                guard intervals.indices.contains(other), !intervals[other].noBaseline,
+                    abs(intervals[other].end.timeIntervalSince(interval.end)) <= writeClusterSeconds
+                else { return 0 }
+                return intervals[other].written
             }
-            if interval.cpuPercent >= workingCPU || writesNearby(index - 1) || writesNearby(index + 1) {
+            let before = nearby(index - 1), after = nearby(index + 1)
+            let clustered = (before > 0 || after > 0) && interval.written + before + after >= writeThresholdBytes
+            if (interval.written >= writeThresholdBytes && interval.cpuPercent >= workingCPU) || clustered {
                 latest = (interval.end, "\(p.name) (PID \(p.pid)) wrote \(Bytes.format(Int64(interval.written))) to disk while working")
             }
             // Otherwise: a lone small write at idle CPU, the hourly housekeeping of an idle session.
