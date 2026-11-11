@@ -21,6 +21,16 @@ public enum PlannedAction: Codable, Sendable, Hashable {
 
     public var summary: String {
         switch self {
+        case .trash: L("Move to Trash")
+        case .removePermanently: L("Remove permanently")
+        case .tool(let tool): L("Run `\(tool.commandDescription)`")
+        case .none: L("No action")
+        }
+    }
+
+    /// The same in English, for the audit log, whose records stay English.
+    var auditSummary: String {
+        switch self {
         case .trash: "Move to Trash"
         case .removePermanently: "Remove permanently"
         case .tool(let tool): "Run `\(tool.commandDescription)`"
@@ -120,32 +130,32 @@ public struct CleanupPolicyEngine: Sendable {
 
     /// Structural checks on the path itself. Returns the reason the path may never be removed.
     public func pathViolation(_ path: String, context: PolicyContext) -> String? {
-        guard path.hasPrefix("/") else { return "The path is not absolute." }
+        guard path.hasPrefix("/") else { return L("The path is not absolute.") }
         let parts = PathUtil.components(path)
-        if parts.contains("..") || parts.contains(".") { return "The path is not normalised." }
-        guard let identity = PathUtil.identity(path) else { return "The path does not exist." }
-        if identity.isSymlink { return "The path is a symbolic link; PEPEL never follows links." }
-        if PathUtil.canonical(path) != path { return "The path passes through a symbolic link." }
-        if parts.contains(".git") { return "The path is inside git metadata." }
+        if parts.contains("..") || parts.contains(".") { return L("The path is not normalised.") }
+        guard let identity = PathUtil.identity(path) else { return L("The path does not exist.") }
+        if identity.isSymlink { return L("The path is a symbolic link; PEPEL never follows links.") }
+        if PathUtil.canonical(path) != path { return L("The path passes through a symbolic link.") }
+        if parts.contains(".git") { return L("The path is inside git metadata.") }
 
         let home = PathUtil.canonical(context.home)
-        if PathUtil.isInsideIgnoringCase(home, root: path) { return "The path contains your home directory." }
+        if PathUtil.isInsideIgnoringCase(home, root: path) { return L("The path contains your home directory.") }
         let inHome = PathUtil.isInside(path, root: home)
         let inTemp = context.temporaryRoots.contains { $0 != path && PathUtil.isInside(path, root: $0) }
-        guard inHome || inTemp else { return "The path is outside your home directory and the temporary folders." }
+        guard inHome || inTemp else { return L("The path is outside your home directory and the temporary folders.") }
         if inHome {
             let relativeDepth = parts.count - PathUtil.components(home).count
-            if relativeDepth < 2 { return "The path is a top-level folder of your home directory." }
+            if relativeDepth < 2 { return L("The path is a top-level folder of your home directory.") }
             for forbidden in Self.forbiddenHomePaths where PathUtil.isInsideIgnoringCase(path, root: home + "/" + forbidden) {
-                return "~/\(forbidden) holds credentials, agent state or application data."
+                return L("~/\(forbidden) holds credentials, agent state or application data.")
             }
         }
         if let marked = PathUtil.keepMarker(at: path, stopAt: inHome ? home : path) {
-            return "\(PathUtil.display(marked, home: context.home)) is marked as not to be cleaned."
+            return L("\(PathUtil.display(marked, home: context.home)) is marked as not to be cleaned.")
         }
-        if PathUtil.exists(path + "/.git") { return "The path is a git working tree." }
+        if PathUtil.exists(path + "/.git") { return L("The path is a git working tree.") }
         if let root = context.projectRoots.first(where: { PathUtil.isInsideIgnoringCase($0, root: path) }) {
-            return "The path contains the project \((root as NSString).lastPathComponent)."
+            return L("The path contains the project \((root as NSString).lastPathComponent).")
         }
         return nil
     }
@@ -169,65 +179,65 @@ public struct CleanupPolicyEngine: Sendable {
         var warnings: [String] = []
         let action = action(for: item, settings: context.settings)
 
-        if item.safety == .protected { denials.append("Protected: \(item.safetyReason)") }
-        if action == .none && item.safety != .protected { denials.append("No supported cleanup method is available for this item.") }
+        if item.safety == .protected { denials.append(L("Protected: \(item.safetyReason)")) }
+        if action == .none && item.safety != .protected { denials.append(L("No supported cleanup method is available for this item.")) }
         if !item.hasPseudoPath {
             if let violation = pathViolation(item.path, context: context) { denials.append(violation) }
             if let recorded = item.identity, let current = PathUtil.identity(item.path), !recorded.sameObject(as: current) {
-                denials.append("The path now points at a different object than the one that was scanned.")
+                denials.append(L("The path now points at a different object than the one that was scanned."))
             }
             for rule in context.protections {
                 switch rule.kind {
                 case .path, .pin:
                     if PathUtil.isInsideIgnoringCase(item.path, root: rule.value) || PathUtil.isInsideIgnoringCase(rule.value, root: item.path) {
-                        denials.append(rule.kind == .pin ? "Pinned by you." : "Protected by your rule for \(PathUtil.display(rule.value, home: context.home)).")
+                        denials.append(rule.kind == .pin ? L("Pinned by you.") : L("Protected by your rule for \(PathUtil.display(rule.value, home: context.home))."))
                     }
                 case .project:
                     if item.projectID == rule.value || PathUtil.isInsideIgnoringCase(item.path, root: rule.value) {
-                        denials.append("Its project is excluded from cleanup.")
+                        denials.append(L("Its project is excluded from cleanup."))
                     }
                 case .processName, .command, .port:
                     break
                 }
             }
             if let lease = context.leases.first(where: { $0.isActive(at: context.now) && $0.covers(item.path) }) {
-                denials.append("Leased by \(lease.owner) until \(lease.expiresAt.formatted(date: .omitted, time: .shortened)).")
+                denials.append(L("Leased by \(lease.owner) until \(lease.expiresAt.formatted(date: .omitted, time: .shortened))."))
             }
             if let modified = item.lastModified {
                 let age = context.now.timeIntervalSince(modified)
                 if age < TimeInterval(context.settings.recentWriteProtectionMinutes) * 60 {
-                    denials.append("Modified \(TimeFormat.age(age)) ago; it may still be being written.")
+                    denials.append(L("Modified \(TimeFormat.age(age)) ago; it may still be being written."))
                 }
             }
         }
-        if let usage = context.usage[item.id] { denials.append("In use: \(usage)") }
+        if let usage = context.usage[item.id] { denials.append(L("In use: \(usage)")) }
 
         if let projectID = item.projectID,
             let session = context.agentSessions.first(where: { $0.projectID == projectID }),
             item.category != .toolCache || item.safety != .safe
         {
-            let text = "\(session.kind.displayName) has a session in this project."
+            let text = L("\(session.kind.displayName) has a session in this project.")
             if initiator == .automatic { denials.append(text) } else { confirmations.append(text) }
         }
 
-        if item.size?.inaccessibleCount ?? 0 > 0 { warnings.append("Parts of it could not be read; the size is a lower bound.") }
-        if item.size?.hardLinkedBytes ?? 0 > 0 { warnings.append("Contains hard-linked files; less space may be freed than shown.") }
-        if !action.isUndoable, action != .none { warnings.append("This cannot be undone.") }
-        if action == .trash { warnings.append("Space is reclaimed only when the Trash is emptied.") }
+        if item.size?.inaccessibleCount ?? 0 > 0 { warnings.append(L("Parts of it could not be read; the size is a lower bound.")) }
+        if item.size?.hardLinkedBytes ?? 0 > 0 { warnings.append(L("Contains hard-linked files; less space may be freed than shown.")) }
+        if !action.isUndoable, action != .none { warnings.append(L("This cannot be undone.")) }
+        if action == .trash { warnings.append(L("Space is reclaimed only when the Trash is emptied.")) }
 
         switch initiator {
         case .agent:
-            denials.append("Agents can preview cleanup but cannot run it.")
+            denials.append(L("Agents can preview cleanup but cannot run it."))
         case .automatic:
             // Two rules let PEPEL clean on its own: the general "automatic safe" mode, and the
             // rule for artifacts of projects left untouched.
             let staleRule = context.settings.cleanStaleProjects && item.isStale(days: context.settings.staleProjectDays, now: context.now)
             if (context.settings.monitoringMode != .automaticSafe && !staleRule) || context.settings.paused {
-                denials.append("Automatic cleanup is not enabled.")
+                denials.append(L("Automatic cleanup is not enabled."))
             }
-            if item.safety != .safe { denials.append("Only items classified safe are cleaned automatically.") }
+            if item.safety != .safe { denials.append(L("Only items classified safe are cleaned automatically.")) }
         case .user, .cli:
-            if item.safety == .review { confirmations.append("Review: \(item.safetyReason)") }
+            if item.safety == .review { confirmations.append(L("Review: \(item.safetyReason)")) }
         }
 
         let verdict: CleanupVerdict = !denials.isEmpty ? .denied : !confirmations.isEmpty ? .needsConfirmation : .allowed

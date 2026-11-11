@@ -29,47 +29,47 @@ extension CleanupPolicyEngine {
     ) -> ContainerStopDecision {
         var denials: [String] = []
         var confirmations: [String] = []
-        var warnings = ["Containers and their volumes are kept; `docker compose start` brings them back."]
+        var warnings = [L("Containers and their volumes are kept; `docker compose start` brings them back.")]
 
-        if group.containers.isEmpty { denials.append("No running containers in this group.") }
+        if group.containers.isEmpty { denials.append(L("No running containers in this group.")) }
         let kept = group.containers.filter(\.isKept)
         if !group.containers.isEmpty, kept.count == group.containers.count {
-            denials.append("Every container here is marked to be left running.")
+            denials.append(L("Every container here is marked to be left running."))
         } else if !kept.isEmpty {
-            warnings.append("\(kept.count) container\(kept.count == 1 ? " is" : "s are") marked to be left running and will not be stopped: \(kept.map(\.name).joined(separator: ", ")).")
+            warnings.append(L("\(kept.count) containers are marked to be left running and will not be stopped: \(kept.map(\.name).joined(separator: ", "))."))
         }
         if let projectID = group.projectID {
             if protections.contains(where: { $0.kind == .project && PathUtil.isInsideIgnoringCase(projectID, root: $0.value) }) {
-                denials.append("Its project is excluded by one of your protection rules.")
+                denials.append(L("Its project is excluded by one of your protection rules."))
             }
             if let lease = leases.first(where: { $0.isActive(at: now) && $0.covers(projectID) }) {
-                denials.append("Leased by \(lease.owner) until \(lease.expiresAt.formatted(date: .omitted, time: .shortened)).")
+                denials.append(L("Leased by \(lease.owner) until \(lease.expiresAt.formatted(date: .omitted, time: .shortened))."))
             }
         }
         if group.agentSessions > 0 {
-            let text = "\(group.agentSessions) agent session\(group.agentSessions == 1 ? " is" : "s are") running in this project."
+            let text = L("\(group.agentSessions) agent sessions are running in this project.")
             if initiator == .automatic { denials.append(text) } else { confirmations.append(text) }
         }
 
         switch initiator {
         case .agent:
-            denials.append("Agents cannot have containers stopped.")
+            denials.append(L("Agents cannot have containers stopped."))
         case .automatic:
-            if !settings.stopContainersOfIdleProjects { denials.append("Stopping containers of idle projects is not enabled.") }
+            if !settings.stopContainersOfIdleProjects { denials.append(L("Stopping containers of idle projects is not enabled.")) }
             if group.projectID == nil {
                 // Without a project there is nothing to tie the containers to an agent's work.
-                denials.append("These containers are not tied to a known project.")
+                denials.append(L("These containers are not tied to a known project."))
             } else if let idleSince = group.idleSince {
                 let grace = TimeInterval(settings.projectIdleGraceMinutes) * 60
                 if now.timeIntervalSince(idleSince) < grace {
-                    denials.append("The project has been without an agent session for \(TimeFormat.age(now.timeIntervalSince(idleSince))); the threshold is \(settings.projectIdleGraceMinutes) minutes.")
+                    denials.append(L("The project has been without an agent session for \(TimeFormat.age(now.timeIntervalSince(idleSince))); the threshold is \(settings.projectIdleGraceMinutes) minutes."))
                 }
             } else if group.agentSessions == 0 {
-                denials.append("PEPEL has not observed this project long enough.")
+                denials.append(L("PEPEL has not observed this project long enough."))
             }
         case .user, .cli:
-            confirmations.append("Stopping always needs your confirmation when requested by hand.")
-            if group.projectID == nil { warnings.append("These containers are not tied to a known project.") }
+            confirmations.append(L("Stopping always needs your confirmation when requested by hand."))
+            if group.projectID == nil { warnings.append(L("These containers are not tied to a known project.")) }
         }
         let verdict: CleanupVerdict = !denials.isEmpty ? .denied : !confirmations.isEmpty ? .needsConfirmation : .allowed
         return ContainerStopDecision(group: group, verdict: verdict, reasons: denials.isEmpty ? confirmations : denials, warnings: warnings)
@@ -206,47 +206,50 @@ extension CleanupPolicyEngine {
         let names = report.groups.flatMap(\.containers).map(\.name)
 
         if !report.product.lowercased().contains("docker desktop") {
-            denials.append("Restarting the VM is only supported for Docker Desktop; this is \(report.product).")
+            denials.append(L("Restarting the VM is only supported for Docker Desktop; this is \(report.product)."))
         }
         switch initiator {
         case .agent:
-            denials.append("Agents cannot have the container VM restarted.")
+            denials.append(L("Agents cannot have the container VM restarted."))
         case .automatic:
-            if !settings.refreshContainerVMNightly || settings.paused { denials.append("The nightly VM restart is not enabled.") }
+            if !settings.refreshContainerVMNightly || settings.paused { denials.append(L("The nightly VM restart is not enabled.")) }
             let sinceLast = lastRefresh.map { now.timeIntervalSince($0) }
             // Under memory pressure the restart does not wait for the night, but still not more
             // often than every six hours, and every other condition below stays.
             let urgent = settings.adaptToMemoryPressure && pressure != .normal
             if let sinceLast, sinceLast < (urgent ? 6 : 20) * 3600 {
-                denials.append("The VM was restarted \(TimeFormat.age(sinceLast)) ago; at most \(urgent ? "every six hours under memory pressure" : "once a day").")
+                denials.append(
+                    urgent
+                        ? L("The VM was restarted \(TimeFormat.age(sinceLast)) ago; at most every six hours under memory pressure.")
+                        : L("The VM was restarted \(TimeFormat.age(sinceLast)) ago; at most once a day."))
             }
             // In its night window, or catching up after a night the Mac slept through.
             let hour = calendar.component(.hour, from: now)
             let inWindow = (0..<2).contains((hour - settings.vmRefreshHour + 24) % 24)
             let overdue = (sinceLast ?? .infinity) > 30 * 3600 && userIdleSeconds >= 20 * 60
             if !inWindow && !overdue && !urgent {
-                denials.append("Outside the night window (\(settings.vmRefreshHour):00–\((settings.vmRefreshHour + 2) % 24):00) and not overdue.")
+                denials.append(L("Outside the night window (\(settings.vmRefreshHour):00–\((settings.vmRefreshHour + 2) % 24):00) and not overdue."))
             }
             if report.excessBytes < settings.vmRefreshMinimumExcessBytes {
-                denials.append("Only \(Bytes.format(report.excessBytes)) would come back; the threshold is \(Bytes.format(settings.vmRefreshMinimumExcessBytes)).")
+                denials.append(L("Only \(Bytes.format(report.excessBytes)) would come back; the threshold is \(Bytes.format(settings.vmRefreshMinimumExcessBytes))."))
             }
             if workingSessions > 0 {
-                denials.append("\(workingSessions) agent session\(workingSessions == 1 ? " is" : "s are") working right now.")
+                denials.append(L("\(workingSessions) agent sessions are working right now."))
             }
             if !report.kept.isEmpty {
-                denials.append("A container marked to be left running is up: \(report.kept.map(\.name).joined(separator: ", ")). A VM restart cannot spare it.")
+                denials.append(L("A container marked to be left running is up: \(report.kept.map(\.name).joined(separator: ", ")). A VM restart cannot spare it."))
             }
         case .user, .cli:
-            confirmations.append("All \(names.count) running containers go down for a minute or two and are started again afterwards.")
+            confirmations.append(L("All \(names.count) running containers go down for a minute or two and are started again afterwards."))
             if !report.kept.isEmpty {
-                warnings.append("\(report.kept.count) container\(report.kept.count == 1 ? "" : "s") marked to be left running will be restarted too; a VM restart cannot spare any: \(report.kept.map(\.name).joined(separator: ", ")).")
+                warnings.append(L("\(report.kept.count) containers marked to be left running will be restarted too; a VM restart cannot spare any: \(report.kept.map(\.name).joined(separator: ", "))."))
             }
             if workingSessions > 0 {
-                warnings.append("\(workingSessions) agent session\(workingSessions == 1 ? " is" : "s are") working right now and may be using these containers.")
+                warnings.append(L("\(workingSessions) agent sessions are working right now and may be using these containers."))
             }
         }
-        warnings.append("Data in volumes is kept. Work a container is doing at that moment is interrupted.")
-        warnings.append("About \(Bytes.format(report.excessBytes)) is charged to the Mac beyond what the containers use; how much of it returns is measured afterwards, not promised.")
+        warnings.append(L("Data in volumes is kept. Work a container is doing at that moment is interrupted."))
+        warnings.append(L("About \(Bytes.format(report.excessBytes)) is charged to the Mac beyond what the containers use; how much of it returns is measured afterwards, not promised."))
         let verdict: CleanupVerdict = !denials.isEmpty ? .denied : !confirmations.isEmpty ? .needsConfirmation : .allowed
         return VMRefreshDecision(verdict: verdict, reasons: denials.isEmpty ? confirmations : denials, warnings: warnings, containers: names)
     }
@@ -304,34 +307,34 @@ public struct ContainerVMRefresher: Sendable {
         var report = VMRefreshReport(restarted: false, back: [], missing: [], steps: [])
         // The list is taken again right before the restart: it is what must come back.
         let before = running() ?? Set(approved.containers)
-        report.steps.append("\(before.count) containers were running.")
+        report.steps.append(L("\(before.count) containers were running."))
 
         if let whileStopped {
             guard let stop = run(["desktop", "stop"], 300), stop.status == 0 else {
-                report.steps.append("`docker desktop stop` failed; nothing was changed.")
+                report.steps.append(L("`docker desktop stop` failed; nothing was changed."))
                 record(report, initiator: approved.initiator)
                 return report
             }
-            report.steps.append("Docker Desktop was stopped.")
+            report.steps.append(L("Docker Desktop was stopped."))
             // Whatever happens to the change, Docker is started again.
-            report.steps.append(whileStopped().map { "The change was not made: \($0)" } ?? "The change was written.")
+            report.steps.append(whileStopped().map { L("The change was not made: \($0)") } ?? L("The change was written."))
             guard let start = run(["desktop", "start"], 300), start.status == 0 else {
-                report.steps.append("`docker desktop start` failed; start Docker Desktop yourself. Containers were not started.")
+                report.steps.append(L("`docker desktop start` failed; start Docker Desktop yourself. Containers were not started."))
                 report.missing = before.sorted()
                 record(report, initiator: approved.initiator)
                 return report
             }
             report.restarted = true
-            report.steps.append("Docker Desktop was started.")
+            report.steps.append(L("Docker Desktop was started."))
         } else {
             guard let restart = run(["desktop", "restart"], 300), restart.status == 0 else {
-                report.steps.append("`docker desktop restart` failed; nothing was changed.")
+                report.steps.append(L("`docker desktop restart` failed; nothing was changed."))
                 report.missing = []
                 record(report, initiator: approved.initiator)
                 return report
             }
             report.restarted = true
-            report.steps.append("Docker Desktop was restarted.")
+            report.steps.append(L("Docker Desktop was restarted."))
         }
 
         let deadline = ContinuousClock.now + .seconds(readyTimeout)
@@ -341,19 +344,23 @@ public struct ContainerVMRefresher: Sendable {
             now = running()
         }
         guard let after = now else {
-            report.steps.append("Docker did not answer within \(Int(readyTimeout)) seconds; containers were not started.")
+            report.steps.append(L("Docker did not answer within \(Int(readyTimeout)) seconds; containers were not started."))
             report.missing = before.sorted()
             record(report, initiator: approved.initiator)
             return report
         }
         // Containers with a restart policy are back on their own; the rest are started here.
         let toStart = before.subtracting(after).sorted()
-        report.steps.append("\(before.intersection(after).count) came back on their own; starting \(toStart.count).")
+        report.steps.append(L("\(before.intersection(after).count) came back on their own; starting \(toStart.count)."))
         if !toStart.isEmpty { _ = run(["start"] + toStart, 300) }
         let final = running() ?? after
         report.back = before.intersection(final).sorted()
         report.missing = before.subtracting(final).sorted()
-        report.steps.append(report.missing.isEmpty ? "All \(report.back.count) containers are running again." : "\(report.missing.count) did not start: \(report.missing.joined(separator: ", ")).")
+        report.steps.append(
+            report.missing.isEmpty
+                ? L("All \(report.back.count) containers are running again.")
+                : L("\(report.missing.count) did not start: \(report.missing.joined(separator: ", ")).")
+        )
         record(report, initiator: approved.initiator)
         return report
     }
@@ -373,8 +380,8 @@ extension CleanupPolicyEngine {
     public func cacheFlushDenial(initiator: Initiator) -> String? {
         switch initiator {
         case .user, .cli: return nil
-        case .agent: return "Agents cannot have the file cache flushed."
-        case .automatic: return "The file cache is only flushed when you ask. macOS gives cached memory up by itself under pressure; flushing on a timer would only slow file access."
+        case .agent: return L("Agents cannot have the file cache flushed.")
+        case .automatic: return L("The file cache is only flushed when you ask. macOS gives cached memory up by itself under pressure; flushing on a timer would only slow file access.")
         }
     }
 }
@@ -403,18 +410,18 @@ extension CleanupPolicyEngine {
         var denials: [String] = []
         var confirmations: [String] = []
         var warnings: [String] = []
-        if !report.product.lowercased().contains("docker desktop") { denials.append("The memory limit can only be changed for Docker Desktop; this is \(report.product).") }
-        if initiator == .agent || initiator == .automatic { denials.append("Only you can change the VM's memory limit.") }
-        if abs(newLimitBytes - report.vmLimitBytes) < (256 << 20) { denials.append("The limit is already \(Bytes.format(report.vmLimitBytes)).") }
+        if !report.product.lowercased().contains("docker desktop") { denials.append(L("The memory limit can only be changed for Docker Desktop; this is \(report.product).")) }
+        if initiator == .agent || initiator == .automatic { denials.append(L("Only you can change the VM's memory limit.")) }
+        if abs(newLimitBytes - report.vmLimitBytes) < (256 << 20) { denials.append(L("The limit is already \(Bytes.format(report.vmLimitBytes)).")) }
         if newLimitBytes < report.minimumLimitBytes {
             denials.append(
-                "The containers have used up to \(Bytes.format(max(report.usedByContainersBytes, report.peakUsedBytes))); below \(Bytes.format(report.minimumLimitBytes)) Linux would start killing them for lack of memory.")
+                L("The containers have used up to \(Bytes.format(max(report.usedByContainersBytes, report.peakUsedBytes))); below \(Bytes.format(report.minimumLimitBytes)) Linux would start killing them for lack of memory."))
         }
-        if physicalMemoryBytes > 0, newLimitBytes > physicalMemoryBytes { denials.append("This Mac has \(Bytes.format(physicalMemoryBytes)) of memory.") }
+        if physicalMemoryBytes > 0, newLimitBytes > physicalMemoryBytes { denials.append(L("This Mac has \(Bytes.format(physicalMemoryBytes)) of memory.")) }
         let names = report.groups.flatMap(\.containers).count
-        confirmations.append("Docker Desktop is stopped and started again with the new limit; \(names) running container\(names == 1 ? " goes" : "s go") down for a minute or two and \(names == 1 ? "is" : "are") started again.")
-        if newLimitBytes > report.vmLimitBytes { warnings.append("This raises the limit: the VM may grow to \(Bytes.format(newLimitBytes)).") }
-        if report.peakUsedBytes == 0 { warnings.append("PEPEL has only today's reading of what the containers use; a busier day may need more.") }
+        confirmations.append(L("Docker Desktop is stopped and started again with the new limit; \(names) running containers go down for a minute or two and are started again."))
+        if newLimitBytes > report.vmLimitBytes { warnings.append(L("This raises the limit: the VM may grow to \(Bytes.format(newLimitBytes)).")) }
+        if report.peakUsedBytes == 0 { warnings.append(L("PEPEL has only today's reading of what the containers use; a busier day may need more.")) }
         let verdict: CleanupVerdict = !denials.isEmpty ? .denied : .needsConfirmation
         return VMLimitDecision(
             newLimitBytes: newLimitBytes, currentLimitBytes: report.vmLimitBytes, verdict: verdict, reasons: denials.isEmpty ? confirmations : denials, warnings: warnings)
@@ -431,15 +438,15 @@ extension CleanupPolicyEngine {
     /// only who may ask for what. Images, containers and build cache can be rebuilt or pulled
     /// again; a volume is data, and no rule of PEPEL's own ever removes one.
     public func dockerCleanDenial(kinds: Set<DockerCleanKind>, confirmed: Bool, initiator: Initiator, settings: PepelSettings) -> String? {
-        guard !kinds.isEmpty else { return "Nothing was chosen." }
+        guard !kinds.isEmpty else { return L("Nothing was chosen.") }
         switch initiator {
-        case .agent: return "Agents cannot have Docker resources removed."
+        case .agent: return L("Agents cannot have Docker resources removed.")
         case .automatic:
-            if settings.paused || !settings.dockerAutoClean { return "Automatic Docker cleanup is not enabled." }
-            if kinds.contains(.volumes) { return "Volumes hold data; they are only removed when you ask." }
+            if settings.paused || !settings.dockerAutoClean { return L("Automatic Docker cleanup is not enabled.") }
+            if kinds.contains(.volumes) { return L("Volumes hold data; they are only removed when you ask.") }
             return nil
         case .user, .cli:
-            return confirmed ? nil : "Removing Docker resources needs your confirmation."
+            return confirmed ? nil : L("Removing Docker resources needs your confirmation.")
         }
     }
 }
@@ -448,9 +455,9 @@ extension CleanupPolicyEngine {
     /// Cache entries can all be fetched or rebuilt, so the question is only who may ask.
     public func cacheTrimDenial(confirmed: Bool, initiator: Initiator, settings: PepelSettings) -> String? {
         switch initiator {
-        case .agent: return "Agents cannot have caches trimmed."
-        case .automatic: return settings.trimCaches && !settings.paused ? nil : "Automatic cache trimming is not enabled."
-        case .user, .cli: return confirmed ? nil : "Trimming caches needs your confirmation."
+        case .agent: return L("Agents cannot have caches trimmed.")
+        case .automatic: return settings.trimCaches && !settings.paused ? nil : L("Automatic cache trimming is not enabled.")
+        case .user, .cli: return confirmed ? nil : L("Trimming caches needs your confirmation.")
         }
     }
 }
@@ -461,11 +468,11 @@ extension CleanupPolicyEngine {
     /// to the Trash.
     public func applicationDataDenial(_ kind: ApplicationData.Kind, confirmed: Bool, initiator: Initiator, settings: PepelSettings) -> String? {
         switch initiator {
-        case .agent: return "Agents cannot have application data removed."
+        case .agent: return L("Agents cannot have application data removed.")
         case .automatic:
-            if kind == .leftover { return "What removed applications left behind is only moved to the Trash when you ask." }
-            return settings.cleanAppCaches && !settings.paused ? nil : "Automatic cleaning of application caches is not enabled."
-        case .user, .cli: return confirmed ? nil : "This needs your confirmation."
+            if kind == .leftover { return L("What removed applications left behind is only moved to the Trash when you ask.") }
+            return settings.cleanAppCaches && !settings.paused ? nil : L("Automatic cleaning of application caches is not enabled.")
+        case .user, .cli: return confirmed ? nil : L("This needs your confirmation.")
         }
     }
 }

@@ -70,17 +70,17 @@ public enum ProcessGuardian {
         if let cwd = p.workingDirectory, let hit = context.attributor?.attribute(path: cwd) {
             projectID = hit.projectID
             projectConfidence = .verified
-            evidence.append("Working directory is inside project \((hit.projectID as NSString).lastPathComponent).")
+            evidence.append(L("Working directory is inside project \((hit.projectID as NSString).lastPathComponent)."))
         } else if let attributor = context.attributor,
             let hit = ([p.executablePath ?? ""] + p.arguments).lazy.filter({ $0.hasPrefix("/") }).compactMap({ attributor.attribute(path: $0) }).first
         {
             projectID = hit.projectID
             projectConfidence = .probable
-            evidence.append("Command line references project \((hit.projectID as NSString).lastPathComponent).")
+            evidence.append(L("Command line references project \((hit.projectID as NSString).lastPathComponent)."))
         } else {
-            evidence.append("No project could be associated with this process.")
+            evidence.append(L("No project could be associated with this process."))
         }
-        if cwdMissing { evidence.append("Its working directory no longer exists.") }
+        if cwdMissing { evidence.append(L("Its working directory no longer exists.")) }
 
         // Activity of the whole subtree: an idle parent with busy workers is not idle.
         let members = [p] + descendants
@@ -112,45 +112,51 @@ public enum ProcessGuardian {
         }
 
         if let rule = protectionMatch(p, rules: context.protections) {
-            evidence.append("Protected by rule “\(rule.value)”\(rule.note.isEmpty ? "" : " (\(rule.note))").")
-            return result(.backgroundService, .verified, .never(reason: "Registered as a protected service."))
+            evidence.append(rule.note.isEmpty ? L("Protected by rule “\(rule.value)”.") : L("Protected by rule “\(rule.value)” (\(rule.note))."))
+            return result(.backgroundService, .verified, .never(reason: L("Registered as a protected service.")))
         }
 
         switch role {
         case .agent:
-            evidence.append("This is an AI coding agent session.")
+            evidence.append(L("This is an AI coding agent session."))
             if let asleep = context.sleepingAgents[p.identity] {
                 evidence += asleep
-                evidence.append("A session waiting for your reply looks the same as a sleeping one.")
+                evidence.append(L("A session waiting for your reply looks the same as a sleeping one."))
                 return result(.agentSession, .verified, .automaticEligible)
             }
-            return result(.agentSession, .verified, .never(reason: "Agent sessions that are working or only briefly idle are never terminated."))
+            return result(.agentSession, .verified, .never(reason: L("Agent sessions that are working or only briefly idle are never terminated.")))
         case .container:
-            evidence.append("Container runtime process; containers may hold databases and volumes.")
-            return result(.backgroundService, .probable, .never(reason: "Container runtimes are managed through their own tools."))
+            evidence.append(L("Container runtime process; containers may hold databases and volumes."))
+            return result(.backgroundService, .probable, .never(reason: L("Container runtimes are managed through their own tools.")))
         default:
             break
         }
 
         if let agentAncestor {
-            evidence.append("Started by \(RoleClassifier.agentKind(of: agentAncestor)?.displayName ?? "an agent") session (PID \(agentAncestor.pid)), which is still running.")
+            if let kind = RoleClassifier.agentKind(of: agentAncestor) {
+                evidence.append(L("Started by \(kind.displayName) session (PID \(agentAncestor.pid)), which is still running."))
+            } else {
+                evidence.append(L("Started by an agent session (PID \(agentAncestor.pid)), which is still running."))
+            }
         }
-        if p.hasControllingTerminal { evidence.append("Attached to a terminal.") }
+        if p.hasControllingTerminal { evidence.append(L("Attached to a terminal.")) }
         if orphan {
-            evidence.append("Its parent process has exited; it now belongs to launchd.")
+            evidence.append(L("Its parent process has exited; it now belongs to launchd."))
         } else if let parent = tree.parent(of: p) {
-            evidence.append("Parent \(parent.name) (PID \(parent.pid)) is alive.")
+            evidence.append(L("Parent \(parent.name) (PID \(parent.pid)) is alive."))
         }
         if subtreeIdle {
-            evidence.append("No CPU activity in its process tree for \(TimeFormat.age(shortestObservation)) of observation.")
+            evidence.append(L("No CPU activity in its process tree for \(TimeFormat.age(shortestObservation)) of observation."))
         } else if insufficient {
             let seen = shortestObservation == .greatestFiniteMagnitude ? 0 : shortestObservation
-            evidence.append("Observed for only \(TimeFormat.age(seen)); \(TimeFormat.age(context.idleWindow)) of inactivity is required before calling it idle.")
+            evidence.append(L("Observed for only \(TimeFormat.age(seen)); \(TimeFormat.age(context.idleWindow)) of inactivity is required before calling it idle."))
         } else {
-            evidence.append(String(format: "Its process tree is using CPU (%.1f%% of a core).", busiest))
+            let share = String(format: "%.1f%%", busiest)
+            evidence.append(L("Its process tree is using CPU (\(share) of a core)."))
         }
         if !p.listeningPorts.isEmpty {
-            evidence.append("Listening on port\(p.listeningPorts.count > 1 ? "s" : "") \(p.listeningPorts.map(String.init).joined(separator: ", ")).")
+            let ports = p.listeningPorts.map(String.init).joined(separator: ", ")
+            evidence.append(p.listeningPorts.count > 1 ? L("Listening on ports \(ports).") : L("Listening on port \(ports)."))
         }
 
         let disposableRole = role == .testRunner || role == .buildTool
@@ -159,47 +165,47 @@ public enum ProcessGuardian {
         case .buildTool, .testRunner:
             if !orphan {
                 if agentAncestor != nil || p.hasControllingTerminal || !subtreeIdle {
-                    return result(.activeBuildOrTest, subtreeIdle ? .probable : .verified, .never(reason: "Active builds and tests are never interrupted."))
+                    return result(.activeBuildOrTest, subtreeIdle ? .probable : .verified, .never(reason: L("Active builds and tests are never interrupted.")))
                 }
                 // Parent alive, no terminal, no agent, and verifiably idle: stuck, but someone may still be waiting on it.
-                return result(.unknown, .probable, .approvalRequired(warning: "Its parent process is still running and may be waiting for it."))
+                return result(.unknown, .probable, .approvalRequired(warning: L("Its parent process is still running and may be waiting for it.")))
             }
             if subtreeIdle {
                 let verified = projectConfidence == .verified && !p.hasControllingTerminal && p.listeningPorts.isEmpty
                 let eligibility: TerminationEligibility =
                     verified && disposableRole && agentAncestor == nil
                     ? .automaticEligible
-                    : .approvalRequired(warning: projectConfidence == .verified ? "It still holds a terminal or a listening port." : "Ownership could not be verified.")
+                    : .approvalRequired(warning: projectConfidence == .verified ? L("It still holds a terminal or a listening port.") : L("Ownership could not be verified."))
                 return result(.abandonedSubprocess, cwdMissing || verified ? .verified : .probable, eligibility)
             }
             if insufficient {
-                return result(.unknown, .unknown, .approvalRequired(warning: "Not observed long enough to tell whether it is still working."))
+                return result(.unknown, .unknown, .approvalRequired(warning: L("Not observed long enough to tell whether it is still working.")))
             }
-            evidence.append("Orphaned but still working; it may be a long job started with nohup.")
-            return result(.suspiciousOrphan, .probable, .approvalRequired(warning: "It is still using CPU and may be doing real work."))
+            evidence.append(L("Orphaned but still working; it may be a long job started with nohup."))
+            return result(.suspiciousOrphan, .probable, .approvalRequired(warning: L("It is still using CPU and may be doing real work.")))
 
         case .devServer:
             if !orphan {
                 if agentAncestor != nil {
-                    return result(.activeDevService, .verified, .never(reason: "Owned by a running agent session."))
+                    return result(.activeDevService, .verified, .never(reason: L("Owned by a running agent session.")))
                 }
-                return result(.activeDevService, .probable, .approvalRequired(warning: "This development server appears to be in use."))
+                return result(.activeDevService, .probable, .approvalRequired(warning: L("This development server appears to be in use.")))
             }
             if cwdMissing {
-                return result(.suspiciousOrphan, .probable, .approvalRequired(warning: "Clients connected to it would be disconnected."))
+                return result(.suspiciousOrphan, .probable, .approvalRequired(warning: L("Clients connected to it would be disconnected.")))
             }
-            evidence.append("Detached servers are often left running on purpose, so this is not treated as garbage.")
-            return result(.backgroundService, .probable, .approvalRequired(warning: "This looks like a service left running intentionally."))
+            evidence.append(L("Detached servers are often left running on purpose, so this is not treated as garbage."))
+            return result(.backgroundService, .probable, .approvalRequired(warning: L("This looks like a service left running intentionally.")))
 
         default:
             if agentAncestor != nil {
                 // Tool servers and helpers an agent started belong to that session.
-                return result(.activeDevService, .verified, .never(reason: "Owned by a running agent session."))
+                return result(.activeDevService, .verified, .never(reason: L("Owned by a running agent session.")))
             }
             if orphan && subtreeIdle {
-                return result(.suspiciousOrphan, .probable, .approvalRequired(warning: "PEPEL cannot tell what this program is for."))
+                return result(.suspiciousOrphan, .probable, .approvalRequired(warning: L("PEPEL cannot tell what this program is for.")))
             }
-            return result(.unknown, .unknown, .approvalRequired(warning: "PEPEL cannot tell what this program is for."))
+            return result(.unknown, .unknown, .approvalRequired(warning: L("PEPEL cannot tell what this program is for.")))
         }
     }
 }

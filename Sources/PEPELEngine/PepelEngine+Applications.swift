@@ -63,12 +63,12 @@ extension PepelEngine {
         guard let decision = await applicationDecision(action, bundlePath: bundlePath, initiator: initiator) else { return nil }
         var report = ApplicationActionReport(decision: decision, quit: false, reopened: false, footprintBefore: decision.footprintBytes, footprintAfter: decision.footprintBytes, note: "")
         guard let approved = policy.approveApplication(decision, confirmed: confirmed, initiator: initiator), applicationControl.isAvailable else {
-            report.note = decision.verdict == .denied ? decision.reasons.joined(separator: " ") : "Not confirmed."
+            report.note = decision.verdict == .denied ? decision.reasons.joined(separator: " ") : L("Not confirmed.")
             return report
         }
         let target = approved.decision
         guard let identity = processSource.identity(of: target.pid), applicationControl.quit(target.pid) else {
-            report.note = "\(target.name) did not accept the request to quit."
+            report.note = L("\(target.name) did not accept the request to quit.")
             return report
         }
         let deadline = ContinuousClock.now + .seconds(waitSeconds)
@@ -77,14 +77,14 @@ extension PepelEngine {
         }
         report.quit = processSource.identity(of: target.pid) != identity
         if !report.quit {
-            report.note = "\(target.name) is still running; it may be asking about unsaved changes. PEPEL did not force it."
+            report.note = L("\(target.name) is still running; it may be asking about unsaved changes. PEPEL did not force it.")
         } else if action == .restart {
             report.reopened = await applicationControl.launch(target.bundlePath)
-            report.note = report.reopened ? "\(target.name) quit and was opened again." : "\(target.name) quit, but could not be opened again; open it yourself."
+            report.note = report.reopened ? L("\(target.name) quit and was opened again.") : L("\(target.name) quit, but could not be opened again; open it yourself.")
             // Let it settle before reading what it holds now.
             if waitSeconds >= 1 { try? await Task.sleep(for: .seconds(8)) }
         } else {
-            report.note = "\(target.name) quit."
+            report.note = L("\(target.name) quit.")
         }
         let after = await refreshLive()
         report.footprintAfter = after.memoryOwners.first { $0.id == "app:\(target.bundlePath)" }?.footprintBytes ?? 0
@@ -167,16 +167,16 @@ extension PepelEngine {
 
     /// Shuts a booted simulator down the way Xcode does. Only a person can ask.
     public func shutdownSimulator(udid: String, initiator: Initiator) async -> (done: Bool, note: String) {
-        guard initiator == .user || initiator == .cli else { return (false, "Only you can have a simulator shut down.") }
+        guard initiator == .user || initiator == .cli else { return (false, L("Only you can have a simulator shut down.")) }
         let liveState = await refreshLive()
-        guard let simulator = liveState.simulators.first(where: { $0.udid == udid }) else { return (false, "That simulator is not booted.") }
-        guard let shutdown = simulatorShutdown else { return (false, "simctl is not available.") }
+        guard let simulator = liveState.simulators.first(where: { $0.udid == udid }) else { return (false, L("That simulator is not booted.")) }
+        guard let shutdown = simulatorShutdown else { return (false, L("simctl is not available.")) }
         let done = await Task.detached(priority: .utility) { shutdown(udid) }.value
         store.appendAudit(
             AuditEntry(
                 kind: .termination, initiator: initiator.rawValue, subject: "Simulator \(simulator.name)", outcome: done ? "shut down" : "shutdown failed",
                 bytes: done ? simulator.footprintBytes : 0, detail: ["udid": udid, "held": Bytes.format(simulator.footprintBytes)]))
         await refreshLive()
-        return (done, done ? "\(simulator.name) was shut down; it held \(Bytes.format(simulator.footprintBytes))." : "simctl could not shut \(simulator.name) down.")
+        return (done, done ? L("\(simulator.name) was shut down; it held \(Bytes.format(simulator.footprintBytes)).") : L("simctl could not shut \(simulator.name) down."))
     }
 }

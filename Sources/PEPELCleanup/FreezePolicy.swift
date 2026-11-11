@@ -41,33 +41,33 @@ extension CleanupPolicyEngine {
         var confirmations: [String] = []
         var warnings: [String] = []
 
-        if session.isService { denials.append("This is a server for an application, not a session; suspending it would hang the application.") }
-        if session.state == .working { denials.append("The session is working.") }
-        if session.activeBuildCount > 0 { denials.append("A build or test run is in progress inside the session.") }
-        if session.frozenSince != nil { denials.append("The session is already suspended.") }
-        if members.contains(where: { $0.pid == ownPID || ownAncestors.contains($0.pid) }) { denials.append("PEPEL does not suspend the session it is running in.") }
-        if members.contains(where: { $0.uid != currentUID }) { denials.append("Part of the session belongs to another user.") }
-        if members.contains(where: { !$0.listeningPorts.isEmpty }) { warnings.append("A process in the session listens on a port; clients will wait while it is suspended.") }
+        if session.isService { denials.append(L("This is a server for an application, not a session; suspending it would hang the application.")) }
+        if session.state == .working { denials.append(L("The session is working.")) }
+        if session.activeBuildCount > 0 { denials.append(L("A build or test run is in progress inside the session.")) }
+        if session.frozenSince != nil { denials.append(L("The session is already suspended.")) }
+        if members.contains(where: { $0.pid == ownPID || ownAncestors.contains($0.pid) }) { denials.append(L("PEPEL does not suspend the session it is running in.")) }
+        if members.contains(where: { $0.uid != currentUID }) { denials.append(L("Part of the session belongs to another user.")) }
+        if members.contains(where: { !$0.listeningPorts.isEmpty }) { warnings.append(L("A process in the session listens on a port; clients will wait while it is suspended.")) }
 
         switch initiator {
         case .agent:
-            denials.append("Agents cannot have sessions suspended.")
+            denials.append(L("Agents cannot have sessions suspended."))
         case .automatic:
-            if !settings.freezeIdleAgents || settings.paused { denials.append("Suspending idle agent sessions is not enabled.") }
+            if !settings.freezeIdleAgents || settings.paused { denials.append(L("Suspending idle agent sessions is not enabled.")) }
             let quiet = session.quietSince.map { now.timeIntervalSince($0) } ?? 0
             if quiet < TimeInterval(settings.freezeAfterMinutes) * 60 {
-                denials.append("Quiet for \(TimeFormat.age(quiet)); the threshold is \(settings.freezeAfterMinutes) minutes.")
+                denials.append(L("Quiet for \(TimeFormat.age(quiet)); the threshold is \(settings.freezeAfterMinutes) minutes."))
             }
             if ownerAppPID == nil {
-                denials.append("PEPEL cannot tell which application this session lives in, so it could not wake it when you come back.")
+                denials.append(L("PEPEL cannot tell which application this session lives in, so it could not wake it when you come back."))
             } else if frontmostPID == nil {
-                denials.append("PEPEL cannot tell which application is in front.")
+                denials.append(L("PEPEL cannot tell which application is in front."))
             } else if ownerAppPID == frontmostPID {
-                denials.append("The session's application is in front.")
+                denials.append(L("The session's application is in front."))
             }
         case .user, .cli:
-            confirmations.append("The session stops responding until it is woken.")
-            if ownerAppPID == nil { warnings.append("PEPEL cannot tell which application this session lives in; wake it yourself with `pepel thaw`.") }
+            confirmations.append(L("The session stops responding until it is woken."))
+            if ownerAppPID == nil { warnings.append(L("PEPEL cannot tell which application this session lives in; wake it yourself with `pepel thaw`.")) }
         }
         let verdict: CleanupVerdict = !denials.isEmpty ? .denied : !confirmations.isEmpty ? .needsConfirmation : .allowed
         return FreezeDecision(session: session, verdict: verdict, reasons: denials.isEmpty ? confirmations : denials, warnings: warnings)

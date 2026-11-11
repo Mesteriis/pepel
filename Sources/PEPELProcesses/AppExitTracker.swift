@@ -113,26 +113,26 @@ public struct AppExitTracker: Codable, Sendable, Equatable {
             let found = tops.map { p, observed, inside -> ProcessAssessment in
                 let descendants = tree.descendants(of: p)
                 let role = RoleClassifier.role(of: p, attributor: attributor)
-                var evidence = ["\(record.name) quit \(TimeFormat.ago(quitAt, now: now)); this process is still running."]
-                if observed { evidence.append("PEPEL saw it running as a child of \(record.name).") }
-                if inside { evidence.append("Its executable is inside \(record.name).app.") }
-                if !p.listeningPorts.isEmpty { evidence.append("Listening on port \(p.listeningPorts.map(String.init).joined(separator: ", ")).") }
+                var evidence = [L("\(record.name) quit \(TimeFormat.ago(quitAt, now: now)); this process is still running.")]
+                if observed { evidence.append(L("PEPEL saw it running as a child of \(record.name).")) }
+                if inside { evidence.append(L("Its executable is inside \(record.name).app.")) }
+                if !p.listeningPorts.isEmpty { evidence.append(L("Listening on port \(p.listeningPorts.map(String.init).joined(separator: ", ")).")) }
 
                 let eligibility: TerminationEligibility
                 if role == .container {
-                    eligibility = .never(reason: "Container runtimes are managed through their own tools.")
+                    eligibility = .never(reason: L("Container runtimes are managed through their own tools."))
                 } else if role == .system {
-                    eligibility = .never(reason: "System process.")
+                    eligibility = .never(reason: L("System process."))
                 } else if let existing = assessed[p.identity] {
                     // The guardian already judged this developer process; a quit parent does not make it safer.
                     evidence += existing.evidence
                     eligibility = existing.eligibility == .automaticEligible
-                        ? .approvalRequired(warning: "It is a developer process; it is not terminated just because its application quit.")
+                        ? .approvalRequired(warning: L("It is a developer process; it is not terminated just because its application quit."))
                         : existing.eligibility
                 } else if now.timeIntervalSince(quitAt) >= automaticAfter {
                     eligibility = .automaticEligible
                 } else {
-                    eligibility = .approvalRequired(warning: "Some applications leave a helper running on purpose, for syncing or updates.")
+                    eligibility = .approvalRequired(warning: L("Some applications leave a helper running on purpose, for syncing or updates."))
                 }
                 var assessment = ProcessAssessment(
                     process: p, role: role, lifecycle: .abandonedSubprocess, confidence: .verified,

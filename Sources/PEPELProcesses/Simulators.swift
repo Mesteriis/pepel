@@ -27,17 +27,17 @@ public enum Simulators {
         let tree = ProcessTree(processes)
         var busy: String?
         if processes.contains(where: { $0.executablePath?.hasSuffix("Simulator.app/Contents/MacOS/Simulator") ?? false }) {
-            busy = "The Simulator application is open."
+            busy = L("The Simulator application is open.")
         } else if processes.contains(where: { $0.name == "xcodebuild" || ($0.executablePath?.hasSuffix("Xcode.app/Contents/MacOS/Xcode") ?? false) }) {
-            busy = "Xcode or xcodebuild is running."
+            busy = L("Xcode or xcodebuild is running.")
         } else if workingSessions > 0 {
-            busy = "\(workingSessions) agent session\(workingSessions == 1 ? " is" : "s are") working and may be driving it."
+            busy = L("\(workingSessions) agent sessions are working and may be driving it.")
         }
         return processes.compactMap { p -> BootedSimulator? in
             guard let udid = udid(of: p) else { return nil }
             let members = tree.descendants(of: p)
             return BootedSimulator(
-                udid: udid, name: deviceName(udid: udid, home: home) ?? "Simulator \(udid.prefix(8))", root: p.identity, processCount: members.count + 1,
+                udid: udid, name: deviceName(udid: udid, home: home) ?? L("Simulator \(String(udid.prefix(8)))"), root: p.identity, processCount: members.count + 1,
                 footprintBytes: members.reduce(p.footprintBytes) { $0 + $1.footprintBytes }, bootedAt: p.identity.startDate, inUse: busy)
         }
         .sorted { $0.footprintBytes > $1.footprintBytes }
@@ -68,9 +68,9 @@ public enum Simulators {
                 process: p, role: .ide, lifecycle: .abandonedSubprocess, confidence: .verified, projectID: attribution?.projectID,
                 projectConfidence: attribution == nil ? .unknown : .verified,
                 evidence: [
-                    "\(tool) serves one editor or agent over standard input and output.",
-                    "The program that started it has exited, so nothing can talk to it any more.",
-                    "Started \(TimeFormat.ago(p.identity.startDate)).",
+                    L("\(tool) serves one editor or agent over standard input and output."),
+                    L("The program that started it has exited, so nothing can talk to it any more."),
+                    L("Started \(TimeFormat.ago(p.identity.startDate))."),
                 ],
                 eligibility: .automaticEligible, descendantCount: descendants.count,
                 subtreeFootprintBytes: descendants.reduce(p.footprintBytes) { $0 + $1.footprintBytes })
