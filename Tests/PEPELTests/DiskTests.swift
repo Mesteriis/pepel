@@ -481,3 +481,59 @@ struct KeepMarkerTests {
         #expect(await engine.staleProjects().map(\.id) == [main])
     }
 }
+
+@Suite("Other places, logs and the disk forecast")
+struct OtherPlacesTests {
+    @Test("Old large log files go; recent, small and agents' logs stay; a marked log folder is left alone")
+    func oldLogs() {
+        let f = Fixture()
+        let logs = f.home + "/Library/Logs"
+        f.file(logs + "/App/big-old.log", bytes: 2 << 20)
+        f.file(logs + "/App/small-old.log", bytes: 4096)
+        f.file(logs + "/Claude/session-old.log", bytes: 2 << 20)
+        f.age(logs, hours: 24 * 30)
+        f.file(logs + "/App/big-new.log", bytes: 2 << 20)
+        let places = OtherPlaces(home: f.home)
+        #expect(places.oldLogs(days: 7).files == [logs + "/App/big-old.log"])
+        #expect(places.removeOldLogs(days: 7).removed == 1)
+        #expect(!PathUtil.exists(logs + "/App/big-old.log") && PathUtil.exists(logs + "/App/small-old.log") && PathUtil.exists(logs + "/Claude/session-old.log") && PathUtil.exists(logs + "/App/big-new.log"))
+        f.file(logs + "/App/another-old.log", bytes: 2 << 20)
+        f.age(logs + "/App/another-old.log", hours: 24 * 30)
+        f.file(logs + "/DO_NOT_CLEAN.txt")
+        #expect(places.oldLogs(days: 7).files.isEmpty && places.removeOldLogs(days: 7).removed == 0)
+    }
+
+    @Test("Other places are sized and never removed; the disk forecast needs steady filling over days")
+    func placesAndForecast() async throws {
+        let f = Fixture()
+        f.file(f.home + "/.android/avd/pixel.avd/userdata.img", bytes: 300 << 20)
+        f.file(f.home + "/.android/avd/tiny.avd/userdata.img", bytes: 1 << 20)
+        let found = OtherPlaces(home: f.home).measure()
+        #expect(found.map(\.title) == ["Android emulators · pixel.avd"] && found.first?.kept == false)
+
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let forecast = try #require(DiskForecast.project(grownBytes: 70 * Bytes.gb, over: 7 * 86_400, availableBytes: 200 * Bytes.gb, now: now))
+        #expect(forecast.perDayBytes == 10 * Bytes.gb && abs(forecast.fullAt.timeIntervalSince(now) - 20 * 86_400) < 60)
+        #expect(DiskForecast.project(grownBytes: 70 * Bytes.gb, over: 86_400, availableBytes: 200 * Bytes.gb) == nil, "one day is too little")
+        #expect(DiskForecast.project(grownBytes: -5 * Bytes.gb, over: 7 * 86_400, availableBytes: 200 * Bytes.gb) == nil, "not filling")
+        #expect(DiskForecast.project(grownBytes: Bytes.gb, over: 7 * 86_400, availableBytes: 900 * Bytes.gb) == nil, "years away")
+
+        // Daily rules: once in twenty hours, hourly while the disk is low; off by default; not for agents.
+        let store = try PepelStore.inMemory()
+        f.file(f.home + "/Library/Logs/App/old.log", bytes: 2 << 20)
+        f.age(f.home + "/Library/Logs", hours: 24 * 30)
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: FakeProcessSource(processes: []), telemetry: { SystemTelemetry(diskTotalBytes: 1000 * Bytes.gb, diskAvailableBytes: 10 * Bytes.gb) })
+        #expect(await engine.removeOldLogs(confirmed: true, initiator: .agent).denial != nil)
+        _ = await engine.automaticPass()
+        #expect(PathUtil.exists(f.home + "/Library/Logs/App/old.log"))
+        _ = try await engine.update { $0.cleanOldLogs = true }
+        _ = await engine.automaticPass()
+        #expect(!PathUtil.exists(f.home + "/Library/Logs/App/old.log"))
+        await engine.refreshLive()
+        #expect(await engine.dueDaily("test.rule", now: now) == true)
+        #expect(await engine.dueDaily("test.rule", now: now.addingTimeInterval(1800)) == false)
+        #expect(await engine.dueDaily("test.rule", now: now.addingTimeInterval(3700)) == true, "the disk is low, so hourly")
+    }
+}

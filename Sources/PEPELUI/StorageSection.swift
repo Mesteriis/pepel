@@ -12,6 +12,7 @@ struct StorageSection: View {
     @State private var confirmAppCaches = false
     @State private var confirmUnknownCaches = false
     @State private var confirmLeftovers = false
+    @State private var confirmLogs = false
 
     private func matches(_ item: StorageItem) -> Bool {
         if let filter, item.safety != filter { return false }
@@ -198,6 +199,47 @@ struct StorageSection: View {
         }
     }
 
+    /// Other large places (shown, not cleaned), old logs, and when the disk would fill.
+    @ViewBuilder private var other: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Caption("Other large places")
+                Spacer()
+                if model.isMeasuringOther { ProgressView().controlSize(.small) }
+                Button(model.otherPlaces == nil ? "Measure" : "Measure again") { model.measureOtherPlaces() }.buttonStyle(QuietButtonStyle()).disabled(model.isMeasuringOther)
+                if model.oldLogs.count > 0 {
+                    Button("Remove \(model.oldLogs.count) old log files · \(Bytes.format(model.oldLogs.bytes))…") { confirmLogs = true }.buttonStyle(CopperButtonStyle(prominent: false))
+                }
+            }
+            if let forecast = model.diskForecast {
+                Text(forecast.sentence()).font(.system(size: 12)).foregroundStyle(Theme.amber).fixedSize(horizontal: false, vertical: true)
+            }
+            if let places = model.otherPlaces {
+                ForEach(places.prefix(14)) { place in
+                    HStack(spacing: 10) {
+                        Text(place.title).font(.system(size: 12, weight: .medium)).lineLimit(1).frame(width: 300, alignment: .leading)
+                        if place.kept { Badge(text: "kept", tint: Theme.forest) }
+                        Spacer()
+                        Text(place.lastUse.map { "used \(TimeFormat.ago($0))" } ?? "").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
+                        Text(Bytes.format(place.bytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)
+                    }
+                    .help(place.note + "\n" + place.path)
+                }
+                Text("Emulators, language versions, device support and tool data. PEPEL shows them with their last use and does not remove them: each has its own way of being managed, named in the tooltip.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("Measuring walks these folders and takes some seconds; nothing is removed.").font(.system(size: 12)).foregroundStyle(Theme.secondary)
+            }
+        }
+        .panel()
+        .confirmationDialog("Remove old log files?", isPresented: $confirmLogs, titleVisibility: .visible) {
+            Button("Remove") { model.removeOldLogs() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Files in ~/Library/Logs older than \(model.settings.logDays) days and larger than 1 MB. Agents' own logs are not touched.")
+        }
+    }
+
     private func dockerRow(_ title: String, _ count: Int, _ bytes: Int64, _ candidates: Int, _ free: Int64, tint: Color = Theme.copper) -> some View {
         GridRow {
             Text(title).foregroundStyle(Theme.text)
@@ -217,6 +259,7 @@ struct StorageSection: View {
             docker
             caches
             applicationData
+            other
             if let storage = model.storage {
                 breakdown(storage)
                 controls(storage)

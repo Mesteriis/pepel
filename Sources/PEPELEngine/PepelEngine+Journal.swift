@@ -40,7 +40,7 @@ extension PepelEngine {
         let actions = store.audit(limit: 300, kinds: [.termination, .container, .cleanup])
             .filter { $0.timestamp > since && $0.timestamp <= now }
             .map { JournalSample.Action(at: $0.timestamp, by: $0.initiator, subject: $0.subject, outcome: $0.outcome, bytes: $0.bytes) }
-        return JournalSample(
+        var sample = JournalSample(
             ts: now, total: t.memoryTotalBytes, used: t.memoryUsedBytes, app: t.appMemoryBytes, wired: t.wiredBytes, compressed: t.compressedBytes,
             cached: t.cachedFileBytes, free: t.freeBytes, swap: t.swapUsedBytes, pressure: t.pressure.rawValue,
             owners: state.memoryOwners.prefix(25).map { JournalSample.Owner(name: $0.name, kind: $0.kind.rawValue, bytes: $0.footprintBytes, resident: $0.residentBytes, procs: $0.processCount) },
@@ -52,6 +52,9 @@ extension PepelEngine {
                 "simulators": state.simulators.count, "overBudget": state.overBudget.count, "systemRestartable": state.restartableSystem.count,
             ],
             forecastMinutes: state.forecast.map { Int($0.reachesAt.timeIntervalSince(now) / 60) }, actions: actions)
+        sample.diskAvailable = t.diskAvailableBytes
+        sample.diskReclaimable = storage?.reclaimableBytes
+        return sample
     }
 
     /// What the journal of the last `days` says.

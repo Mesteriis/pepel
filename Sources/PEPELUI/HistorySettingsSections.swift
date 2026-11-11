@@ -300,6 +300,13 @@ struct SettingsSection: View {
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
 
+            group("Disk: logs", "Files in ~/Library/Logs. Agents' own logs are never touched.") {
+                toggle("Once a day, remove old log files larger than 1 MB", s.cleanOldLogs) { v in model.updateSettings { $0.cleanOldLogs = v } }
+                stepper("Old means older than", s.logDays, 1...365, suffix: " days") { v in model.updateSettings { $0.logDays = v } }
+                Text("All daily disk rules run once in twenty hours, and once an hour while free space is below the low-disk threshold above.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+
             group("Build retention", "Defaults for every project. Active and pinned builds are always kept.") {
                 stepper("Keep the last", s.defaultRetention.keepSuccessful, 1...20, suffix: " builds") { v in model.updateSettings { $0.defaultRetention.keepSuccessful = v } }
                 stepper("Keep the last", s.defaultRetention.keepFailed, 0...20, suffix: " failed builds") { v in model.updateSettings { $0.defaultRetention.keepFailed = v } }

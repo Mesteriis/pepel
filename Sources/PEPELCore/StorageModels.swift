@@ -360,3 +360,53 @@ public struct ApplicationData: Codable, Sendable, Identifiable, Hashable {
         return now.timeIntervalSince(lastUse) >= Double(days) * 86_400
     }
 }
+
+/// A large place PEPEL shows but does not clean.
+public struct OtherPlace: Codable, Sendable, Identifiable, Hashable {
+    public var path: String
+    public var title: String
+    public var note: String
+    public var bytes: Int64
+    public var lastUse: Date?
+    /// Marked by someone as not to be cleaned.
+    public var kept: Bool
+    public var id: String { path }
+
+    public init(path: String, title: String, note: String, bytes: Int64, lastUse: Date?, kept: Bool) {
+        self.path = path
+        self.title = title
+        self.note = note
+        self.bytes = bytes
+        self.lastUse = lastUse
+        self.kept = kept
+    }
+}
+
+/// When the disk would be full if it kept filling at the rate of the last days.
+public struct DiskForecast: Codable, Sendable, Hashable {
+    public var perDayBytes: Int64
+    public var availableBytes: Int64
+    public var fullAt: Date
+    public var basedOn: TimeInterval
+
+    public init(perDayBytes: Int64, availableBytes: Int64, fullAt: Date, basedOn: TimeInterval) {
+        self.perDayBytes = perDayBytes
+        self.availableBytes = availableBytes
+        self.fullAt = fullAt
+        self.basedOn = basedOn
+    }
+
+    /// From the growth over a period of at least two days. No forecast for a disk that is not
+    /// filling, or that would take more than a year.
+    public static func project(grownBytes: Int64, over span: TimeInterval, availableBytes: Int64, now: Date = Date()) -> DiskForecast? {
+        guard span >= 2 * 86_400, grownBytes > 0, availableBytes > 0 else { return nil }
+        let perDay = Double(grownBytes) / (span / 86_400)
+        let days = Double(availableBytes) / perDay
+        guard perDay >= Double(Bytes.gb) / 10, days <= 365 else { return nil }
+        return DiskForecast(perDayBytes: Int64(perDay), availableBytes: availableBytes, fullAt: now.addingTimeInterval(days * 86_400), basedOn: span)
+    }
+
+    public func sentence(now: Date = Date()) -> String {
+        "The disk has been filling by about \(Bytes.format(perDayBytes)) a day over the last \(TimeFormat.age(basedOn)). At that rate the \(Bytes.format(availableBytes)) that are available last about \(max(1, Int(fullAt.timeIntervalSince(now) / 86_400))) days."
+    }
+}

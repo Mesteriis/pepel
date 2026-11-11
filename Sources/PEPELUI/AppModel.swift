@@ -511,6 +511,33 @@ public final class AppModel {
         }
     }
 
+    // MARK: Other places, logs and the disk forecast
+
+    public var otherPlaces: [OtherPlace]?
+    public var oldLogs: (bytes: Int64, count: Int) = (0, 0)
+    public var diskForecast: DiskForecast?
+    public var isMeasuringOther = false
+
+    public func measureOtherPlaces() {
+        guard !isMeasuringOther else { return }
+        isMeasuringOther = true
+        let days = settings.logDays
+        diskForecast = engine.diskForecast()
+        Task {
+            otherPlaces = await engine.otherPlaces()
+            oldLogs = await engine.oldLogs(days: days)
+            isMeasuringOther = false
+        }
+    }
+
+    public func removeOldLogs() {
+        Task {
+            let result = await engine.removeOldLogs(confirmed: true, initiator: .user)
+            message = result.denial.map { "Not done: \($0)" } ?? "Removed \(result.removed) log files, \(Bytes.format(result.bytes))."
+            measureOtherPlaces()
+        }
+    }
+
     // MARK: Application caches and leftovers
 
     public var appCaches: [ApplicationData]?

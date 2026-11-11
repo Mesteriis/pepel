@@ -139,6 +139,9 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     public var keepAppCaches: [String] = ["com.openai.atlas"]
     /// What a removed application left behind is listed once it has been untouched this long.
     public var leftoverDays = 90
+    /// Once a day, remove log files in ~/Library/Logs older than `logDays` and larger than 1 MB.
+    public var cleanOldLogs = false
+    public var logDays = 7
     public var freezeIdleAgents = false
     public var freezeAfterMinutes = 20
     /// How often a frozen session is woken for a moment to see whether work is waiting.

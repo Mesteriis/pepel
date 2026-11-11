@@ -106,6 +106,9 @@ public struct JournalSample: Codable, Sendable, Hashable {
     public var counts: [String: Int]
     public var forecastMinutes: Int?
     public var actions: [Action]
+    /// Disk space available and what the last scan found reclaimable; absent in older readings.
+    public var diskAvailable: Int64?
+    public var diskReclaimable: Int64?
 
     public init(
         ts: Date, total: Int64, used: Int64, app: Int64, wired: Int64, compressed: Int64, cached: Int64, free: Int64, swap: Int64, pressure: String,

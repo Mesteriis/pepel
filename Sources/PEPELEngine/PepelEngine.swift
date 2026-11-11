@@ -539,6 +539,6 @@ public actor PepelEngine {
     }
 
     public func alerts() -> [PepelAlert] {
-        AlertEvaluator.alerts(live: live, storage: storage, growth: growth(), settings: settings)
+        AlertEvaluator.alerts(live: live, storage: storage, growth: growth(), settings: settings, diskForecast: diskForecast())
     }
 }

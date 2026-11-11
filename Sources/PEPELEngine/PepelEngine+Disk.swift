@@ -56,9 +56,7 @@ extension PepelEngine {
     /// At most once a day: what can be rebuilt or pulled again and has not been used for the configured time.
     func autoCleanDocker(now: Date = Date()) async -> DockerCleanupReport? {
         guard settings.dockerAutoClean, live?.containers != nil || containerRunner != nil else { return nil }
-        let last = store.value("docker.lastAutoClean").flatMap(Double.init).map { Date(timeIntervalSince1970: $0) } ?? .distantPast
-        guard now.timeIntervalSince(last) >= 20 * 3600 else { return nil }
-        try? store.setValue(String(now.timeIntervalSince1970), for: "docker.lastAutoClean")
+        guard dueDaily("docker.lastAutoClean", now: now) else { return nil }
         guard let (_, plan) = await dockerCleanupPlan(), plan.reproducibleBytes >= Bytes.gb else { return nil }
         return await cleanDocker(kinds: [.containers, .images, .buildCache, .networks], confirmed: false, initiator: .automatic).report
     }
@@ -128,9 +126,7 @@ extension PepelEngine {
     /// At most once a day, when the rule is on.
     func autoCleanStaleProjects(now: Date = Date()) async -> CleanupReport? {
         guard settings.cleanStaleProjects, !settings.paused, storage != nil else { return nil }
-        let last = store.value("stale.lastAutoClean").flatMap(Double.init).map { Date(timeIntervalSince1970: $0) } ?? .distantPast
-        guard now.timeIntervalSince(last) >= 20 * 3600 else { return nil }
-        try? store.setValue(String(now.timeIntervalSince1970), for: "stale.lastAutoClean")
+        guard dueDaily("stale.lastAutoClean", now: now) else { return nil }
         return await cleanStaleProjects(confirmed: false, initiator: .automatic)
     }
 }
@@ -173,9 +169,7 @@ extension PepelEngine {
 
     func autoTrimCaches(now: Date = Date()) async -> CacheTrimReport? {
         guard settings.trimCaches, !settings.paused else { return nil }
-        let last = store.value("caches.lastAutoTrim").flatMap(Double.init).map { Date(timeIntervalSince1970: $0) } ?? .distantPast
-        guard now.timeIntervalSince(last) >= 20 * 3600 else { return nil }
-        try? store.setValue(String(now.timeIntervalSince1970), for: "caches.lastAutoTrim")
+        guard dueDaily("caches.lastAutoTrim", now: now) else { return nil }
         return await trimCaches(confirmed: false, initiator: .automatic).report
     }
 }
@@ -283,9 +277,56 @@ extension PepelEngine {
 
     func autoCleanApplicationCaches(now: Date = Date()) async {
         guard settings.cleanAppCaches, !settings.paused else { return }
-        let last = store.value("appcaches.lastAutoClean").flatMap(Double.init).map { Date(timeIntervalSince1970: $0) } ?? .distantPast
-        guard now.timeIntervalSince(last) >= 20 * 3600 else { return }
-        try? store.setValue(String(now.timeIntervalSince1970), for: "appcaches.lastAutoClean")
+        guard dueDaily("appcaches.lastAutoClean", now: now) else { return }
         _ = await cleanApplicationCaches(confirmed: false, initiator: .automatic)
+    }
+}
+
+/// Other large places, old logs, the disk forecast, and when the daily rules run.
+extension PepelEngine {
+    public nonisolated func otherPlaces() async -> [OtherPlace] {
+        let places = OtherPlaces(home: paths.home)
+        return await Task.detached(priority: .utility) { places.measure() }.value
+    }
+
+    public nonisolated func oldLogs(days: Int) async -> (bytes: Int64, count: Int) {
+        let places = OtherPlaces(home: paths.home)
+        let found = await Task.detached(priority: .utility) { places.oldLogs(days: days) }.value
+        return (found.bytes, found.files.count)
+    }
+
+    public func removeOldLogs(days: Int? = nil, confirmed: Bool, initiator: Initiator) async -> (denial: String?, bytes: Int64, removed: Int) {
+        switch initiator {
+        case .agent: return ("Agents cannot have logs removed.", 0, 0)
+        case .automatic: if !settings.cleanOldLogs || settings.paused { return ("Automatic removal of old logs is not enabled.", 0, 0) }
+        case .user, .cli: if !confirmed { return ("This needs your confirmation.", 0, 0) }
+        }
+        let places = OtherPlaces(home: paths.home), age = days ?? settings.logDays
+        let result = await Task.detached(priority: .utility) { places.removeOldLogs(days: age) }.value
+        if result.removed > 0 {
+            store.appendAudit(
+                AuditEntry(kind: .cleanup, initiator: initiator.rawValue, subject: "Old logs: \(result.removed) files", outcome: "removed", bytes: result.bytes, detail: ["olderThanDays": "\(age)"]))
+        }
+        return (nil, result.bytes, result.removed)
+    }
+
+    /// From the recorded growth of the last week (or as much as there is, at least two days).
+    public nonisolated func diskForecast(now: Date = Date()) -> DiskForecast? {
+        guard let growth = store.diskGrowth(window: 7 * 86_400, now: now), let latest = store.telemetryHistory(since: now.addingTimeInterval(-86_400)).last else { return nil }
+        return DiskForecast.project(grownBytes: growth.deltaBytes, over: growth.actualSpan, availableBytes: latest.diskAvailable, now: now)
+    }
+
+    /// Whether a daily rule is due: once in twenty hours, or once an hour while disk space is low.
+    func dueDaily(_ key: String, now: Date) -> Bool {
+        let last = store.value(key).flatMap(Double.init).map { Date(timeIntervalSince1970: $0) } ?? .distantPast
+        let low = (live?.telemetry.diskAvailableBytes ?? .max) < settings.lowDiskThresholdBytes && (live?.telemetry.diskTotalBytes ?? 0) > 0
+        guard now.timeIntervalSince(last) >= (low ? 3600 : 20 * 3600) else { return false }
+        try? store.setValue(String(now.timeIntervalSince1970), for: key)
+        return true
+    }
+
+    func autoRemoveOldLogs(now: Date = Date()) async {
+        guard settings.cleanOldLogs, !settings.paused, dueDaily("logs.lastAutoClean", now: now) else { return }
+        _ = await removeOldLogs(confirmed: false, initiator: .automatic)
     }
 }

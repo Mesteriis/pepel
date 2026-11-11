@@ -92,6 +92,11 @@ pepel memory forecast | swap     Where memory use is heading; what swap takes on
 pepel containers pause|unpause   Freeze a project's containers in place, and continue them
 pepel summary [--hours N]        What PEPEL did over the last day and what it left for you
 pepel journal [--days N] [path]  The memory journal: what the last days say, and where it is kept
+pepel docker [clean …|compact]   What Docker keeps on disk; remove what is unused for N days; trim its disk image
+pepel projects stale [clean]     Projects left untouched for N days; remove their environments and build output
+pepel caches [trim …]            Tool caches; remove only what is unused, or above a size limit
+pepel apps caches | leftovers    Application caches by last use; what removed applications left behind
+pepel disk [logs [clean]]        Free space, when the disk would fill, other large places, old logs
 pepel containers limit [<GiB>]   Show or lower the Docker VM's memory limit
 pepel memory                     Memory pressure, swap and the largest consumers
 pepel processes [--all]          Developer processes and whether they look abandoned

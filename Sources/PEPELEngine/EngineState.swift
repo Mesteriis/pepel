@@ -126,7 +126,7 @@ public struct PepelAlert: Codable, Sendable, Identifiable, Hashable {
 }
 
 public enum AlertEvaluator {
-    public static func alerts(live: LiveState?, storage: StorageState?, growth: GrowthState?, settings: PepelSettings) -> [PepelAlert] {
+    public static func alerts(live: LiveState?, storage: StorageState?, growth: GrowthState?, settings: PepelSettings, diskForecast: DiskForecast? = nil) -> [PepelAlert] {
         var alerts: [PepelAlert] = []
         if let t = live?.telemetry, t.diskTotalBytes > 0, t.diskAvailableBytes < settings.lowDiskThresholdBytes {
             let reclaimable = storage?.reclaimableBytes ?? 0
@@ -138,6 +138,12 @@ public enum AlertEvaluator {
                         + (reclaimable > 0
                             ? "Up to \(Bytes.format(reclaimable)) of developer artifacts can be reviewed for cleanup."
                             : "No reclaimable developer artifacts are known; run a scan to diagnose.")))
+        }
+        if let forecast = diskForecast, forecast.fullAt.timeIntervalSince(Date()) <= 14 * 86_400 {
+            alerts.append(
+                PepelAlert(
+                    id: "disk-forecast-\(Int(Date().timeIntervalSince1970 / 86_400))", severity: .warning, title: "The disk will be full soon",
+                    message: forecast.sentence() + " Review what can be cleaned."))
         }
         if let live, live.telemetry.pressure != .normal {
             alerts.append(

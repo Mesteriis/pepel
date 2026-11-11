@@ -841,6 +841,30 @@ case "roots":
     let settings = await engine.currentSettings()
     if arguments.json { Out.json(settings.projectRoots) } else { settings.projectRoots.forEach { print($0) } }
 
+case "disk":
+    let settings = await engine.currentSettings()
+    if arguments.positional.first == "logs" {
+        let days = arguments.options["days"].flatMap { Int($0) } ?? settings.logDays
+        let found = await engine.oldLogs(days: days)
+        print("\(found.count) log files in ~/Library/Logs are older than \(days) days and larger than 1 MB: \(Bytes.format(found.bytes)). Agents' own logs are not counted.")
+        guard arguments.positional.dropFirst().first == "clean", found.count > 0 else { break }
+        guard arguments.flags.contains("yes") || Out.confirm("Remove them?") else { print("Nothing was removed."); break }
+        let result = await engine.removeOldLogs(days: days, confirmed: true, initiator: .cli)
+        print(result.denial.map { "Not done: \($0)" } ?? "Removed \(result.removed) files, \(Bytes.format(result.bytes)).")
+        break
+    }
+    let live = await engine.refreshLive()
+    let t = live.telemetry
+    print("Disk: \(Bytes.format(t.diskAvailableBytes)) available of \(Bytes.format(t.diskTotalBytes)).")
+    print(engine.diskForecast()?.sentence() ?? "No forecast: the disk has not been filling steadily, or PEPEL has less than two days of readings.")
+    print("\nMeasuring other large places…")
+    let places = await engine.otherPlaces()
+    if arguments.json { Out.json(places); break }
+    Out.table(
+        ["SIZE", "LAST USED", "", "WHAT", "WHERE"],
+        places.prefix(arguments.flags.contains("all") ? 10_000 : 25).map { [Bytes.format($0.bytes), $0.lastUse.map { TimeFormat.ago($0) } ?? "—", $0.kept ? "kept" : "", Out.truncate($0.title, 44), PathUtil.display($0.path, home: appPaths.home)] })
+    print("\nPEPEL shows these and does not remove them: each has its own way of being managed. See also `pepel docker`, `pepel caches`, `pepel apps caches`, `pepel projects stale`, `pepel disk logs`.")
+
 case "caches":
     let settings = await engine.currentSettings()
     let days = arguments.options["days"].flatMap { Int($0) } ?? settings.cacheUnusedDays

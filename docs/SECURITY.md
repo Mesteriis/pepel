@@ -249,6 +249,53 @@ users and accidental callers; the narrow operation set is what limits a particip
   paused are left alone.
 - It never runs `rm`, `down`, `kill`, `prune` on volumes, or anything else that removes data.
 
+## Disk cleaning beyond single artifacts
+
+Everything below is off by default as an automatic rule, available on request, refused for
+agents, and recorded in the audit log with measured figures. Daily rules run once in twenty
+hours, or once an hour while free space is below the low-disk threshold.
+
+**Keep markers.** A folder that holds a file named `DO_NOT_CLEAN.txt`, `DO_NOT_CLEAN` or
+`.pepel-keep`, or carries the extended attribute `com.avm.do-not-clean` or
+`dev.pepel.do-not-clean`, is never cleaned by any rule, nor is anything inside it. A marker is a
+person's decision and outranks every rule PEPEL has.
+
+**Docker** (`pepel docker`, Storage section). Stopped containers count from when they stopped,
+images from when they were last pulled or built, build cache from its last use. Removal names
+every object by identifier and never uses force, so Docker itself refuses anything that came
+into use meanwhile. Left alone: containers of a compose project that is running or that an
+agent works in, the keep list and the `pepel.keep` label. **Named volumes are never
+candidates.** Anonymous volumes that nothing mounts can be removed on request only. After
+removal the VM's filesystem is trimmed from a one-off privileged container of a local
+Alpine/BusyBox image (nothing is pulled), which is what shrinks the disk image on the Mac.
+
+**Projects left untouched** (`pepel projects stale`). A project's last activity is the newest
+of git's own bookkeeping (index, HEAD, its log) and the project's files outside generated
+directories; an agent session in it counts as now. For projects untouched for
+`staleProjectDays`, only environments, installed dependencies, build output and project-local
+caches are affected: what installing or building again recreates. Source, git data and
+configuration never are. Linked worktrees are outside this rule. Every item still passes the
+ordinary policy (in use, recently written, leased, pinned, excluded project).
+
+**Tool caches** (`pepel caches`). A fixed list of home-relative cache locations; nothing else is
+ever walked. Entries not read or written for `cacheUnusedDays` go; with `cacheSizeLimitGB`, the
+least recently used above the limit go too, but never anything used in the last day. Stores of
+independent files are trimmed file by file; caches of unpacked packages lose whole entries
+only. A cache is skipped while its tool is running, and when it is a link. Gradle is left to
+its own cleanup.
+
+**Application caches** (`pepel apps caches`). Folders directly inside `~/Library/Caches`,
+excluding `com.apple.*`, the tool caches above and `keepAppCaches`. Removed only when the
+application is not running and nothing in the folder was used for `appCacheUnusedDays`; folders
+PEPEL cannot tie to an application only on explicit request. **Leftovers of removed
+applications** elsewhere in the Library are only ever moved to the Trash, on request.
+`~/Library/Containers` is not read at all.
+
+**Logs and other places** (`pepel disk`). Log files in `~/Library/Logs` older than `logDays`
+and larger than 1 MB can be removed; agents' own logs never. Emulators, language versions,
+device support and tool data are sized and shown with their last use, and not removed.
+Model weights are protected and are not offered for removal anywhere.
+
 ## Agents' instruction files
 
 `pepel agents instructions --install` adds a short note about PEPEL to each installed agent's
