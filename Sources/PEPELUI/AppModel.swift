@@ -150,6 +150,11 @@ public final class AppModel {
         switch event {
         case .live(let state):
             withAnimation(.easeOut(duration: 0.25)) { live = state }
+            // Settings changed from the command line show up in the interface too.
+            Task {
+                let current = await engine.currentSettings()
+                if current != settings { settings = current }
+            }
         case .scanStarted:
             isScanning = true
             scanProgress = ScanProgress(phase: "Starting")

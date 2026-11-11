@@ -1232,6 +1232,26 @@ struct EngineTests {
         #expect(JournalDigest.make([]).samples == 0)
     }
 
+    @Test("Two PEPEL processes on one store see each other's settings and do not overwrite them")
+    func sharedSettings() async throws {
+        let f = Fixture()
+        let store = try PepelStore.inMemory()
+        let paths = AppPaths(home: f.home, supportDirectory: f.root + "/support")
+        func make() throws -> PepelEngine {
+            try PepelEngine(paths: paths, store: store, tools: .disabled, analyzers: [], processSource: FakeProcessSource(processes: []), telemetry: { SystemTelemetry() })
+        }
+        let app = try make(), cli = try make()
+        _ = try await cli.update { $0.trimCaches = true }
+        #expect(await app.currentSettings().trimCaches == false, "not yet sampled")
+        await app.refreshLive()
+        #expect(await app.currentSettings().trimCaches == true, "the running app adopts what the command line saved")
+        // A change in the app does not undo the one made on the command line meanwhile.
+        _ = try await cli.update { $0.cacheUnusedDays = 10 }
+        _ = try await app.update { $0.logDays = 3 }
+        let final = store.loadSettings(home: f.home)
+        #expect(final.cacheUnusedDays == 10 && final.logDays == 3 && final.trimCaches)
+    }
+
     final class FlushCounter: @unchecked Sendable {
         private let lock = NSLock()
         private var value = 0

@@ -117,7 +117,17 @@ public actor PepelEngine {
 
     public func currentSettings() -> PepelSettings { settings }
 
+    /// Picks up settings another PEPEL process saved (the command-line tool while the app runs,
+    /// or the other way round), so both always act on the same ones.
+    func adoptStoredSettings() {
+        guard store.value("settings") != nil else { return }
+        let stored = store.loadSettings(home: paths.home)
+        if stored != settings { settings = stored }
+    }
+
     public func update(_ mutate: @Sendable (inout PepelSettings) -> Void) throws -> PepelSettings {
+        // Start from what is stored, so a change made elsewhere meanwhile is not overwritten.
+        adoptStoredSettings()
         mutate(&settings)
         try store.saveSettings(settings)
         return settings
@@ -235,6 +245,7 @@ public actor PepelEngine {
     /// Samples telemetry and the process table and re-assesses every developer process.
     @discardableResult
     public func refreshLive(now: Date = Date()) async -> LiveState {
+        adoptStoredSettings()
         if projects.isEmpty { _ = await refreshProjects() }
         loadHistoryIfNeeded(now: now)
 
