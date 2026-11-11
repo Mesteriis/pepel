@@ -49,7 +49,7 @@ struct StorageSection: View {
                     dockerRow("Stopped containers", stopped.count, stopped.reduce(0) { $0 + $1.sizeBytes }, plan.containers.count, plan.bytes(.containers))
                     dockerRow("Images", report.images.count, report.imageBytes, plan.images.count, plan.bytes(.images))
                     dockerRow("Build cache", report.buildCache.count, report.buildCacheBytes, plan.buildCacheEntries, plan.bytes(.buildCache))
-                    dockerRow("Volumes no container mounts", report.volumes.count, report.volumeBytes, plan.volumes.count, plan.bytes(.volumes), tint: Theme.amber)
+                    dockerRow("Anonymous volumes nothing mounts", report.volumes.count, report.volumeBytes, plan.volumes.count, plan.bytes(.volumes), tint: Theme.amber)
                 }
                 ForEach(plan.skipped, id: \.self) { line in
                     Text(line).font(.system(size: 11)).foregroundStyle(Theme.tertiary)
@@ -57,7 +57,7 @@ struct StorageSection: View {
                 HStack(spacing: 8) {
                     Button("Remove unused containers, images and cache · \(Bytes.format(plan.reproducibleBytes))…") { confirmDocker = true }
                         .buttonStyle(CopperButtonStyle(prominent: false)).disabled(plan.reproducibleBytes == 0 || model.isCleaningDocker)
-                    Button("Remove \(plan.volumes.count) volumes · \(Bytes.format(plan.bytes(.volumes)))…") { confirmVolumes = true }
+                    Button("Remove \(plan.volumes.count) anonymous volumes · \(Bytes.format(plan.bytes(.volumes)))…") { confirmVolumes = true }
                         .buttonStyle(QuietButtonStyle()).disabled(plan.volumes.isEmpty || model.isCleaningDocker)
                     Button("Trim disk image") { model.compactDocker() }.buttonStyle(QuietButtonStyle()).disabled(model.isCleaningDocker)
                         .help("Hands blocks Docker no longer uses back to the Mac. Nothing is removed.")
@@ -67,7 +67,7 @@ struct StorageSection: View {
                         + ". Disk image \(Bytes.format(done.diskImageBefore)) → \(Bytes.format(done.diskImageAfter)).")
                         .font(.system(size: 11)).foregroundStyle(Theme.forest).fixedSize(horizontal: false, vertical: true)
                 }
-                Text("Containers, images and build cache can be rebuilt or pulled again, so they can also be removed automatically once a day (Settings). Volumes hold data and are only ever removed from here. Nothing is removed with force: Docker refuses what is in use.")
+                Text("Containers, images and build cache can be rebuilt or pulled again, so they can also be removed automatically once a day (Settings). Named volumes are never removed; anonymous ones nothing mounts only from here. Nothing is removed with force: Docker refuses what is in use.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             } else if !model.isReadingDocker {
                 Text("Docker did not answer, or is not installed.").font(.system(size: 12)).foregroundStyle(Theme.secondary)
@@ -85,7 +85,7 @@ struct StorageSection: View {
             Button("Remove volumes", role: .destructive) { model.cleanDocker([.volumes]) }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Volumes hold data such as databases and uploads. No container mounts these and they are older than \(days) days, but removing them cannot be undone and rebuilding does not bring them back.")
+            Text("Only anonymous volumes that no container mounts and that are older than \(days) days: what removed containers left behind. Named volumes are never removed by PEPEL. This cannot be undone.")
         }
     }
 
@@ -145,8 +145,9 @@ struct StorageSection: View {
                 Button(model.appCaches == nil ? "Measure" : "Measure again") { model.measureApplicationData() }.buttonStyle(QuietButtonStyle()).disabled(model.isMeasuringAppData)
             }
             if let caches = model.appCaches {
-                let known = caches.filter { ($0.owner == .installed || $0.owner == .removed) && $0.unused(days: days) }
-                let unknown = caches.filter { $0.owner == .unknown && $0.unused(days: days) }
+                let kept = Set(model.settings.keepAppCaches.map { $0.lowercased() })
+                let known = caches.filter { ($0.owner == .installed || $0.owner == .removed) && $0.unused(days: days) && !kept.contains($0.name.lowercased()) }
+                let unknown = caches.filter { $0.owner == .unknown && $0.unused(days: days) && !kept.contains($0.name.lowercased()) }
                 ForEach(caches.prefix(12)) { cache in
                     HStack(spacing: 10) {
                         Badge(

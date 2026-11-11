@@ -895,7 +895,7 @@ case "docker":
             for volume in plan.volumes.sorted(by: { $0.sizeBytes > $1.sizeBytes }).prefix(15) {
                 print("  \(Bytes.format(volume.sizeBytes))  \(volume.isAnonymous ? "anonymous " + String(volume.name.prefix(12)) : volume.name)\(volume.composeProject.map { " (\($0))" } ?? "")")
             }
-            print("Volumes hold data (databases, uploads). Removing them cannot be undone and rebuilding does not bring them back.")
+            print("Only anonymous volumes that no container mounts: what removed containers left behind. Named volumes are never removed by PEPEL. This cannot be undone.")
         }
         guard kinds.contains(where: { plan.count($0) > 0 }) || kinds.contains(.networks) else { print("Nothing has been unused for \(days) days."); break }
         guard arguments.flags.contains("yes") || Out.confirm("Remove these from Docker?") else { print("Nothing was removed."); break }
@@ -924,11 +924,11 @@ case "docker":
             ["Stopped containers", String(stopped.count), Bytes.format(stopped.reduce(0) { $0 + $1.sizeBytes }), String(plan.containers.count), Bytes.format(plan.bytes(.containers))],
             ["Images", String(report.images.count), Bytes.format(report.imageBytes), String(plan.images.count), Bytes.format(plan.bytes(.images))],
             ["Build cache", String(report.buildCache.count), Bytes.format(report.buildCacheBytes), String(plan.buildCacheEntries), Bytes.format(plan.bytes(.buildCache))],
-            ["Volumes", String(report.volumes.count), Bytes.format(report.volumeBytes), String(plan.volumes.count) + " unmounted", Bytes.format(plan.bytes(.volumes))],
+            ["Volumes", String(report.volumes.count), Bytes.format(report.volumeBytes), String(plan.volumes.count) + " anonymous, unmounted", Bytes.format(plan.bytes(.volumes))],
         ])
     for line in plan.skipped { print("  · \(line)") }
     print("\n`pepel docker clean` removes containers, images, build cache and networks unused for \(days) days (--days N to change), then trims the disk image.")
-    print("`pepel docker clean volumes` is separate: volumes hold data. Automatic daily cleanup is \(settings.dockerAutoClean ? "on" : "off") (dockerAutoClean).")
+    print("`pepel docker clean volumes` is separate and takes anonymous volumes only; named volumes are never removed. Automatic daily cleanup is \(settings.dockerAutoClean ? "on" : "off") (dockerAutoClean).")
 
 case "journal":
     let journal = engine.journal

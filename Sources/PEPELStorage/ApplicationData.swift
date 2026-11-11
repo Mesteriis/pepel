@@ -138,6 +138,7 @@ public struct ApplicationDataScanner: Sendable {
         let name = (item.path as NSString).lastPathComponent
         guard !name.isEmpty, !name.hasPrefix("."), parents.contains(where: { item.path == home + "/" + $0 + "/" + name }) else { return false }
         if item.kind == .cache, Self.isManagedElsewhere(name) { return false }
+        guard PathUtil.keepMarker(at: item.path, stopAt: home) == nil else { return false }
         var info = stat()
         return lstat(item.path, &info) == 0 && (info.st_mode & S_IFMT) == S_IFDIR
     }

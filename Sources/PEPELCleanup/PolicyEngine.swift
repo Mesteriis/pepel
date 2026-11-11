@@ -140,6 +140,9 @@ public struct CleanupPolicyEngine: Sendable {
                 return "~/\(forbidden) holds credentials, agent state or application data."
             }
         }
+        if let marked = PathUtil.keepMarker(at: path, stopAt: inHome ? home : path) {
+            return "\(PathUtil.display(marked, home: context.home)) is marked as not to be cleaned."
+        }
         if PathUtil.exists(path + "/.git") { return "The path is a git working tree." }
         if let root = context.projectRoots.first(where: { PathUtil.isInsideIgnoringCase($0, root: path) }) {
             return "The path contains the project \((root as NSString).lastPathComponent)."

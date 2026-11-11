@@ -85,7 +85,8 @@ extension PepelEngine {
         }
         var result = items
         for (projectID, indices) in byProject {
-            guard let project = projectIndex.project(id: projectID) else { continue }
+            // A linked worktree is someone's parallel line of work; it is left out of this rule.
+            guard let project = projectIndex.project(id: projectID), project.git?.isLinkedWorktree != true, !projectID.contains("/worktrees/") else { continue }
             var last = ProjectActivityProbe.lastActivity(root: projectID, gitDirectory: project.git?.commonDirectory, skip: Set(indices.map { items[$0].path }))
             // An agent session in the project right now is work, whatever the files say.
             if live?.agentSessions.contains(where: { $0.projectID == projectID }) == true { last = now }
@@ -149,11 +150,13 @@ extension PepelEngine {
         let maxBytes: Int64? = cap > 0 ? Int64(cap) * Bytes.gb : nil
         let trimmer = CacheTrimmer(home: paths.home)
         let wanted = CacheTrimmer.caches.filter { ids?.contains($0.id) ?? true }
+        // A cache is left alone while the tool that owns it is running.
+        let running = Set(processSource.snapshot().map(\.name))
         let read = readTelemetry
         let before = read().diskAvailableBytes
         let steps = await Task.detached(priority: .utility) {
             wanted.map { definition -> CacheTrimReport.Step in
-                let result = trimmer.trim(definition.id, days: age, maxBytes: maxBytes)
+                let result = trimmer.trim(definition.id, days: age, maxBytes: maxBytes, running: running)
                 return CacheTrimReport.Step(id: definition.id, title: definition.title, bytes: result.bytes, removed: result.removed)
             }
             .filter { $0.removed > 0 }
@@ -214,9 +217,9 @@ extension PepelEngine {
 
     /// Caches the rule would remove: the application is installed but not running, or gone, and
     /// nothing in the cache was used for `days`. Caches PEPEL cannot tie to anything are added only on request.
-    static func removableCaches(_ caches: [ApplicationData], days: Int, includeUnknown: Bool) -> [ApplicationData] {
+    static func removableCaches(_ caches: [ApplicationData], days: Int, includeUnknown: Bool, keep: Set<String> = []) -> [ApplicationData] {
         caches.filter { cache in
-            guard cache.unused(days: days) else { return false }
+            guard cache.unused(days: days), !keep.contains(cache.name.lowercased()) else { return false }
             switch cache.owner {
             case .running: return false
             case .installed, .removed: return true
@@ -229,10 +232,11 @@ extension PepelEngine {
         if let denial = policy.applicationDataDenial(.cache, confirmed: confirmed, initiator: initiator, settings: settings) { return (denial, nil) }
         let scanner = await applicationScanner()
         let age = days ?? settings.appCacheUnusedDays
+        let keep = Set(settings.keepAppCaches.map { $0.lowercased() })
         let report = await Task.detached(priority: .utility) { () -> ApplicationDataReport in
             // Measured now, so that what is removed is what is there now.
             var report = ApplicationDataReport(kind: .cache, removed: [], kept: [], bytes: 0)
-            for cache in Self.removableCaches(scanner.caches(), days: age, includeUnknown: includeUnknown) {
+            for cache in Self.removableCaches(scanner.caches(), days: age, includeUnknown: includeUnknown, keep: keep) {
                 guard scanner.isManageable(cache), (try? FileManager.default.removeItem(atPath: cache.path)) != nil else {
                     report.kept.append(cache.name)
                     continue

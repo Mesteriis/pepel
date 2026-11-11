@@ -191,6 +191,7 @@ struct SettingsSection: View {
     @State private var newRuleKind = ProtectionKind.path
     @State private var newKeep = ""
     @State private var newKeepApp = ""
+    @State private var newKeepCache = ""
     @State private var budgetKind = ""
     @State private var budgetName = ""
     @State private var budgetGB = 4
@@ -251,7 +252,7 @@ struct SettingsSection: View {
                 stepper("Warn when disk space falls below", Int(s.lowDiskThresholdBytes / Bytes.gb), 5...500, step: 5, suffix: " GB") { v in model.updateSettings { $0.lowDiskThresholdBytes = Int64(v) * Bytes.gb } }
             }
 
-            group("Disk: Docker", "Images, stopped containers and build cache can be rebuilt or pulled again. Volumes hold data and are never removed automatically.") {
+            group("Disk: Docker", "Images, stopped containers and build cache can be rebuilt or pulled again. Named volumes are never removed; anonymous ones only when you ask.") {
                 toggle("Once a day, remove containers, images and build cache Docker has not used", s.dockerAutoClean) { v in model.updateSettings { $0.dockerAutoClean = v } }
                 stepper("Unused means untouched for", s.dockerUnusedDays, 1...365, suffix: " days") { v in model.updateSettings { $0.dockerUnusedDays = v } }
                 Text("A stopped container counts from when it stopped, an image from when it was last pulled or built, build cache from its last use. Containers of a compose project that is running, or that an agent is working in, and anything on the keep list are left alone. After removal PEPEL trims Docker's disk image so the Mac gets the space back.")
@@ -277,7 +278,25 @@ struct SettingsSection: View {
                 toggle("Once a day, remove caches of applications that are not running and have not used them", s.cleanAppCaches) { v in model.updateSettings { $0.cleanAppCaches = v } }
                 stepper("Unused means untouched for", s.appCacheUnusedDays, 1...365, suffix: " days") { v in model.updateSettings { $0.appCacheUnusedDays = v } }
                 stepper("List what a removed application left behind after", s.leftoverDays, 7...730, step: 7, suffix: " days untouched") { v in model.updateSettings { $0.leftoverDays = v } }
-                Text("Caches PEPEL cannot tie to an application, and what removed applications left elsewhere in the Library, are never removed automatically.")
+                Text("Never remove these cache folders (some applications keep more than a cache there):").font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                ForEach(s.keepAppCaches, id: \.self) { name in
+                    HStack {
+                        Badge(text: "keep", tint: Theme.copper)
+                        Text(name).font(Theme.mono).foregroundStyle(Theme.text)
+                        Spacer()
+                        Button("Remove") { model.updateSettings { $0.keepAppCaches.removeAll { $0 == name } } }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                    }
+                }
+                HStack(spacing: 8) {
+                    TextField("folder name in ~/Library/Caches", text: $newKeepCache).textFieldStyle(.roundedBorder).font(.system(size: 12)).frame(maxWidth: 320)
+                    Button("Keep") {
+                        let name = newKeepCache.trimmingCharacters(in: .whitespaces)
+                        model.updateSettings { if !$0.keepAppCaches.contains(name) { $0.keepAppCaches.append(name) } }
+                        newKeepCache = ""
+                    }
+                    .buttonStyle(QuietButtonStyle()).disabled(newKeepCache.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                Text("Caches PEPEL cannot tie to an application, and what removed applications left elsewhere in the Library, are never removed automatically. A folder holding a file named DO_NOT_CLEAN.txt (or .pepel-keep), or carrying the attribute com.avm.do-not-clean, is never cleaned by any rule, nor is anything inside it.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
 

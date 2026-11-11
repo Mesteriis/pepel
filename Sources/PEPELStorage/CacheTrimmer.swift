@@ -16,21 +16,23 @@ public struct CacheTrimmer: Sendable {
         public var path: String
         public var style: ManagedCache.Style
         public var note: String
+        /// Programs that use the cache; while one of them runs, the cache is left alone.
+        public var tools: [String] = []
     }
 
     public static let caches: [Definition] = [
-        .init(id: "go-build", title: "Go build cache", path: "Library/Caches/go-build", style: .files, note: "Compiled packages; Go rebuilds what is missing."),
-        .init(id: "sccache", title: "sccache", path: "Library/Caches/Mozilla.sccache", style: .files, note: "Compiler outputs; recompiled when missing."),
+        .init(id: "go-build", title: "Go build cache", path: "Library/Caches/go-build", style: .files, note: "Compiled packages; Go rebuilds what is missing.", tools: ["go", "compile", "link", "gopls"]),
+        .init(id: "sccache", title: "sccache", path: "Library/Caches/Mozilla.sccache", style: .files, note: "Compiler outputs; recompiled when missing.", tools: ["sccache"]),
         // Unpacked packages are folders whose files belong together, so they go whole or not at all.
-        .init(id: "uv", title: "uv unpacked packages", path: ".cache/uv/archive-v0", style: .entries, note: "One folder per unpacked package; uv downloads and unpacks a missing one again."),
-        .init(id: "pip", title: "pip cache", path: "Library/Caches/pip", style: .files, note: "Downloaded wheels and HTTP cache."),
-        .init(id: "npm", title: "npm cache", path: ".npm/_cacache", style: .files, note: "Downloaded packages; npm fetches a missing one again."),
-        .init(id: "yarn", title: "Yarn cache", path: "Library/Caches/Yarn", style: .files, note: "Downloaded packages."),
-        .init(id: "bun", title: "Bun install cache", path: ".bun/install/cache", style: .entries, note: "Unpacked packages, one folder each."),
-        .init(id: "cargo-registry", title: "Cargo registry cache", path: ".cargo/registry/cache", style: .files, note: "Downloaded crates; fetched again when needed."),
-        .init(id: "homebrew", title: "Homebrew downloads", path: "Library/Caches/Homebrew", style: .files, note: "Downloaded bottles and source archives."),
-        .init(id: "playwright", title: "Playwright browsers", path: "Library/Caches/ms-playwright", style: .entries, note: "One folder per browser build; `playwright install` brings one back."),
-        .init(id: "puppeteer", title: "Puppeteer browsers", path: ".cache/puppeteer", style: .entries, note: "Downloaded browser builds."),
+        .init(id: "uv", title: "uv unpacked packages", path: ".cache/uv/archive-v0", style: .entries, note: "One folder per unpacked package; uv downloads and unpacks a missing one again.", tools: ["uv", "uvx"]),
+        .init(id: "pip", title: "pip cache", path: "Library/Caches/pip", style: .files, note: "Downloaded wheels and HTTP cache.", tools: ["pip", "pip3"]),
+        .init(id: "npm", title: "npm cache", path: ".npm/_cacache", style: .files, note: "Downloaded packages; npm fetches a missing one again.", tools: ["npm", "npx"]),
+        .init(id: "yarn", title: "Yarn cache", path: "Library/Caches/Yarn", style: .files, note: "Downloaded packages.", tools: ["yarn"]),
+        .init(id: "bun", title: "Bun install cache", path: ".bun/install/cache", style: .entries, note: "Unpacked packages, one folder each.", tools: ["bun", "bunx"]),
+        .init(id: "cargo-registry", title: "Cargo registry cache", path: ".cargo/registry/cache", style: .files, note: "Downloaded crates; fetched again when needed.", tools: ["cargo", "rustc"]),
+        .init(id: "homebrew", title: "Homebrew downloads", path: "Library/Caches/Homebrew", style: .files, note: "Downloaded bottles and source archives.", tools: ["brew"]),
+        .init(id: "playwright", title: "Playwright browsers", path: "Library/Caches/ms-playwright", style: .entries, note: "One folder per browser build; `playwright install` brings one back.", tools: ["playwright"]),
+        .init(id: "puppeteer", title: "Puppeteer browsers", path: ".cache/puppeteer", style: .entries, note: "Downloaded browser builds.", tools: []),
     ]
 
     public let home: String
@@ -44,6 +46,8 @@ public struct CacheTrimmer: Sendable {
         guard lstat(path, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR else { return nil }
         // A cache directory that is a link, or reached through one, is somebody's own arrangement.
         guard PathUtil.canonical(path) == path || PathUtil.canonical(path) == PathUtil.canonical(home) + "/" + definition.path else { return nil }
+        // Someone marked it, or a folder above it, as not to be cleaned.
+        guard PathUtil.keepMarker(at: path, stopAt: home) == nil else { return nil }
         return path
     }
 
@@ -111,8 +115,10 @@ public struct CacheTrimmer: Sendable {
     /// Removes from one cache what has not been used for `days`, and then, when `maxBytes` is
     /// set and the cache is still larger, the least recently used entries until it fits.
     /// Returns the bytes and entries removed.
-    public func trim(_ id: String, days: Int, maxBytes: Int64? = nil, now: Date = Date()) -> (bytes: Int64, removed: Int) {
+    /// - Parameter running: names of running processes; a cache whose tool is among them is skipped.
+    public func trim(_ id: String, days: Int, maxBytes: Int64? = nil, running: Set<String> = [], now: Date = Date()) -> (bytes: Int64, removed: Int) {
         guard let definition = Self.caches.first(where: { $0.id == id }), let root = root(definition) else { return (0, 0) }
+        guard running.isDisjoint(with: definition.tools) else { return (0, 0) }
         let cutoff = Int(now.timeIntervalSince1970) - days * 86_400
         // Every entry with its size and last use, least recently used first.
         var entries: [(path: String, bytes: Int64, lastUse: Int)] = []
@@ -124,7 +130,7 @@ public struct CacheTrimmer: Sendable {
                 let path = root + "/" + name
                 var info = stat()
                 // Only real directories directly inside the cache; a link is left where it is.
-                guard lstat(path, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR else { continue }
+                guard lstat(path, &info) == 0, (info.st_mode & S_IFMT) == S_IFDIR, PathUtil.keepMarker(at: path, stopAt: root) == nil else { continue }
                 var size: Int64 = 0
                 var newest = 0
                 Self.walk(path) { _, fileBytes, lastUse in

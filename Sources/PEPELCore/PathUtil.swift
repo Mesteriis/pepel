@@ -72,6 +72,28 @@ public enum PathUtil {
         )
     }
 
+    /// Names of files that mark a folder, and everything in it, as not to be cleaned.
+    public static let keepMarkerFiles = ["DO_NOT_CLEAN.txt", "DO_NOT_CLEAN", ".pepel-keep"]
+    /// Extended attributes with the same meaning.
+    public static let keepMarkerAttributes = ["com.avm.do-not-clean", "dev.pepel.do-not-clean"]
+
+    /// The folder, at or above `path` and inside `stopAt`, that someone marked as not to be
+    /// cleaned: by a marker file in it or by an extended attribute on it. A marker is a
+    /// person's decision and outranks every rule PEPEL has.
+    public static func keepMarker(at path: String, stopAt: String) -> String? {
+        var current = path
+        var steps = 0
+        while steps < 64 {
+            steps += 1
+            for name in keepMarkerFiles where exists(current + "/" + name) { return current }
+            for attribute in keepMarkerAttributes where getxattr(current, attribute, nil, 0, 0, XATTR_NOFOLLOW) >= 0 { return current }
+            let parent = (current as NSString).deletingLastPathComponent
+            guard current != stopAt, parent != current, isInside(parent, root: stopAt) || parent == stopAt else { break }
+            current = parent
+        }
+        return nil
+    }
+
     public static func exists(_ path: String) -> Bool {
         var st = stat()
         return lstat(path, &st) == 0

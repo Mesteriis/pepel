@@ -135,6 +135,8 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     /// Once a day, remove caches of applications that are not running and have not used them for `appCacheUnusedDays`.
     public var cleanAppCaches = false
     public var appCacheUnusedDays = 30
+    /// Cache folders that are never removed, by name. Some applications keep more than a cache there.
+    public var keepAppCaches: [String] = ["com.openai.atlas"]
     /// What a removed application left behind is listed once it has been untouched this long.
     public var leftoverDays = 90
     public var freezeIdleAgents = false

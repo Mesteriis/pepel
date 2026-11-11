@@ -116,7 +116,7 @@ public enum DockerCleanKind: String, Codable, Sendable, CaseIterable, Identifiab
         case .images: "Images no container uses"
         case .buildCache: "Build cache"
         case .networks: "Unused networks"
-        case .volumes: "Volumes no container mounts"
+        case .volumes: "Anonymous volumes no container mounts"
         }
     }
 
@@ -191,8 +191,12 @@ public struct DockerCleanupPlan: Codable, Sendable, Hashable {
         }
         if freshImages > 0 { skipped.append("\(freshImages) unused image\(freshImages == 1 ? " was" : "s were") pulled or built less than \(days) days ago.") }
 
+        // A named volume is somebody's data by name and is never a candidate. An anonymous one that
+        // nothing mounts is what a removed container left behind.
+        let named = report.volumes.filter { $0.links == 0 && !$0.isAnonymous }.count
+        if named > 0 { skipped.append("\(named) named volume\(named == 1 ? " is" : "s are") not mounted by any container; PEPEL never removes named volumes.") }
         let volumes = report.volumes.filter { volume in
-            guard volume.links == 0, !keep.contains(volume.name), volume.composeProject.map(keep.contains) != true else { return false }
+            guard volume.links == 0, volume.isAnonymous, !keep.contains(volume.name), volume.composeProject.map(keep.contains) != true else { return false }
             if let project = volume.composeProject, running.contains(project) || activeProjects.contains(project) { return false }
             guard let created = volume.createdAt else { return days == 0 }
             return created <= cutoff

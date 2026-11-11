@@ -28,7 +28,7 @@ final class DockerScript: @unchecked Sendable {
         case "image":
             return (0, "img-old\t2026-08-01T10:00:00Z\nimg-shared\t2026-08-01T10:00:00Z\nimg-fresh\t2026-11-09T10:00:00Z\nimg-run\t2026-08-01T10:00:00Z\n")
         case "volume":
-            if arguments.dropFirst().first == "inspect" { return (0, "vol-old\t2026-08-01T10:00:00Z\nvol-new\t2026-11-09T10:00:00Z\nvol-used\t2026-08-01T10:00:00Z\n") }
+            if arguments.dropFirst().first == "inspect" { return (0, "vol-old\t2026-08-01T10:00:00Z\nvol-new\t2026-11-09T10:00:00Z\nvol-used\t2026-08-01T10:00:00Z\npgdata\t2026-01-01T10:00:00Z\n") }
             return refuse.contains(arguments.last ?? "") ? (1, "") : (0, (arguments.last ?? "") + "\n")
         case "rm":
             return (0, arguments.dropFirst().filter { !refuse.contains($0) }.joined(separator: "\n") + "\n")
@@ -67,7 +67,8 @@ struct DiskTests {
          "Volumes":[
           {"Name":"vol-old","Links":"0","Size":"5GB","Labels":"com.docker.volume.anonymous="},
           {"Name":"vol-new","Links":"0","Size":"1GB","Labels":""},
-          {"Name":"vol-used","Links":"1","Size":"9GB","Labels":"com.docker.compose.project=live"}],
+          {"Name":"vol-used","Links":"1","Size":"9GB","Labels":"com.docker.compose.project=live"},
+          {"Name":"pgdata","Links":"0","Size":"7GB","Labels":"com.docker.compose.project=gone"}],
          "BuildCache":[
           {"Size":"4GB","LastUsedAt":"2026-09-01 09:25:01.033911041 +0000 UTC","InUse":"false"},
           {"Size":"2GB","LastUsedAt":"2026-11-09 09:25:01.033911041 +0000 UTC","InUse":"false"},
@@ -89,16 +90,18 @@ struct DiskTests {
     func dockerPlan() throws {
         let script = DockerScript(df: Self.df)
         let report = try #require(DockerDisk { arguments, _ in script.answer(arguments) }.report())
-        #expect(report.containers.count == 5 && report.images.count == 4 && report.volumes.count == 3 && report.buildCache.count == 4)
+        #expect(report.containers.count == 5 && report.images.count == 4 && report.volumes.count == 4 && report.buildCache.count == 4)
         #expect(report.containers.first { $0.id == "c-run" }?.finishedAt == nil && report.containers.first { $0.id == "c-old" }?.sizeBytes == 100_000_000)
 
         let plan = DockerCleanupPlan.make(report, days: 30, keep: [], activeProjects: [], now: Self.now)
         #expect(plan.containers.map(\.id) == ["c-old"], "not the recent one, the running one, the labelled one, or the one of a running stack")
         #expect(plan.images.map(\.id) == ["img-old"], "img-shared still has a container; img-fresh arrived two days ago; img-run is in use")
-        #expect(plan.volumes.map(\.name) == ["vol-old"] && plan.bytes(.volumes) == 5_000_000_000)
+        #expect(plan.volumes.map(\.name) == ["vol-old"] && plan.bytes(.volumes) == 5_000_000_000, "the anonymous one; never the named one, however old and unmounted")
+        #expect(plan.skipped.contains { $0.contains("named volume") })
+        #expect(DockerCleanupPlan.make(report, days: 0, keep: [], activeProjects: [], now: Self.now).volumes.map(\.name) == ["vol-old"], "not even with no age limit")
         #expect(plan.buildCacheEntries == 1 && plan.buildCacheBytes == 4_000_000_000, "not the recent, the in-use, or the undated entry")
         #expect(plan.reproducibleBytes == 100_000_000 + 800_000_000 + 4_000_000_000, "volumes are not part of what can be rebuilt")
-        #expect(plan.skipped.count == 4)
+        #expect(plan.skipped.count == 5)
 
         // With an agent in the project, or the project kept, its stopped container stays.
         #expect(DockerCleanupPlan.make(report, days: 30, keep: [], activeProjects: ["gone"], now: Self.now).containers.isEmpty)
@@ -395,5 +398,86 @@ struct ApplicationDataTests {
         #expect(await engine.trashApplicationLeftovers(confirmed: false, initiator: .user).denial != nil)
         #expect(await engine.applicationData().leftovers.map(\.name) == ["com.gone.app"], "only what has been untouched for 90 days is listed")
         #expect(PathUtil.exists(support + "/com.example.editor/state") && PathUtil.exists(support + "/com.fresh.gone/state"))
+    }
+}
+
+@Suite("Keep markers and the owner's rules")
+struct KeepMarkerTests {
+    @Test("A folder marked as not to be cleaned is protected, with everything in it, from every rule")
+    func markers() async throws {
+        let f = Fixture()
+        // By file: a cache with the marker in it.
+        let go = f.home + "/Library/Caches/go-build"
+        f.file(go + "/aa/old", bytes: 8192)
+        f.file(go + "/DO_NOT_CLEAN.txt", text: "keep")
+        f.age(go, hours: 24 * 60)
+        // By attribute on a folder above.
+        let uv = f.home + "/.cache/uv/archive-v0"
+        f.file(uv + "/pkg/a.py", bytes: 4096)
+        f.age(f.home + "/.cache", hours: 24 * 60)
+        #expect(setxattr(f.home + "/.cache", "com.avm.do-not-clean", "owner", 5, 0, 0) == 0)
+        // An entry marked inside a cache that is otherwise trimmed.
+        let bun = f.home + "/.bun/install/cache"
+        f.file(bun + "/kept-pkg/index.js", bytes: 4096)
+        f.file(bun + "/kept-pkg/.pepel-keep")
+        f.file(bun + "/other-pkg/index.js", bytes: 4096)
+        f.age(bun, hours: 24 * 60)
+
+        #expect(PathUtil.keepMarker(at: go + "/aa", stopAt: f.home) == go)
+        #expect(PathUtil.keepMarker(at: uv + "/pkg", stopAt: f.home) == f.home + "/.cache")
+        #expect(PathUtil.keepMarker(at: bun + "/other-pkg", stopAt: f.home) == nil)
+
+        let trimmer = CacheTrimmer(home: f.home)
+        #expect(trimmer.measure(days: 30).map(\.id) == ["bun"], "marked caches are not even listed")
+        #expect(trimmer.trim("go-build", days: 0).removed == 0 && trimmer.trim("uv", days: 0).removed == 0)
+        #expect(trimmer.trim("bun", days: 30).removed == 1)
+        #expect(PathUtil.exists(go + "/aa/old") && PathUtil.exists(uv + "/pkg/a.py") && PathUtil.exists(bun + "/kept-pkg/index.js") && !PathUtil.exists(bun + "/other-pkg"))
+
+        // The same in the general cleanup policy and for application caches.
+        let marked = f.dir(f.home + "/work/build-output")
+        f.file(marked + "/DO_NOT_CLEAN", text: "")
+        let context = f.policyContext()
+        #expect(CleanupPolicyEngine().pathViolation(marked, context: context)?.contains("marked as not to be cleaned") == true)
+        f.file(f.home + "/Library/Caches/com.gone.app/data", bytes: 30 << 20)
+        f.file(f.home + "/Library/Caches/com.gone.app/.pepel-keep")
+        let scanner = ApplicationDataScanner(home: f.home, installed: InstalledApplications(bundleIDs: [], names: []), running: [])
+        #expect(scanner.caches().first.map(scanner.isManageable) == false)
+    }
+
+    @Test("A cache is left alone while its tool runs; linked worktrees are outside the untouched-project rule; kept caches stay")
+    func ownerRules() async throws {
+        let f = Fixture()
+        let go = f.home + "/Library/Caches/go-build"
+        f.file(go + "/old", bytes: 8192)
+        f.age(go, hours: 24 * 60)
+        let trimmer = CacheTrimmer(home: f.home)
+        #expect(trimmer.trim("go-build", days: 30, running: ["go", "zsh"]).removed == 0, "go is running")
+        #expect(trimmer.trim("go-build", days: 30, running: ["zsh"]).removed == 1)
+
+        let caches = [
+            ApplicationData(name: "com.openai.atlas", path: "/x", kind: .cache, owner: .installed, bytes: 1, lastUse: .distantPast),
+            ApplicationData(name: "com.other.app", path: "/y", kind: .cache, owner: .installed, bytes: 1, lastUse: .distantPast),
+        ]
+        #expect(PepelEngine.removableCaches(caches, days: 30, includeUnknown: true, keep: ["com.openai.atlas"]).map(\.name) == ["com.other.app"])
+        #expect(PepelSettings().keepAppCaches == ["com.openai.atlas"])
+
+        // A linked worktree with an old environment is not offered.
+        let main = f.gitRepo(f.projects + "/app")
+        let tree = f.worktree(of: main, at: f.projects + "/app-feature", branch: "feature")
+        for root in [main, tree] {
+            f.file(root + "/pyproject.toml", text: "[project]")
+            f.file(root + "/.venv/pyvenv.cfg", text: "home = /usr/bin")
+            f.file(root + "/.venv/lib/site.py", bytes: 4096)
+            f.age(root, hours: 24 * 90)
+        }
+        var settings = PepelSettings()
+        settings.projectRoots = [f.projects]
+        let store = try PepelStore.inMemory()
+        try store.saveSettings(settings)
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [PythonAnalyzer()],
+            processSource: FakeProcessSource(processes: []), telemetry: { SystemTelemetry() })
+        _ = await engine.scan()
+        #expect(await engine.staleProjects().map(\.id) == [main])
     }
 }
