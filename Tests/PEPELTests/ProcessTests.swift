@@ -528,10 +528,29 @@ struct ProcessTests {
             AgentActivity.verdict(root: root, members: members ?? [helper], history: history, activeBuildCount: builds, hasActiveLease: lease, now: now, sleepWindow: window)
         }
 
-        // Wrote 300 KB two minutes ago.
+        // Wrote 300 KB two minutes ago while using 2 % of a core: work.
         root.diskBytesWritten = 1_300_000
-        let writing = [root.identity: series(minutes: [180, 60, 2], written: [1_000_000, 1_000_000, 1_300_000], now: now)]
+        root.cpuTimeNs = UInt64(73.2 * 1e9)
+        let writing = [root.identity: series(minutes: [180, 60, 2], written: [1_000_000, 1_000_000, 1_300_000], cpuSeconds: [0, 28.8, 73.0], now: now)]
         #expect(state(writing).state == .working)
+
+        // Housekeeping, as measured on real idle sessions: about 20 KB once an hour (once 130 KB)
+        // at idle CPU. Five hours of that is still asleep.
+        root.diskBytesWritten = 1_210_000
+        root.cpuTimeNs = UInt64(72 * 1e9)
+        let housekeeping = [
+            root.identity: series(
+                minutes: [300, 241, 240, 181, 180, 121, 120, 61, 60, 1],
+                written: [1_000_000, 1_000_000, 1_020_000, 1_020_000, 1_150_000, 1_150_000, 1_170_000, 1_170_000, 1_190_000, 1_190_000],
+                cpuSeconds: [0, 14.2, 14.4, 28.6, 28.8, 43.0, 43.2, 57.4, 57.6, 71.8], now: now)
+        ]
+        #expect(state(housekeeping).state == .sleeping, "hourly housekeeping writes must not keep a session awake")
+
+        // The same small writes, but two of them within a minute: that is someone working.
+        root.diskBytesWritten = 1_060_000
+        root.cpuTimeNs = UInt64(43.2 * 1e9)
+        let cluster = [root.identity: series(minutes: [180, 32, 31, 30, 1], written: [1_000_000, 1_000_000, 1_030_000, 1_060_000, 1_060_000], cpuSeconds: [0, 35.5, 35.8, 36.0, 43.0], now: now)]
+        #expect(state(cluster).state == .idle && state(cluster).evidence.first?.contains("while working") == true)
 
         // Silent for three hours of observation: idle polling CPU only (0.4 % of a core), no writes.
         root.diskBytesWritten = 1_000_000
@@ -542,20 +561,22 @@ struct ProcessTests {
         ]
         let asleep = state(silent)
         #expect(asleep.state == .sleeping)
-        #expect(asleep.evidence.contains { $0.contains("No disk writes") })
+        #expect(asleep.evidence.contains { $0.contains("No sign of work") })
 
         // The same silence, but a build is running, or a lease is held: not asleep.
         #expect(state(silent, builds: 1).state == .working)
         #expect(state(silent, lease: true).state == .idle)
 
-        // Last write 90 minutes ago: idle, with the time left stated.
-        root.cpuTimeNs = 0
-        let recent = [root.identity: series(minutes: [180, 95, 90, 1], written: [900_000, 900_000, 1_000_000, 1_000_000], now: now)]
+        // Last real work 90 minutes ago (100 KB at 3 % CPU): idle, with the time left stated.
+        root.cpuTimeNs = UInt64(40 * 1e9)
+        root.diskBytesWritten = 1_000_000
+        let recent = [root.identity: series(minutes: [180, 95, 90, 1], written: [900_000, 900_000, 1_000_000, 1_000_000], cpuSeconds: [0, 10, 19, 39.8], now: now)]
         let idle = state(recent)
         #expect(idle.state == .idle)
         #expect(idle.evidence.contains { $0.contains("to go") })
 
         // Silent, but PEPEL has only watched for 40 minutes: it cannot claim two hours of quiet.
+        root.cpuTimeNs = 0
         let short = [root.identity: series(minutes: [40, 1], written: [1_000_000, 1_000_000], now: now)]
         #expect(state(short).state == .idle)
 

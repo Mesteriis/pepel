@@ -4,16 +4,26 @@ import PEPELProcesses
 
 /// Decides whether an agent session is working, idle or asleep.
 ///
-/// Measured on real sessions, CPU alone does not tell them apart: an idle session still spends
-/// 0.3–0.7 % of a core on its tool servers' polling, the same as a working one that is waiting
-/// on a command. Disk writes do: a working session writes its transcript, an idle one writes
-/// nothing. So the signal is, per process of the session: bytes written, a real CPU burst, or
-/// the process having been started recently.
+/// Measured on real sessions over a night:
+/// - CPU alone does not separate them. An idle session sits at 0.3–0.5 % of a core because of
+///   its tool servers' polling, and so does a working one between replies.
+/// - Any disk write does not either. An idle Claude Code session writes 8–24 KB about once an
+///   hour (occasionally 130–250 KB) as housekeeping, with CPU still at its idle level.
+/// - Real work looks different on both axes at once: hundreds of kilobytes written in
+///   neighbouring intervals, with CPU at 1–5 %.
+///
+/// So an interval counts as activity when the process wrote to disk *and* either used clearly
+/// more CPU than its own idle level or wrote again within a few minutes. A real CPU burst, a
+/// newly started process and a running build count on their own.
 public enum AgentActivity {
-    /// Bytes written between two observations that count as activity. Above zero so a stray
-    /// metadata update does not keep a session awake.
+    /// Bytes written between two observations that count as a write at all.
     public static let writeThresholdBytes: UInt64 = 16 * 1024
-    /// Share of one core, between two observations, that counts as a burst rather than polling.
+    /// A write counts as work when CPU in the same interval reaches this, or twice the process's
+    /// own median, whichever is higher. Housekeeping writes were seen at up to 0.48 %.
+    public static let workingCPUPercent = 0.8
+    /// Two writes this close together count as work even at idle CPU.
+    public static let writeClusterSeconds: TimeInterval = 180
+    /// Share of one core, between two observations, that counts as a burst on its own.
     public static let burstPercent = 5.0
     /// A session active this recently is "working".
     public static let workingWindow: TimeInterval = 5 * 60
@@ -37,22 +47,46 @@ public enum AgentActivity {
     static func lastActivity(of p: ProcessSnapshot, history: [ProcessObservation], now: Date) -> (date: Date, what: String)? {
         var points = history
         points.append(ProcessObservation(timestamp: now, cpuTimeNs: p.cpuTimeNs, footprintBytes: p.footprintBytes, diskBytesWritten: p.diskBytesWritten))
-        var latest: (Date, String)?
+
+        struct Interval {
+            var end: Date
+            var cpuPercent: Double
+            var written: UInt64
+            var noBaseline: Bool
+        }
+        var intervals: [Interval] = []
         for (previous, current) in zip(points, points.dropFirst()) {
             let span = current.timestamp.timeIntervalSince(previous.timestamp)
             guard span > 0 else { continue }
-            if previous.diskBytesWritten == 0, current.diskBytesWritten >= writeThresholdBytes {
-                // No baseline: either the process had never written, or the earlier row predates
-                // write accounting. Either way nothing is known about before, so the quiet clock
-                // starts here. That errs towards "active", the safe direction.
-                latest = (current.timestamp, "PEPEL began tracking disk writes of \(p.name) (PID \(p.pid)); the quiet clock starts here")
-            } else if current.diskBytesWritten >= previous.diskBytesWritten &+ writeThresholdBytes {
-                latest = (current.timestamp, "\(p.name) (PID \(p.pid)) wrote \(Bytes.format(Int64(current.diskBytesWritten - previous.diskBytesWritten))) to disk")
-            } else if current.cpuTimeNs >= previous.cpuTimeNs,
-                Double(current.cpuTimeNs - previous.cpuTimeNs) / 1e9 / span * 100 >= burstPercent
-            {
-                latest = (current.timestamp, "\(p.name) (PID \(p.pid)) used CPU")
+            let cpu = current.cpuTimeNs >= previous.cpuTimeNs ? Double(current.cpuTimeNs - previous.cpuTimeNs) / 1e9 / span * 100 : 0
+            let written = current.diskBytesWritten >= previous.diskBytesWritten ? current.diskBytesWritten - previous.diskBytesWritten : 0
+            // No baseline: the earlier row predates write accounting, or the process had never
+            // written. Nothing is known about before, so the quiet clock starts here.
+            intervals.append(Interval(end: current.timestamp, cpuPercent: cpu, written: written, noBaseline: previous.diskBytesWritten == 0 && current.diskBytesWritten >= writeThresholdBytes))
+        }
+        let sortedCPU = intervals.map(\.cpuPercent).sorted()
+        let median = sortedCPU.isEmpty ? 0 : sortedCPU[sortedCPU.count / 2]
+        let workingCPU = max(workingCPUPercent, 2 * median)
+
+        var latest: (Date, String)?
+        for (index, interval) in intervals.enumerated() {
+            if interval.noBaseline {
+                latest = (interval.end, "PEPEL began tracking disk writes of \(p.name) (PID \(p.pid)); the quiet clock starts here")
+                continue
             }
+            if interval.cpuPercent >= burstPercent {
+                latest = (interval.end, String(format: "%@ (PID %d) used %.0f%% of a core", p.name, p.pid, interval.cpuPercent))
+                continue
+            }
+            guard interval.written >= writeThresholdBytes else { continue }
+            func writesNearby(_ other: Int) -> Bool {
+                guard intervals.indices.contains(other), intervals[other].written >= writeThresholdBytes, !intervals[other].noBaseline else { return false }
+                return abs(intervals[other].end.timeIntervalSince(interval.end)) <= writeClusterSeconds
+            }
+            if interval.cpuPercent >= workingCPU || writesNearby(index - 1) || writesNearby(index + 1) {
+                latest = (interval.end, "\(p.name) (PID \(p.pid)) wrote \(Bytes.format(Int64(interval.written))) to disk while working")
+            }
+            // Otherwise: a lone small write at idle CPU, the hourly housekeeping of an idle session.
         }
         return latest
     }
@@ -95,7 +129,7 @@ public enum AgentActivity {
         let quietFor = now.timeIntervalSince(quietSince)
         var evidence = [
             last.map { "Last activity \(TimeFormat.ago($0.date, now: now)): \($0.what)." }
-                ?? "No disk writes, CPU bursts or new processes in \(TimeFormat.age(observedFor)) of observation."
+                ?? "No sign of work in \(TimeFormat.age(observedFor)) of observation: no writes beyond housekeeping, no CPU bursts, no new processes."
         ]
         if hasActiveLease {
             evidence.append("It holds an active resource lease.")

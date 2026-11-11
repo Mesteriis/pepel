@@ -47,7 +47,11 @@ Stated plainly so that nothing in the UI is mistaken for more than it is.
   recent writes and running build processes instead.
 - Leases and disposable marks require an agent to cooperate through the API or `pepel agent`.
 - A sleeping agent session cannot be told apart from one waiting for the user's reply: neither
-  writes to disk. With `terminateSleepingAgents` on, both are terminated after the sleep window.
+  does any work. With `terminateSleepingAgents` on, both are terminated after the sleep window.
+- "Work" is inferred from disk writes together with CPU, calibrated on Claude Code sessions
+  (idle ones write 8–24 KB about once an hour at idle CPU; working ones write hundreds of
+  kilobytes at 1–5 %). Another agent with different habits may need different thresholds, and
+  a very light exchange — one short prompt answered at idle CPU — could go unnoticed.
 - Leftovers of a quit application are only known for quits PEPEL observed (it has to have seen
   the application running first). A helper an application leaves running on purpose looks the
   same as a forgotten one, which is why automatic termination of leftovers is opt-in.

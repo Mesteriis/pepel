@@ -440,11 +440,13 @@ struct EngineTests {
         let sleeperServer = process(11, parent: 10, name: "python3", args: ["python3", "mcp-server"], cwd: alpha, start: 1_000_100, footprint: 100_000_000)
         var worker = process(20, name: "claude", path: "/Users/x/.local/bin/claude", cwd: beta)
         worker.diskBytesWritten = 9_000_000
+        worker.cpuTimeNs = 400 * 1_000_000_000
         // Three hours of recorded history: the sleeper never wrote; the worker wrote a minute ago.
         func record(_ p: ProcessSnapshot, written: [(minutesAgo: Double, bytes: UInt64)]) {
             for point in written {
                 var copy = p
                 copy.diskBytesWritten = point.bytes
+                copy.cpuTimeNs = 0  // all of the worker's CPU time falls in the last minute: it is busy now
                 store.recordObservations([copy], at: now.addingTimeInterval(-point.minutesAgo * 60))
             }
         }
