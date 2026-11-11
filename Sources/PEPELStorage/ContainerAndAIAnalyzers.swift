@@ -6,7 +6,7 @@ import PEPELCore
 public struct DockerAnalyzer: StorageAnalyzer {
     public let id = "docker"
     public let displayName = "Docker and containers"
-    public let detection = "`docker system df` for build cache, images, containers and volumes; fixed locations for Colima and Lima disks."
+    public let detection = "`docker system df` for volumes (shown, never removed); fixed locations for Colima and Lima disks. Containers, images and build cache are under `pepel docker`."
 
     public init() {}
 
@@ -51,6 +51,9 @@ public struct DockerAnalyzer: StorageAnalyzer {
             // "Reclaimable" looks like "1.2GB (50%)".
             let reclaimable = (row["Reclaimable"] as? String).flatMap { Self.parseSize(String($0.split(separator: " ").first ?? "")) } ?? 0
             var entry: StorageItem
+            // Containers, images and build cache are handled by the Docker panel, which knows how
+            // long each has been unused; listing them here too would offer to wipe all of them.
+            guard type == "Local Volumes" else { continue }
             switch type {
             case "Build Cache":
                 entry = toolItem("build-cache", "Docker build cache", "Cached build layers. Docker rebuilds layers as needed; the next image builds are slower.", .review, "Reproducible by rebuilding.", .tool(.dockerBuildCache), .toolCache)
