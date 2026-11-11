@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import PEPELCore
 
@@ -29,24 +30,21 @@ public struct MemoryJournal: Sendable {
 
     public func path(for date: Date) -> String { directory + "/" + Self.day(date) + ".jsonl" }
 
+    private static let lock = NSLock()
+
+    /// Appends one line. The file is opened for appending and created if missing in the same
+    /// call, so two writers can never truncate each other's lines.
     @discardableResult
     public func append(_ sample: JournalSample) -> Bool {
         guard var line = try? Self.encoder().encode(sample) else { return false }
         line.append(0x0A)
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
         try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let path = path(for: sample.ts)
-        if !FileManager.default.fileExists(atPath: path) {
-            return FileManager.default.createFile(atPath: path, contents: line, attributes: [.posixPermissions: 0o600])
-        }
-        guard let handle = FileHandle(forWritingAtPath: path) else { return false }
-        defer { try? handle.close() }
-        do {
-            try handle.seekToEnd()
-            try handle.write(contentsOf: line)
-            return true
-        } catch {
-            return false
-        }
+        let descriptor = open(path(for: sample.ts), O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, 0o600)
+        guard descriptor >= 0 else { return false }
+        defer { close(descriptor) }
+        return line.withUnsafeBytes { write(descriptor, $0.baseAddress, $0.count) } == line.count
     }
 
     /// Journal files, oldest first.

@@ -1175,9 +1175,14 @@ struct EngineTests {
         await engine.refreshLive(now: start.addingTimeInterval(30))
         await engine.refreshLive(now: start.addingTimeInterval(90))  // too soon for a second reading
         await engine.refreshLive(now: start.addingTimeInterval(331))
-        try await Task.sleep(for: .milliseconds(300))
-        let readings = journal.read(since: start.addingTimeInterval(-10))
-        #expect(readings.count == 2)
+        // Lines are written off the engine's actor; wait for both.
+        var readings = journal.read(since: start.addingTimeInterval(-10))
+        for _ in 0..<50 where readings.count < 2 {
+            try await Task.sleep(for: .milliseconds(100))
+            readings = journal.read(since: start.addingTimeInterval(-10))
+        }
+        readings.sort { $0.ts < $1.ts }
+        try #require(readings.count == 2)
         let first = try #require(readings.first)
         #expect(first.wired == 8 << 30 && first.used == 32 << 30 && first.swap == 2 << 30 && first.pressure == "normal")
         #expect(first.agents.map(\.agent) == ["Claude Code"] && first.agents.first?.project == "alpha" && first.agents.first?.bytes == 300_000_000)

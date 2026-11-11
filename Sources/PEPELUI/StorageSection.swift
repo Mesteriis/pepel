@@ -298,6 +298,50 @@ struct StorageSection: View {
         }
     }
 
+    /// Large files not opened for a long time, and identical copies. A report: PEPEL removes none of them.
+    @ViewBuilder private var files: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Caption("Large old files and copies")
+                Spacer()
+                if model.isFindingLargeFiles { ProgressView().controlSize(.small) }
+                Button(model.largeFiles == nil ? "Find" : "Find again") { model.findLargeFiles() }.buttonStyle(QuietButtonStyle()).disabled(model.isFindingLargeFiles)
+            }
+            if let report = model.largeFiles {
+                Text("Not opened for 90+ days, 500 MB or more: \(report.old.count) files, \(Bytes.format(report.oldBytes)).").font(.system(size: 12, weight: .medium))
+                ForEach(report.old.prefix(10)) { file in fileRow(file) }
+                Text("Identical copies, 100 MB or more: \(report.duplicates.count) groups, up to \(Bytes.format(report.duplicateBytes)) in the extra copies.").font(.system(size: 12, weight: .medium)).padding(.top, 6)
+                ForEach(Array(report.duplicates.prefix(6).enumerated()), id: \.offset) { _, group in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("\(Bytes.format(group[0].bytes)) × \(group.count)").font(.system(size: 11, weight: .semibold)).monospacedDigit().foregroundStyle(Theme.secondary)
+                        ForEach(group) { file in fileRow(file) }
+                    }
+                }
+            } else {
+                Text("Walks your home folder, leaving out Library, caches and agents' folders. Takes a few minutes; nothing is removed.")
+                    .font(.system(size: 12)).foregroundStyle(Theme.secondary)
+            }
+            Text("A report only: PEPEL removes none of these. Copies Finder made on the same disk may be clones that share their space.")
+                .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+        }
+        .panel()
+    }
+
+    private func fileRow(_ file: LargeFile) -> some View {
+        HStack(spacing: 10) {
+            PathText(path: file.path)
+            Spacer()
+            Text("opened \(TimeFormat.ago(file.lastUse))").font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.secondary)
+            Text(Bytes.format(file.bytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)
+            Button {
+                model.reveal(file.path)
+            } label: {
+                Image(systemName: "magnifyingglass")
+            }
+            .buttonStyle(.plain).foregroundStyle(Theme.secondary).help("Show in Finder").accessibilityLabel("Show in Finder")
+        }
+    }
+
     private func dockerRow(_ title: String, _ count: Int, _ bytes: Int64, _ candidates: Int, _ free: Int64, tint: Color = Theme.copper) -> some View {
         GridRow {
             Text(title).foregroundStyle(Theme.text)
@@ -318,6 +362,7 @@ struct StorageSection: View {
             caches
             applicationData
             other
+            files
             if let storage = model.storage {
                 breakdown(storage)
                 controls(storage)

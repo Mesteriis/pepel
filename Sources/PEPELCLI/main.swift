@@ -885,6 +885,22 @@ case "disk":
         print("\n`pepel disk map <folder>` opens one. Folders macOS guards are not read unless named or --guarded is given.")
         break
     }
+    if arguments.positional.first == "files" {
+        let days = arguments.options["days"].flatMap { Int($0) } ?? 90
+        print("Walking your home folder (Library, caches and agents' folders are left out)…")
+        let report = await engine.largeFiles(days: days, includeGuarded: arguments.flags.contains("guarded"))
+        if arguments.json { Out.json(report); break }
+        print("\(report.filesSeen.formatted()) entries looked at.\n")
+        print("Not opened for \(days)+ days, 500 MB or more: \(report.old.count) files, \(Bytes.format(report.oldBytes))")
+        Out.table(["SIZE", "LAST OPENED", "WHERE"], report.old.prefix(25).map { [Bytes.format($0.bytes), TimeFormat.ago($0.lastUse), PathUtil.display($0.path, home: appPaths.home)] })
+        print("\nIdentical copies, 100 MB or more: \(report.duplicates.count) groups; removing all but one copy would free up to \(Bytes.format(report.duplicateBytes)) (copies Finder made may be clones that share space).")
+        for group in report.duplicates.prefix(10) {
+            print("  \(Bytes.format(group[0].bytes)) × \(group.count)")
+            for file in group { print("      \(PathUtil.display(file.path, home: appPaths.home))") }
+        }
+        print("\nPEPEL only reports these. Folders macOS guards are left out unless --guarded is given.")
+        break
+    }
     if arguments.positional.first == "emulators" {
         if arguments.positional.dropFirst().first == "delete" {
             let names = Array(arguments.positional.dropFirst(2))

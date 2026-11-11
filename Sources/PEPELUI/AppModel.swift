@@ -664,6 +664,18 @@ public final class AppModel {
 
     public var tempEntries: [TempEntry]?
     public var androidEmulators: [AndroidEmulator] = []
+    public var largeFiles: LargeFilesReport?
+    public var isFindingLargeFiles = false
+
+    public func findLargeFiles() {
+        guard !isFindingLargeFiles else { return }
+        isFindingLargeFiles = true
+        let guarded = diskMapReadsGuarded
+        Task {
+            largeFiles = await engine.largeFiles(includeGuarded: guarded)
+            isFindingLargeFiles = false
+        }
+    }
 
     public func deleteAndroidEmulators(_ names: [String]) {
         Task {

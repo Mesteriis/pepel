@@ -467,3 +467,11 @@ extension PepelEngine {
         return nil
     }
 }
+
+/// Large old files and duplicates: a report, never an action.
+extension PepelEngine {
+    public nonisolated func largeFiles(days: Int = 90, includeGuarded: Bool = false) async -> LargeFilesReport {
+        let finder = LargeFiles(home: paths.home)
+        return await Task.detached(priority: .utility) { finder.report(days: days, includeGuarded: includeGuarded) }.value
+    }
+}

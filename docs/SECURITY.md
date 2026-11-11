@@ -291,6 +291,29 @@ PEPEL cannot tie to an application only on explicit request. **Leftovers of remo
 applications** elsewhere in the Library are only ever moved to the Trash, on request.
 `~/Library/Containers` is not read at all.
 
+**Temporary folder** (`pepel disk temp`, `cleanTempFiles`, off by default). Entries directly
+inside the user's temporary folder that nothing has read or written for `tempDays` (7). Left
+alone whatever their age: sockets and pipes and folders holding one, `com.apple.*` and other
+entries macOS manages, entries named after a running program or one a running program works in,
+entries of another user, links and marked folders. Each entry is inspected again right before
+removal.
+
+**Large folders git ignores** (`pepel projects ignored`). Git is asked which folders each
+project ignores; those no analyzer knows are measured (hard links once, outermost folder only)
+and listed with a "looks like data" flag for names such as `data`, `postgres` or `backups`.
+Secrets (`.env*`, `.ssh`, `secrets`), agents' folders (`.claude`, `.codex`, `worktrees`) and
+linked worktrees are never listed. One can be moved to the Trash on a person's request after
+the usual checks; PEPEL never removes these on its own.
+
+**Android emulators** (`pepel disk emulators`). Listed with size and last use; a person can
+delete chosen ones, which removes the `.avd` folder and its `.ini` as Android Studio does. A
+running emulator (by its process or lock file) and a marked one are refused.
+
+**Large old files and copies** (`pepel disk files`). A report only: files of 500 MB or more not
+opened for 90 days, and files of 100 MB or more with identical contents (same size, then the
+same SHA-256; two names of one file are not copies). Library, caches, agents' folders,
+dependency folders and guarded folders are left out.
+
 **Logs and other places** (`pepel disk`). Log files in `~/Library/Logs` older than `logDays`
 and larger than 1 MB can be removed; agents' own logs never. Emulators, language versions,
 device support and tool data are sized and shown with their last use, and not removed.

@@ -92,6 +92,7 @@ enum Out {
           pepel free permission [--revoke] Whether PEPEL may flush the file cache without asking; remove that permission
           pepel simulators [shutdown …]    Booted simulators and what they hold; shut one or all down
           pepel disk map [<folder>]        The whole disk, or one folder, by size (the dashboard's Disk map as a table)
+          pepel disk files [--days N]      Large files not opened for N days, and identical copies (a report)
           pepel disk emulators [delete …]  Android emulators by size and last use; delete chosen ones
           pepel disk temp [clean]          The temporary folder: what nothing has used for N days; remove it
           pepel disk [logs [clean]]        Free space, when the disk would fill, other large places; old log files

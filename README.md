@@ -98,6 +98,10 @@ pepel caches [trim …]            Tool caches; remove only what is unused, or a
 pepel apps caches | leftovers    Application caches by last use; what removed applications left behind
 pepel disk [logs [clean]]        Free space, when the disk would fill, other large places, old logs
 pepel disk map [<folder>]        What a folder holds, largest first (the dashboard's Disk map as a table)
+pepel disk temp [clean]          The temporary folder: what nothing has used for N days
+pepel projects ignored [trash …] Large folders git ignores that PEPEL does not recognise
+pepel disk emulators [delete …]  Android emulators by size and last use; delete chosen ones
+pepel disk files [--days N]      Large files not opened for N days, and identical copies (a report)
 pepel containers limit [<GiB>]   Show or lower the Docker VM's memory limit
 pepel memory                     Memory pressure, swap and the largest consumers
 pepel processes [--all]          Developer processes and whether they look abandoned

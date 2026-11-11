@@ -820,3 +820,40 @@ struct AndroidEmulatorTests {
         #expect(PathUtil.exists(avd + "/busy.avd") && PathUtil.exists(avd + "/kept.avd") && PathUtil.exists(avd + "/busy.ini"))
     }
 }
+
+@Suite("Large old files and copies")
+struct LargeFilesTests {
+    @Test("Old large files and identical copies are found; hard links, near-copies, Library, guarded and marked folders are not")
+    func report() throws {
+        let f = Fixture()
+        func write(_ path: String, _ seed: UInt8, bytes: Int, daysOld: Double? = nil) {
+            FileManager.default.createFile(atPath: path, contents: nil)
+            try? FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+            FileManager.default.createFile(atPath: path, contents: Data((0..<bytes).map { UInt8(truncatingIfNeeded: $0 &* 31) ^ seed }))
+            if let daysOld { f.age(path, hours: 24 * daysOld) }
+        }
+        let mb = 1 << 20
+        write(f.home + "/vm/old-disk.img", 1, bytes: 6 * mb, daysOld: 200)
+        write(f.home + "/vm/new-disk.img", 2, bytes: 6 * mb)
+        write(f.home + "/work/a.zip", 3, bytes: 3 * mb, daysOld: 10)
+        write(f.home + "/backup/a-copy.zip", 3, bytes: 3 * mb, daysOld: 10)
+        write(f.home + "/backup/near.zip", 4, bytes: 3 * mb, daysOld: 10)
+        #expect(link(f.home + "/work/a.zip", f.home + "/work/a-hardlink.zip") == 0)
+        write(f.home + "/Library/app/state.bin", 1, bytes: 6 * mb, daysOld: 200)
+        write(f.home + "/proj/.venv/lib/torch.dylib", 3, bytes: 3 * mb, daysOld: 10)
+        write(f.home + "/Documents/old.mov", 5, bytes: 6 * mb, daysOld: 200)
+        write(f.home + "/kept/old.iso", 6, bytes: 6 * mb, daysOld: 200)
+        f.file(f.home + "/kept/DO_NOT_CLEAN.txt")
+
+        let report = LargeFiles(home: f.home).report(oldBytes: 5 * Int64(mb), days: 90, duplicateBytes: 2 * Int64(mb))
+        #expect(report.old.map(\.path) == [f.home + "/vm/old-disk.img"], "not the new one, Library, Documents or the marked folder")
+        #expect(report.duplicates.count == 1)
+        let copies = Set(report.duplicates.first?.map(\.path) ?? [])
+        #expect(copies.contains(f.home + "/backup/a-copy.zip"))
+        #expect(report.duplicates.first?.count == 2, "a hard link is the same file, and a file of the same size with other contents is no copy")
+        #expect(report.duplicateBytes >= 3 * Int64(mb) && report.duplicateBytes < 4 * Int64(mb))
+        let guarded = LargeFiles(home: f.home).report(oldBytes: 5 * Int64(mb), days: 90, duplicateBytes: 2 * Int64(mb), includeGuarded: true)
+        #expect(guarded.old.contains { $0.path.hasSuffix("/Documents/old.mov") })
+        #expect(PathUtil.exists(f.home + "/vm/old-disk.img"), "only a report")
+    }
+}

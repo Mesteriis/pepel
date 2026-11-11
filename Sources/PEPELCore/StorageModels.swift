@@ -484,3 +484,38 @@ public struct AndroidEmulator: Codable, Sendable, Identifiable, Hashable {
         self.running = running
     }
 }
+
+/// A large file, for the report of what is old or duplicated.
+public struct LargeFile: Codable, Sendable, Identifiable, Hashable {
+    public var path: String
+    public var bytes: Int64
+    public var lastUse: Date
+    public var id: String { path }
+
+    public init(path: String, bytes: Int64, lastUse: Date) {
+        self.path = path
+        self.bytes = bytes
+        self.lastUse = lastUse
+    }
+}
+
+/// Large files nobody has opened for a long time, and identical copies of large files.
+public struct LargeFilesReport: Codable, Sendable, Hashable {
+    public var old: [LargeFile]
+    /// Each group holds files with exactly the same contents, the most recently used first.
+    public var duplicates: [[LargeFile]]
+    public var filesSeen: Int
+    public var measuredAt: Date
+
+    public init(old: [LargeFile], duplicates: [[LargeFile]], filesSeen: Int, measuredAt: Date = Date()) {
+        self.old = old
+        self.duplicates = duplicates
+        self.filesSeen = filesSeen
+        self.measuredAt = measuredAt
+    }
+
+    /// What removing every copy but one would free at most. Copies Finder made on the same disk
+    /// can be clones that share their blocks, in which case less is freed.
+    public var duplicateBytes: Int64 { duplicates.reduce(0) { $0 + $1.dropFirst().reduce(0) { $0 + $1.bytes } } }
+    public var oldBytes: Int64 { old.reduce(0) { $0 + $1.bytes } }
+}
