@@ -303,6 +303,10 @@ public struct AgentHelperGroup: Codable, Sendable, Hashable, Identifiable {
     /// How many different sessions run a copy.
     public var sessions: Int
     public var footprintBytes: Int64
+    /// Copies that belong to sessions which are not working right now, and what they hold:
+    /// what suspending or ending those sessions would stop.
+    public var quietCopies = 0
+    public var quietBytes: Int64 = 0
 
     public init(id: String, copies: Int, sessions: Int, footprintBytes: Int64) {
         self.id = id

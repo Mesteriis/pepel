@@ -744,6 +744,13 @@ struct ProcessTests {
         #expect(groups.map(\.id) == ["python bin/serena start-mcp-server", "node tg/index.js"])
         #expect(groups[0].copies == 3 && groups[0].sessions == 3 && groups[0].footprintBytes == 300_000_000 && groups[0].duplicatedBytes == 200_000_000)
         #expect(groups[1].copies == 3 && groups[1].duplicatedBytes == 100_000_000)
+
+        // With one session working, only the copies of the other two count as sitting in quiet sessions.
+        var mixed = sessions
+        let working = mixed.firstIndex { $0.root.pid == 100 }!
+        mixed[working].state = .working
+        let split = AgentDetector.helperGroups(processes: processes, sessions: mixed)
+        #expect(split[0].quietCopies == 2 && split[0].quietBytes == 200_000_000 && split[1].quietBytes == 100_000_000)
     }
 
     // MARK: Leftovers of quit applications

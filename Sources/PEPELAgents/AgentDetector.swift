@@ -71,12 +71,16 @@ public enum AgentDetector {
     /// Helper programs that run in more than one copy across agent sessions, largest first.
     public static func helperGroups(processes: [ProcessSnapshot], sessions: [AgentSession]) -> [AgentHelperGroup] {
         let tree = ProcessTree(processes)
-        var groups: [String: (copies: Int, sessions: Set<ProcessIdentity>, bytes: Int64)] = [:]
+        var groups: [String: (copies: Int, sessions: Set<ProcessIdentity>, bytes: Int64, quietCopies: Int, quietBytes: Int64)] = [:]
         for session in sessions where !session.isService {
             guard let root = tree.process(session.root) else { continue }
             for helper in tree.descendants(of: root) where RoleClassifier.agentKind(of: helper) == nil {
                 let key = signature(helper)
-                var group = groups[key] ?? (0, [], 0)
+                var group = groups[key] ?? (0, [], 0, 0, 0)
+                if session.state != .working {
+                    group.quietCopies += 1
+                    group.quietBytes += helper.footprintBytes
+                }
                 group.copies += 1
                 group.sessions.insert(session.root)
                 group.bytes += helper.footprintBytes
@@ -84,7 +88,12 @@ public enum AgentDetector {
             }
         }
         return groups.filter { $0.value.sessions.count > 1 }
-            .map { AgentHelperGroup(id: $0.key, copies: $0.value.copies, sessions: $0.value.sessions.count, footprintBytes: $0.value.bytes) }
+            .map { entry -> AgentHelperGroup in
+                var group = AgentHelperGroup(id: entry.key, copies: entry.value.copies, sessions: entry.value.sessions.count, footprintBytes: entry.value.bytes)
+                group.quietCopies = entry.value.quietCopies
+                group.quietBytes = entry.value.quietBytes
+                return group
+            }
             .sorted { ($0.duplicatedBytes, $0.id) > ($1.duplicatedBytes, $1.id) }
     }
 }

@@ -223,13 +223,13 @@ struct AgentsSection: View {
                         Text("×\(group.copies)").font(.system(size: 12, weight: .semibold)).monospacedDigit().frame(width: 34, alignment: .trailing)
                         Text(group.id).font(Theme.mono).lineLimit(1).truncationMode(.middle)
                         Spacer(minLength: 4)
-                        Text("\(group.sessions) sessions").font(.system(size: 11)).foregroundStyle(Theme.secondary)
+                        Text("\(group.sessions) sessions" + (group.quietCopies > 0 ? " · \(Bytes.format(group.quietBytes)) in quiet ones" : "")).font(.system(size: 11)).foregroundStyle(Theme.secondary)
                         Text(Bytes.format(group.footprintBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 66, alignment: .trailing)
                     }
                     .foregroundStyle(Theme.text)
                     .accessibilityElement(children: .combine)
                 }
-                Text("PEPEL cannot merge these: every session starts its own. Closing idle sessions frees them; so does running a server once and connecting sessions to it over HTTP.")
+                Text("PEPEL cannot merge these: every session starts its own. \(Bytes.format(groups.reduce(Int64(0)) { $0 + $1.quietBytes })) of it sits in sessions that are not working right now; Free memory suspends those. Running a server once and connecting sessions to it over HTTP removes the copies for good.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
             .panel()
