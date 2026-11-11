@@ -364,6 +364,62 @@ struct ProcessTests {
         #expect(owners.first?.name.contains("not identified") == true)
     }
 
+    // MARK: Containers
+
+    @Test("Container memory is read from the runtime, grouped by compose project and tied to projects by Docker's own labels")
+    func containerInspection() {
+        let f = Fixture()
+        let project = f.dir(f.projects + "/orders-api")
+        let index = ProjectIndex([Project(id: project, name: "orders-api", kinds: [.git])])
+        let inspector = ContainerInspector { arguments, _ in
+            switch arguments.first {
+            case "info": return "33859940352\t18\t3\t40\tDocker Desktop\n"
+            case "ps":
+                return "gr-api-1\torders-api\t\(project)/deploy\ngr-db-1\torders-api\t\(project)/deploy\nscratch\t\t\n"
+            case "stats": return "gr-api-1\t1.5GiB / 31.53GiB\t2.50%\ngr-db-1\t512MiB / 31.53GiB\t0.10%\nscratch\t150.2MiB / 1GiB\t0.00%\n"
+            default: return nil
+            }
+        }
+        let report = inspector.inspect(attributor: index)
+        #expect(report?.product == "Docker Desktop" && report?.vmLimitBytes == 33_859_940_352 && report?.running == 3 && report?.total == 40)
+        #expect(report?.groups.map(\.id) == ["orders-api", "standalone"])
+        let group = report?.groups.first
+        #expect(group?.projectID == project && group?.projectConfidence == .verified && group?.containers.map(\.name) == ["gr-api-1", "gr-db-1"])
+        #expect(group?.memoryBytes == 1_610_612_736 + 536_870_912 && group?.cpuPercent == 2.6)
+        #expect(report?.groups.last?.projectID == nil)
+        #expect(report?.usedByContainersBytes == 1_610_612_736 + 536_870_912 + ContainerInspector.parseMemory("150.2MiB")!)
+
+        // No runtime, or a daemon that does not answer: no report, no guess.
+        #expect(ContainerInspector { _, _ in nil }.inspect() == nil)
+        #expect(ContainerInspector { _, _ in "garbage" }.inspect() == nil)
+
+        #expect(ContainerInspector.parseMemory("1.786GiB") == 1_917_702_897)
+        #expect(ContainerInspector.parseMemory("4.664MiB ") == 4_890_558)
+        #expect(ContainerInspector.parseMemory("512B") == 512 && ContainerInspector.parseMemory("lots") == nil)
+    }
+
+    @Test("A lower limit is suggested only when current use leaves real room, and the explanation states what was measured")
+    func containerAdvice() {
+        let gib: Int64 = 1 << 30
+        func report(used: Int64, limit: Int64, host: Int64) -> ContainerReport {
+            ContainerReport(
+                product: "Docker Desktop", vmLimitBytes: limit, cpus: 8, running: 2, total: 5,
+                groups: [ContainerGroup(id: "p", name: "p", containers: [ContainerMemory(name: "c", memoryBytes: used, cpuPercent: 0)])],
+                hostFootprintBytes: host, hostResidentBytes: host / 4)
+        }
+        // 8 GiB used of 32: 1.5× + 2 GiB = 14 → 14 GiB, well under the limit.
+        let roomy = report(used: 8 * gib, limit: 32 * gib, host: 33 * gib)
+        #expect(roomy.suggestedLimitBytes == 14 * gib)
+        #expect(roomy.explanation.contains("2 running containers use 8.59 GB of a virtual machine limited to 34.4 GB"))
+        #expect(roomy.explanation.contains("charged 35.4 GB") && roomy.explanation.contains("A limit around 15.0 GB"))
+        // 14 GiB used of 24: the same formula gives 24 GiB, which is no saving. No suggestion.
+        #expect(report(used: 14 * gib, limit: 24 * gib, host: 20 * gib).suggestedLimitBytes == nil)
+        // Almost nothing running still gets a sane floor.
+        #expect(report(used: gib / 10, limit: 16 * gib, host: 2 * gib).suggestedLimitBytes == 4 * gib)
+        // The host is not charged much more than the containers use: nothing alarming to say.
+        #expect(!report(used: 8 * gib, limit: 12 * gib, host: 9 * gib).explanation.contains("charged"))
+    }
+
     // MARK: Agents
 
     @Test("Several concurrent agents are detected with their process trees and projects")

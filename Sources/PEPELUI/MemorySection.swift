@@ -13,6 +13,7 @@ struct MemorySection: View {
                 SectionTitle(title: "Memory", subtitle: live.memory.headline + ". " + live.memory.detail)
                 composition(live.telemetry, developer: live.memory.developerFootprintBytes)
                 owners(live)
+                containers(live)
                 if let report = model.terminationReport { terminationResult(report) }
                 leftovers(live)
                 candidates(live)
@@ -117,6 +118,55 @@ struct MemorySection: View {
             }
         }
         .panel()
+    }
+
+    /// Memory inside the container VM against what the host is charged for it.
+    @ViewBuilder private func containers(_ live: LiveState) -> some View {
+        if let report = live.containers {
+            let scale = CGFloat(max(report.vmLimitBytes, report.hostFootprintBytes, 1))
+            VStack(alignment: .leading, spacing: 7) {
+                HStack {
+                    Caption("\(report.product): containers")
+                    Spacer()
+                    Text("read \(TimeFormat.ago(report.measuredAt))").font(.system(size: 10)).foregroundStyle(Theme.tertiary)
+                }
+                Text(report.explanation).font(.system(size: 12)).foregroundStyle(Theme.text).fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 4) {
+                    bar("Used by containers", report.usedByContainersBytes, scale, Theme.forest)
+                    bar("Virtual machine limit", report.vmLimitBytes, scale, Theme.secondary)
+                    bar("Charged to this Mac", report.hostFootprintBytes, scale, Theme.amber)
+                    if let suggested = report.suggestedLimitBytes { bar("A limit with 1.5× headroom", suggested, scale, Theme.copper) }
+                }
+                ForEach(report.groups.prefix(8)) { group in
+                    HStack(spacing: 10) {
+                        Text(Bytes.format(group.memoryBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 66, alignment: .trailing)
+                        Text(group.name).font(.system(size: 12)).lineLimit(1)
+                        Text("\(group.containers.count) container\(group.containers.count == 1 ? "" : "s")").font(.system(size: 10)).foregroundStyle(Theme.tertiary)
+                        if let project = model.projectName(group.projectID) { Badge(text: project, tint: Theme.forest) }
+                        Spacer(minLength: 0)
+                        Text(String(format: "%.1f%% CPU", group.cpuPercent)).font(.system(size: 10)).monospacedDigit().foregroundStyle(Theme.secondary)
+                    }
+                    .foregroundStyle(Theme.text)
+                    .help(group.containers.map { "\($0.name): \(Bytes.format($0.memoryBytes))" }.joined(separator: "\n"))
+                }
+                Text("The limit is set in \(report.product) › Settings › Resources. PEPEL does not change it and does not stop or restart containers. \(report.total - report.running) stopped containers use no memory.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+            .panel()
+        }
+    }
+
+    private func bar(_ label: String, _ bytes: Int64, _ scale: CGFloat, _ tint: Color) -> some View {
+        HStack(spacing: 8) {
+            Text(label).font(.system(size: 11)).foregroundStyle(Theme.secondary).frame(width: 170, alignment: .leading)
+            GeometryReader { proxy in
+                Capsule().fill(tint).frame(width: max(2, proxy.size.width * CGFloat(bytes) / scale))
+            }
+            .frame(height: 5)
+            Text(Bytes.format(bytes)).font(.system(size: 11, weight: .medium)).monospacedDigit().foregroundStyle(Theme.text).frame(width: 66, alignment: .trailing)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label): \(Bytes.format(bytes))")
     }
 
     /// What applications that have quit left running.

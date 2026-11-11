@@ -16,6 +16,9 @@ public enum Snapshotter {
         _ = await model.engine.refreshLive()
         try? await Task.sleep(for: .seconds(3))
         model.live = await model.engine.refreshLive()
+        // Container memory is read in the background; give it a moment and sample again.
+        try? await Task.sleep(for: .seconds(4))
+        model.live = await model.engine.refreshLive()
         if await model.engine.storage == nil || ProcessInfo.processInfo.environment["PEPEL_SNAPSHOT_SCAN"] != nil {
             _ = await model.engine.scan()
         } else {
@@ -33,9 +36,11 @@ public enum Snapshotter {
 
         render(MenuBarLabel().padding(.horizontal, 10).padding(.vertical, 4).background(Color.black), model: model, size: nil, to: directory + "/menubar.png")
         render(PopoverView(openDashboard: { _ in }), model: model, size: nil, to: directory + "/popover.png")
+        // PEPEL_SNAPSHOT_HEIGHT renders taller pages, to see what is below the first screen.
+        let height = ProcessInfo.processInfo.environment["PEPEL_SNAPSHOT_HEIGHT"].flatMap(Double.init) ?? 780
         for section in DashboardSection.allCases {
             model.section = section
-            render(DashboardView(), model: model, size: CGSize(width: 1180, height: 780), to: directory + "/dashboard-\(section.rawValue).png")
+            render(DashboardView(), model: model, size: CGSize(width: 1180, height: height), to: directory + "/dashboard-\(section.rawValue).png")
         }
     }
 

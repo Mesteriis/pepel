@@ -19,6 +19,8 @@ public actor PepelEngine {
     var lastObservationWrite = Date.distantPast
     var lastTelemetryWrite = Date.distantPast
     var lastProcesses: [ProcessSnapshot] = []
+    var containerReport: ContainerReport?
+    var containerRefreshStarted = Date.distantPast
     var appTracker = AppExitTracker()
     var lastTrackerWrite = Date.distantPast
     public private(set) var live: LiveState?
@@ -114,6 +116,21 @@ public actor PepelEngine {
 
     public func knownProjects() -> [Project] { projects }
 
+    func setContainerReport(_ report: ContainerReport?) { containerReport = report }
+
+    /// Asks the container runtime now (blocking for a couple of seconds); used by the command line.
+    public func inspectContainers() async -> ContainerReport? {
+        let liveState = await refreshLive()
+        let tools = tools, index = projectIndex
+        guard var report = await Task.detached(priority: .utility, operation: { ContainerInspector(tools: tools).inspect(attributor: index) }).value else { return nil }
+        if let vm = liveState.memoryOwners.first(where: { $0.kind == .virtualMachine }) {
+            report.hostFootprintBytes = vm.footprintBytes
+            report.hostResidentBytes = vm.residentBytes
+        }
+        containerReport = report
+        return report
+    }
+
     private func loadHistoryIfNeeded(now: Date) {
         guard !historyLoaded else { return }
         historyLoaded = true
@@ -173,6 +190,24 @@ public actor PepelEngine {
         state.leftovers = appTracker.leftovers(
             processes: processes, assessments: assessments, protectedRoots: Set(sessions.map(\.root)), attributor: projectIndex, now: now,
             automaticAfter: TimeInterval(settings.appLeftoverGraceMinutes) * 60)
+        // Container memory needs three Docker calls (about two seconds), so it is refreshed in
+        // the background at most every two minutes and only while a virtual machine is running.
+        let vm = owners.first { $0.kind == .virtualMachine }
+        if vm == nil {
+            containerReport = nil
+        } else if now.timeIntervalSince(containerRefreshStarted) >= 120 {
+            containerRefreshStarted = now
+            let tools = tools, index = projectIndex
+            Task.detached(priority: .utility) { [weak self] in
+                let report = ContainerInspector(tools: tools).inspect(attributor: index)
+                await self?.setContainerReport(report)
+            }
+        }
+        if var report = containerReport, let vm {
+            report.hostFootprintBytes = vm.footprintBytes
+            report.hostResidentBytes = vm.residentBytes
+            state.containers = report
+        }
         state.agentHelpers = AgentDetector.helperGroups(processes: processes, sessions: sessions)
         state.memoryOwners = owners
         state.memoryExplanation = MemoryAttributor.explanation(owners: owners, telemetry: telemetry)

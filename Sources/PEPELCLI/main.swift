@@ -194,6 +194,29 @@ case "processes":
         print("\nProcesses marked unknown have not been observed long enough to judge. Keep PEPEL running, or check again later.")
     }
 
+case "containers":
+    guard let report = await engine.inspectContainers() else {
+        print("No container runtime answered. Docker is not installed, or its daemon is not running.")
+        break
+    }
+    if arguments.json { Out.json(report); break }
+    print(report.explanation + "\n")
+    Out.table(
+        ["MEMORY", "CPU", "CONTAINERS", "COMPOSE PROJECT", "PEPEL PROJECT"],
+        report.groups.map {
+            [Bytes.format($0.memoryBytes), String(format: "%.1f%%", $0.cpuPercent), String($0.containers.count), Out.truncate($0.name, 34), $0.projectID.map { ($0 as NSString).lastPathComponent } ?? "—"]
+        })
+    if arguments.flags.contains("all") {
+        print("")
+        Out.table(
+            ["MEMORY", "CPU", "CONTAINER", "COMPOSE PROJECT"],
+            report.groups.flatMap(\.containers).sorted { $0.memoryBytes > $1.memoryBytes }.map {
+                [Bytes.format($0.memoryBytes), String(format: "%.1f%%", $0.cpuPercent), Out.truncate($0.name, 44), $0.composeProject ?? "—"]
+            })
+    }
+    print("\n\(report.total - report.running) more container\(report.total - report.running == 1 ? " is" : "s are") stopped and use no memory.")
+    print("The limit is set in \(report.product) › Settings › Resources. PEPEL does not change it and does not stop or restart containers.")
+
 case "leftovers":
     let live = await engine.refreshLive()
     if arguments.json { Out.json(live.leftovers); break }
