@@ -133,3 +133,46 @@ extension PepelEngine {
         return await cleanStaleProjects(confirmed: false, initiator: .automatic)
     }
 }
+
+/// Tool caches kept in bounds by age.
+extension PepelEngine {
+    /// Measures every known cache (walks them; tens of seconds for large ones).
+    public nonisolated func managedCaches(days: Int) async -> [ManagedCache] {
+        let trimmer = CacheTrimmer(home: paths.home)
+        return await Task.detached(priority: .utility) { trimmer.measure(days: days) }.value
+    }
+
+    public func trimCaches(ids: Set<String>? = nil, days: Int? = nil, limitGB: Int? = nil, confirmed: Bool, initiator: Initiator) async -> (denial: String?, report: CacheTrimReport?) {
+        if let denial = policy.cacheTrimDenial(confirmed: confirmed, initiator: initiator, settings: settings) { return (denial, nil) }
+        let age = days ?? settings.cacheUnusedDays
+        let cap = limitGB ?? settings.cacheSizeLimitGB
+        let maxBytes: Int64? = cap > 0 ? Int64(cap) * Bytes.gb : nil
+        let trimmer = CacheTrimmer(home: paths.home)
+        let wanted = CacheTrimmer.caches.filter { ids?.contains($0.id) ?? true }
+        let read = readTelemetry
+        let before = read().diskAvailableBytes
+        let steps = await Task.detached(priority: .utility) {
+            wanted.map { definition -> CacheTrimReport.Step in
+                let result = trimmer.trim(definition.id, days: age, maxBytes: maxBytes)
+                return CacheTrimReport.Step(id: definition.id, title: definition.title, bytes: result.bytes, removed: result.removed)
+            }
+            .filter { $0.removed > 0 }
+        }.value
+        let report = CacheTrimReport(days: age, steps: steps, diskAvailableBefore: before, diskAvailableAfter: read().diskAvailableBytes)
+        if !steps.isEmpty {
+            store.appendAudit(
+                AuditEntry(
+                    kind: .cleanup, initiator: initiator.rawValue, subject: "Tool caches: " + steps.map { "\($0.title) \(Bytes.format($0.bytes))" }.joined(separator: ", "),
+                    outcome: "removed", bytes: report.bytes, detail: ["unusedForDays": "\(age)", "sizeLimit": cap > 0 ? "\(cap) GB" : "none", "entries": "\(steps.reduce(0) { $0 + $1.removed })"]))
+        }
+        return (nil, report)
+    }
+
+    func autoTrimCaches(now: Date = Date()) async -> CacheTrimReport? {
+        guard settings.trimCaches, !settings.paused else { return nil }
+        let last = store.value("caches.lastAutoTrim").flatMap(Double.init).map { Date(timeIntervalSince1970: $0) } ?? .distantPast
+        guard now.timeIntervalSince(last) >= 20 * 3600 else { return nil }
+        try? store.setValue(String(now.timeIntervalSince1970), for: "caches.lastAutoTrim")
+        return await trimCaches(confirmed: false, initiator: .automatic).report
+    }
+}

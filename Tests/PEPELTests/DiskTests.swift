@@ -249,3 +249,82 @@ struct StaleProjectTests {
         #expect(store.audit(kinds: [.cleanup]).first?.initiator == "automatic")
     }
 }
+
+@Suite("Tool caches")
+struct CacheTrimTests {
+    @Test("Only entries unused for long enough go; unpacked packages go whole; links and unknown caches are never touched")
+    func trimByAge() throws {
+        let f = Fixture()
+        let go = f.home + "/Library/Caches/go-build"
+        f.file(go + "/aa/old-1", bytes: 8192)
+        f.file(go + "/aa/old-2", bytes: 8192)
+        f.file(go + "/bb/fresh", bytes: 8192)
+        f.age(go + "/aa", hours: 24 * 60)
+        let uv = f.home + "/.cache/uv/archive-v0"
+        f.file(uv + "/stale-pkg/a.py", bytes: 4096)
+        f.file(uv + "/stale-pkg/b.py", bytes: 4096)
+        f.age(uv + "/stale-pkg", hours: 24 * 60)
+        f.file(uv + "/mixed-pkg/old.py", bytes: 4096)
+        f.age(uv + "/mixed-pkg", hours: 24 * 60)
+        f.file(uv + "/mixed-pkg/used.py", bytes: 4096)
+        // A cache that is really a link somewhere else.
+        let elsewhere = f.dir(f.root + "/elsewhere")
+        f.file(elsewhere + "/precious", bytes: 4096)
+        f.age(elsewhere, hours: 24 * 90)
+        try FileManager.default.createDirectory(atPath: f.home + "/Library/Caches", withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(atPath: f.home + "/Library/Caches/pip", withDestinationPath: elsewhere)
+
+        let trimmer = CacheTrimmer(home: f.home)
+        let measured = trimmer.measure(days: 30)
+        #expect(Set(measured.map(\.id)) == ["go-build", "uv"], "the linked pip cache is not a cache PEPEL manages")
+        let goCache = try #require(measured.first { $0.id == "go-build" })
+        #expect(goCache.fileCount == 3 && goCache.staleCount == 2 && goCache.staleBytes > 0 && goCache.staleBytes < goCache.totalBytes)
+        #expect(measured.first { $0.id == "uv" }?.staleCount == 1, "a package with one recently used file is in use as a whole")
+
+        #expect(trimmer.trim("go-build", days: 30).removed == 2)
+        #expect(!PathUtil.exists(go + "/aa") && PathUtil.exists(go + "/bb/fresh") && PathUtil.exists(go), "emptied folders go, the cache itself stays")
+        #expect(trimmer.trim("uv", days: 30).removed == 1)
+        #expect(!PathUtil.exists(uv + "/stale-pkg") && PathUtil.exists(uv + "/mixed-pkg/old.py") && PathUtil.exists(uv + "/mixed-pkg/used.py"))
+        #expect(trimmer.trim("pip", days: 0).removed == 0 && PathUtil.exists(elsewhere + "/precious"))
+        #expect(trimmer.trim("no-such-cache", days: 0).removed == 0)
+        #expect(trimmer.trim("go-build", days: 30).removed == 0, "nothing left to remove")
+    }
+
+    @Test("A size limit removes the least recently used entries first and never what was used in the last day")
+    func trimToSize() {
+        let f = Fixture()
+        let go = f.home + "/Library/Caches/go-build"
+        for (name, days) in [("oldest", 20.0), ("older", 10), ("recent", 3), ("today", 0)] {
+            f.file(go + "/\(name)", bytes: 1 << 20)
+            if days > 0 { f.age(go + "/\(name)", hours: 24 * days) }
+        }
+        let trimmer = CacheTrimmer(home: f.home)
+        #expect(trimmer.trim("go-build", days: 30).removed == 0, "nothing is 30 days old")
+        // About 4 MiB in the cache, limit 2.5 MiB: the two least recently used go.
+        #expect(trimmer.trim("go-build", days: 30, maxBytes: 5 << 19).removed == 2)
+        #expect(!PathUtil.exists(go + "/oldest") && !PathUtil.exists(go + "/older") && PathUtil.exists(go + "/recent") && PathUtil.exists(go + "/today"))
+        // A limit of nothing still leaves what was used today.
+        #expect(trimmer.trim("go-build", days: 30, maxBytes: 0).removed == 1)
+        #expect(PathUtil.exists(go + "/today"))
+    }
+
+    @Test("Trimming is a person's to ask for, or a daily rule; agents cannot")
+    func trimPolicy() async throws {
+        let f = Fixture()
+        let go = f.home + "/Library/Caches/go-build"
+        f.file(go + "/old", bytes: 8192)
+        f.age(go, hours: 24 * 60)
+        let store = try PepelStore.inMemory()
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: FakeProcessSource(processes: []), telemetry: { SystemTelemetry() })
+        #expect(await engine.trimCaches(confirmed: true, initiator: .agent).denial != nil)
+        #expect(await engine.trimCaches(confirmed: false, initiator: .user).denial != nil)
+        _ = await engine.automaticPass()
+        #expect(PathUtil.exists(go + "/old"), "off by default")
+        _ = try await engine.update { $0.trimCaches = true }
+        _ = await engine.automaticPass()
+        #expect(!PathUtil.exists(go + "/old"))
+        #expect(store.audit(kinds: [.cleanup]).contains { $0.subject.hasPrefix("Tool caches:") && $0.initiator == "automatic" })
+    }
+}

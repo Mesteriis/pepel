@@ -126,6 +126,12 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     /// touched for `staleProjectDays`. Source, git metadata and configuration are never part of it.
     public var cleanStaleProjects = false
     public var staleProjectDays = 30
+    /// Once a day, remove from tool caches what has not been used for `cacheUnusedDays`.
+    public var trimCaches = false
+    public var cacheUnusedDays = 30
+    /// Largest size any one tool cache may keep, in GB; 0 means no limit. When a cache is larger,
+    /// its least recently used entries go first.
+    public var cacheSizeLimitGB = 0
     public var freezeIdleAgents = false
     public var freezeAfterMinutes = 20
     /// How often a frozen session is woken for a moment to see whether work is waiting.

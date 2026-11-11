@@ -265,6 +265,14 @@ struct SettingsSection: View {
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
             }
 
+            group("Disk: tool caches", "Go, sccache, uv, pip, npm, Yarn, Bun, Cargo, Homebrew and browser downloads of Playwright and Puppeteer. Everything in them is fetched or rebuilt when needed.") {
+                toggle("Once a day, remove cache entries that have not been used", s.trimCaches) { v in model.updateSettings { $0.trimCaches = v } }
+                stepper("Unused means not read or written for", s.cacheUnusedDays, 1...365, suffix: " days") { v in model.updateSettings { $0.cacheUnusedDays = v } }
+                stepper("Keep each cache under", s.cacheSizeLimitGB, 0...500, suffix: " GB (0 = no limit)") { v in model.updateSettings { $0.cacheSizeLimitGB = v } }
+                Text("With a size limit, the least recently used entries of a cache that is too large go first; anything used within the last day always stays. Gradle cleans its own caches and is left to it.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+            }
+
             group("Build retention", "Defaults for every project. Active and pinned builds are always kept.") {
                 stepper("Keep the last", s.defaultRetention.keepSuccessful, 1...20, suffix: " builds") { v in model.updateSettings { $0.defaultRetention.keepSuccessful = v } }
                 stepper("Keep the last", s.defaultRetention.keepFailed, 0...20, suffix: " failed builds") { v in model.updateSettings { $0.defaultRetention.keepFailed = v } }

@@ -511,6 +511,34 @@ public final class AppModel {
         }
     }
 
+    // MARK: Tool caches
+
+    public var managedCaches: [ManagedCache]?
+    public var isMeasuringCaches = false
+    public var isTrimmingCaches = false
+
+    public func measureCaches() {
+        guard !isMeasuringCaches else { return }
+        isMeasuringCaches = true
+        let days = settings.cacheUnusedDays
+        Task {
+            managedCaches = await engine.managedCaches(days: days)
+            isMeasuringCaches = false
+        }
+    }
+
+    public func trimCaches() {
+        isTrimmingCaches = true
+        Task {
+            let result = await engine.trimCaches(confirmed: true, initiator: .user)
+            isTrimmingCaches = false
+            message = result.denial.map { "Not done: \($0)" }
+                ?? result.report.map { $0.steps.isEmpty ? "Nothing to remove." : "Removed \(Bytes.format($0.bytes)) from \($0.steps.count) caches. Disk available \(Bytes.format($0.diskAvailableBefore)) → \(Bytes.format($0.diskAvailableAfter))." }
+            measureCaches()
+            refreshSecondary()
+        }
+    }
+
     // MARK: Untouched projects
 
     public var staleProjects: [StaleProject] = []

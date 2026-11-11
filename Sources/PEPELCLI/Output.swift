@@ -90,6 +90,7 @@ enum Out {
           pepel free [--all] [--no-cache]  Free memory: show what would be stopped and flushed, then do it (--yes) and measure
           pepel free permission [--revoke] Whether PEPEL may flush the file cache without asking; remove that permission
           pepel simulators [shutdown …]    Booted simulators and what they hold; shut one or all down
+          pepel caches [trim …]            Tool caches and what in them is unused for N days; remove only that part
           pepel docker [clean …|compact]   What Docker keeps on disk; remove what is unused for N days; trim its disk image
           pepel journal [--days N] [path]  The memory journal: what it says about the last days, and where it is
           pepel summary [--hours N]        What PEPEL did over the last day and what it left for you

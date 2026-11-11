@@ -8,6 +8,7 @@ struct StorageSection: View {
     @State private var expanded: String?
     @State private var confirmDocker = false
     @State private var confirmVolumes = false
+    @State private var confirmCaches = false
 
     private func matches(_ item: StorageItem) -> Bool {
         if let filter, item.safety != filter { return false }
@@ -85,6 +86,51 @@ struct StorageSection: View {
         }
     }
 
+    /// Tool caches and how much of each has not been used for the configured time.
+    @ViewBuilder private var caches: some View {
+        let days = model.settings.cacheUnusedDays
+        let limit = model.settings.cacheSizeLimitGB
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Caption("Tool caches")
+                Spacer()
+                if model.isMeasuringCaches || model.isTrimmingCaches { ProgressView().controlSize(.small) }
+                Button(model.managedCaches == nil ? "Measure" : "Measure again") { model.measureCaches() }.buttonStyle(QuietButtonStyle()).disabled(model.isMeasuringCaches || model.isTrimmingCaches)
+                if let caches = model.managedCaches {
+                    let stale = caches.reduce(Int64(0)) { $0 + $1.staleBytes }
+                    let over = limit > 0 ? caches.reduce(Int64(0)) { $0 + max(0, $1.totalBytes - $1.staleBytes - Int64(limit) * Bytes.gb) } : 0
+                    Button("Remove unused · \(Bytes.format(stale + over))…") { confirmCaches = true }
+                        .buttonStyle(CopperButtonStyle(prominent: false)).disabled(stale + over == 0 || model.isTrimmingCaches)
+                }
+            }
+            if let caches = model.managedCaches {
+                ForEach(caches) { cache in
+                    HStack(spacing: 10) {
+                        Text(cache.title).font(.system(size: 12, weight: .medium)).frame(width: 180, alignment: .leading).lineLimit(1)
+                        PathText(path: cache.path)
+                        Spacer()
+                        Text(cache.staleBytes > 0 ? "\(Bytes.format(cache.staleBytes)) unused \(days)+ days" : "all used recently").font(.system(size: 11)).monospacedDigit()
+                            .foregroundStyle(cache.staleBytes > 0 ? Theme.copper : Theme.tertiary)
+                        Text(Bytes.format(cache.totalBytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(width: 70, alignment: .trailing)
+                            .foregroundStyle(limit > 0 && cache.totalBytes > Int64(limit) * Bytes.gb ? Theme.amber : Theme.text)
+                    }
+                    .help(cache.note)
+                }
+            } else {
+                Text("Measuring walks every cache and takes some seconds; nothing is removed.").font(.system(size: 12)).foregroundStyle(Theme.secondary)
+            }
+            Text("Only entries nobody has read or written for \(days) days are removed" + (limit > 0 ? ", and then the least recently used ones until each cache is under \(limit) GB" : "") + "; the rest stays warm. Everything here is downloaded or rebuilt when it is needed again.")
+                .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)
+        }
+        .panel()
+        .confirmationDialog("Remove unused entries from tool caches?", isPresented: $confirmCaches, titleVisibility: .visible) {
+            Button("Remove") { model.trimCaches() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Entries unused for \(days) days" + (limit > 0 ? ", and the least recently used ones above \(limit) GB per cache," : "") + " are removed. The next build or install that needs one of them fetches or rebuilds it.")
+        }
+    }
+
     private func dockerRow(_ title: String, _ count: Int, _ bytes: Int64, _ candidates: Int, _ free: Int64, tint: Color = Theme.copper) -> some View {
         GridRow {
             Text(title).foregroundStyle(Theme.text)
@@ -102,6 +148,7 @@ struct StorageSection: View {
                 title: "Storage",
                 subtitle: "Developer artifacts found on this Mac. Sizes are blocks allocated on disk; where files are hard-linked, cloned or unreadable the figure is an upper bound, marked ≤.")
             docker
+            caches
             if let storage = model.storage {
                 breakdown(storage)
                 controls(storage)

@@ -443,3 +443,14 @@ extension CleanupPolicyEngine {
         }
     }
 }
+
+extension CleanupPolicyEngine {
+    /// Cache entries can all be fetched or rebuilt, so the question is only who may ask.
+    public func cacheTrimDenial(confirmed: Bool, initiator: Initiator, settings: PepelSettings) -> String? {
+        switch initiator {
+        case .agent: return "Agents cannot have caches trimmed."
+        case .automatic: return settings.trimCaches && !settings.paused ? nil : "Automatic cache trimming is not enabled."
+        case .user, .cli: return confirmed ? nil : "Trimming caches needs your confirmation."
+        }
+    }
+}

@@ -261,3 +261,62 @@ public struct StaleProject: Codable, Sendable, Identifiable, Hashable {
         self.itemIDs = itemIDs
     }
 }
+
+/// A tool's cache that PEPEL can keep in bounds by age.
+public struct ManagedCache: Codable, Sendable, Identifiable, Hashable {
+    public enum Style: String, Codable, Sendable {
+        /// A store of independent files: each one unused for long enough is removed.
+        case files
+        /// One folder per entry (a browser build, an unpacked package): removed whole when nothing in it was used.
+        case entries
+    }
+
+    public var id: String
+    public var title: String
+    public var path: String
+    public var style: Style
+    public var note: String
+    public var totalBytes: Int64 = 0
+    public var fileCount = 0
+    /// Not read or written for the chosen number of days.
+    public var staleBytes: Int64 = 0
+    public var staleCount = 0
+
+    public init(id: String, title: String, path: String, style: Style, note: String) {
+        self.id = id
+        self.title = title
+        self.path = path
+        self.style = style
+        self.note = note
+    }
+}
+
+public struct CacheTrimReport: Codable, Sendable, Hashable {
+    public struct Step: Codable, Sendable, Hashable, Identifiable {
+        public var id: String
+        public var title: String
+        public var bytes: Int64
+        public var removed: Int
+
+        public init(id: String, title: String, bytes: Int64, removed: Int) {
+            self.id = id
+            self.title = title
+            self.bytes = bytes
+            self.removed = removed
+        }
+    }
+
+    public var days: Int
+    public var steps: [Step]
+    public var diskAvailableBefore: Int64
+    public var diskAvailableAfter: Int64
+
+    public init(days: Int, steps: [Step], diskAvailableBefore: Int64, diskAvailableAfter: Int64) {
+        self.days = days
+        self.steps = steps
+        self.diskAvailableBefore = diskAvailableBefore
+        self.diskAvailableAfter = diskAvailableAfter
+    }
+
+    public var bytes: Int64 { steps.reduce(0) { $0 + $1.bytes } }
+}

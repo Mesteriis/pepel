@@ -805,6 +805,32 @@ case "roots":
     let settings = await engine.currentSettings()
     if arguments.json { Out.json(settings.projectRoots) } else { settings.projectRoots.forEach { print($0) } }
 
+case "caches":
+    let settings = await engine.currentSettings()
+    let days = arguments.options["days"].flatMap { Int($0) } ?? settings.cacheUnusedDays
+    if arguments.positional.first == "trim" {
+        let chosen = Set(arguments.positional.dropFirst())
+        let ids: Set<String>? = chosen.isEmpty || chosen.contains("all") ? nil : chosen
+        if let ids, let unknown = ids.first(where: { id in !CacheTrimmer.caches.contains { $0.id == id } }) { Out.error("no cache named '\(unknown)'; see `pepel caches`"); exit(2) }
+        guard arguments.flags.contains("yes") || Out.confirm("Remove what has not been used for \(days) days from \(ids.map { $0.sorted().joined(separator: ", ") } ?? "all tool caches")?") else { print("Nothing was removed."); break }
+        let result = await engine.trimCaches(ids: ids, days: days, limitGB: arguments.options["limit"].flatMap { Int($0) }, confirmed: true, initiator: .cli)
+        if let denial = result.denial { print("Not done: \(denial)"); exit(3) }
+        if let report = result.report {
+            for step in report.steps { print("\(step.title): \(Bytes.format(step.bytes)) in \(step.removed) entries") }
+            print(report.steps.isEmpty ? "Nothing in them has been unused for \(days) days." : "Removed \(Bytes.format(report.bytes)). Disk available: \(Bytes.format(report.diskAvailableBefore)) → \(Bytes.format(report.diskAvailableAfter)).")
+        }
+        break
+    }
+    print("Measuring tool caches…")
+    let caches = await engine.managedCaches(days: days)
+    if arguments.json { Out.json(caches); break }
+    Out.table(
+        ["ID", "SIZE", "UNUSED \(days)+ DAYS", "ENTRIES", "CACHE", "WHERE"],
+        caches.map { [$0.id, Bytes.format($0.totalBytes), Bytes.format($0.staleBytes), "\($0.staleCount) of \($0.fileCount)", $0.title, PathUtil.display($0.path, home: appPaths.home)] })
+    print("\nTotal \(Bytes.format(caches.reduce(0) { $0 + $1.totalBytes })), of which \(Bytes.format(caches.reduce(0) { $0 + $1.staleBytes })) has not been used for \(days) days.")
+    print("`pepel caches trim [<id> …]` removes only that part (--days N to change the age; --limit GB also cuts each cache down to that size, least recently used first).")
+    print("Automatic daily trimming is \(settings.trimCaches ? "on" : "off") (trimCaches); size limit per cache: \(settings.cacheSizeLimitGB > 0 ? "\(settings.cacheSizeLimitGB) GB" : "none") (cacheSizeLimitGB). Gradle cleans its own caches and is left to it.")
+
 case "docker":
     let settings = await engine.currentSettings()
     let days = arguments.options["days"].flatMap { Int($0) } ?? settings.dockerUnusedDays
