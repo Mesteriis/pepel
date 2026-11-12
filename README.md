@@ -109,6 +109,9 @@ pepel plan leave|forget <id|path>  Keep the daily rules off one item, or let the
 pepel restore [N] [--days N]     What PEPEL removed lately; put item N back from the Trash
 pepel preset [careful|normal|aggressive] [--yes]  Ready-made sets for the daily disk rules
 pepel self                       What PEPEL itself costs in memory and CPU
+pepel apps installed [--all]     Installed apps: last used, time in front, size with data; which to remove
+pepel apps uninstall <name> [--keep-data] [--yes]  Move an app and its data to the Trash (pepel restore puts it back)
+pepel apps keep|unkeep <name>    Never suggest an app for removal, or judge it again
 pepel startup [disable|enable <label>] [--yes]  Launch agents, daemons and login helpers, what they hold; switch an agent off or on
 pepel login [on|off]             Whether PEPEL starts when you log in (the app registers it with macOS)
 pepel journal [--days N] [path]  The memory journal: what the last days say, and where it is kept

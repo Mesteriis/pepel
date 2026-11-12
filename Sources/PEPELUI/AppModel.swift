@@ -4,7 +4,7 @@ import PEPELEngine
 import SwiftUI
 
 public enum DashboardSection: String, CaseIterable, Identifiable, Sendable {
-    case overview, storage, map, memory, startup, builds, projects, agents, cleanup, history, settings
+    case overview, storage, map, memory, apps, startup, builds, projects, agents, cleanup, history, settings
 
     public var id: String { rawValue }
     /// The name shown in the sidebar; `rawValue` stays the identity.
@@ -14,6 +14,7 @@ public enum DashboardSection: String, CaseIterable, Identifiable, Sendable {
         case .storage: L("Storage")
         case .map: L("Disk map")
         case .memory: L("Memory")
+        case .apps: L("Apps")
         case .startup: L("Startup")
         case .builds: L("Builds")
         case .projects: L("Projects")
@@ -30,6 +31,7 @@ public enum DashboardSection: String, CaseIterable, Identifiable, Sendable {
         case .storage: "internaldrive"
         case .map: "square.grid.3x3.topleft.filled"
         case .memory: "memorychip"
+        case .apps: "square.grid.2x2"
         case .startup: "power"
         case .builds: "hammer"
         case .projects: "folder"
@@ -86,12 +88,15 @@ public final class AppModel {
     public let activity: ActivityModel
     /// What macOS starts on its own.
     public let startup: StartupModel
+    /// Installed applications, their use and size.
+    public let installed: InstalledAppsModel
 
     public init(engine: PepelEngine) {
         self.engine = engine
         self.monitor = MonitorService(engine: engine)
         self.activity = ActivityModel(engine: engine)
         self.startup = StartupModel(engine: engine)
+        self.installed = InstalledAppsModel(engine: engine)
     }
 
     /// A heavy job's name in words. The names themselves stay English: they are stored and the
@@ -1230,5 +1235,6 @@ public final class AppModel {
         self.section = section
         if section == .cleanup { prepareCleanup() }
         if section == .startup { startup.refresh() }
+        if section == .apps, installed.apps == nil { installed.refresh() }
     }
 }

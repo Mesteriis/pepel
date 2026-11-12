@@ -108,6 +108,9 @@ enum Out {
           pepel plan leave|forget <id|path>  Keep the daily rules off one item, or let them act on it again
           pepel restore [N] [--days N]     What PEPEL removed lately; put back item N from the Trash
           pepel preset [careful|normal|aggressive] [--yes]  Ready-made sets for the daily disk rules
+          pepel apps installed [--all]     Installed apps: last used, time in front, size with data; which to remove
+          pepel apps uninstall <name> [--keep-data] [--yes]  Move an app and its data to the Trash (pepel restore puts it back)
+          pepel apps keep|unkeep <name>    Never suggest an app for removal, or judge it again
           pepel startup [disable|enable <label>] [--yes]  What starts on its own and what it holds; switch a launch agent off or on
           pepel login [on|off]             Whether PEPEL starts when you log in
           pepel self                       What PEPEL itself costs in memory and CPU, and which heavy job runs

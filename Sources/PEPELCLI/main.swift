@@ -186,6 +186,49 @@ case "builds":
     }
     print("\nAll build outputs: \(Bytes.format(state.buildTotalBytes)) of a \(Bytes.format(state.globalBuildBudgetBytes)) global budget.")
 
+case "apps" where ["installed", "uninstall", "keep", "unkeep"].contains(arguments.positional.first ?? ""):
+    let verb = arguments.positional.first!
+    let wanted = arguments.positional.dropFirst().joined(separator: " ")
+    if verb == "keep" || verb == "unkeep" {
+        guard !wanted.isEmpty else { Out.error("usage: pepel apps keep|unkeep <name or bundle id>"); exit(2) }
+        _ = try await engine.update { s in
+            s.keepApplications.removeAll { $0.lowercased() == wanted.lowercased() }
+            if verb == "keep" { s.keepApplications.append(wanted) }
+        }
+        print(verb == "keep" ? "\(wanted) is never suggested for removal or listed as unused." : "\(wanted) is judged like any other app again.")
+        break
+    }
+    if isatty(STDERR_FILENO) != 0 && !arguments.json { FileHandle.standardError.write(Data("Measuring applications and their data…\r".utf8)) }
+    let apps = await engine.installedApps()
+    if isatty(STDERR_FILENO) != 0 && !arguments.json { FileHandle.standardError.write(Data("\r\u{1B}[K".utf8)) }
+    if verb == "uninstall" {
+        let matches = apps.filter { $0.name.lowercased() == wanted.lowercased() || $0.bundleID.lowercased() == wanted.lowercased() || $0.path == wanted }
+        guard matches.count == 1, let app = matches.first else {
+            Out.error(matches.isEmpty ? "no installed application is called \(wanted)" : "\(wanted) matches several apps; use the path"); exit(1)
+        }
+        let withData = !arguments.flags.contains("keep-data")
+        print("\(app.name) \(app.version ?? "") — \(PathUtil.display(app.path, home: appPaths.home)), \(Bytes.format(app.bundleBytes))")
+        if withData { for place in app.data { print("  + \(place.kind): \(PathUtil.display(place.path, home: appPaths.home)) (\(Bytes.format(place.bytes)))") } }
+        if let reason = app.keptBecause { print("Not suggested: \(reason)") }
+        guard arguments.flags.contains("yes") || Out.confirm("Move \(app.name)\(withData && !app.data.isEmpty ? " and its data" : "") to the Trash? Everything can be put back with `pepel restore`.") else { print("Nothing was moved."); break }
+        let result = await engine.uninstallApp(app.path, includeData: withData, confirmed: true, initiator: .cli)
+        if let denial = result.denial { Out.error(denial); exit(1) }
+        print("Moved to the Trash: \(Bytes.format(result.bytes)). Space returns when the Trash is emptied.")
+        break
+    }
+    if arguments.json { Out.json(apps); break }
+    let days = await engine.currentSettings().appUnusedDays
+    let shown = arguments.flags.contains("all") ? apps : apps.filter { !$0.isApple }
+    let suggested = apps.filter(\.isSuggested)
+    print("\(apps.count) applications, \(Bytes.format(apps.reduce(0) { $0 + $1.totalBytes })) with their data. Not opened for \(days)+ days: \(suggested.count), \(Bytes.format(suggested.reduce(0) { $0 + $1.totalBytes })).\n")
+    func minutes(_ seconds: Double) -> String { seconds < 60 ? "" : seconds < 3600 ? "\(Int(seconds / 60)) min" : String(format: "%.1f h", seconds / 3600) }
+    Out.table(
+        ["", "LAST USED", "IN FRONT 30D", "APP", "DATA", "NAME"],
+        shown.map {
+            [$0.isSuggested ? "remove?" : $0.isRunning ? "open" : "", $0.lastUsed.map { TimeFormat.ago($0) } ?? "no record", minutes($0.foregroundSeconds), Bytes.format($0.bundleBytes), $0.data.isEmpty ? "" : Bytes.format($0.dataBytes), Out.truncate($0.name, 40)]
+        })
+    print("\n`pepel apps uninstall <name> [--keep-data]` moves an app (and its data) to the Trash; `pepel apps keep <name>` stops suggesting it. Time in front is PEPEL's own record, kept since it first ran.")
+
 case "apps":
     let live = await engine.refreshLive()
     let apps = live.memoryOwners.filter { $0.kind == .application }

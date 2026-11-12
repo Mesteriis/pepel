@@ -222,6 +222,21 @@ and never over something new. Removals for good are listed, not undoable. Rule s
 (`pepel preset`, Settings › Rule set) only change the switches and ages of the daily disk rules;
 the change is shown and confirmed first, and keep lists and protections stay as they are.
 
+### Installed applications
+
+`pepel apps installed` and the Apps screen read the bundles in `/Applications` (one level of
+folders in it) and `~/Applications`, skipping links, with Spotlight's `kMDItemLastUsedDate`,
+`kMDItemUseCount` and `kMDItemDateAdded`, and measure the app's places in your Library by its
+bundle identifier (Application Support also by a specific name, Caches, Preferences, Saved
+Application State, HTTPStorages, WebKit, Logs). `~/Library/Containers` is never read: macOS
+guards other apps' data. While the app runs, PEPEL adds the seconds each regular app is open and
+in front to `app_usage` in its database (gaps count as at most two minutes). Removal is only
+suggested (unused for `appUnusedDays`, not part of macOS, not open, not starting on its own, not
+on `keepApplications`, not installed recently) and only done by a person who confirms: the app
+and, unless declined, its data move to the Trash, each recorded for the restore center. Never
+automatic, never through the agent API; an app installed for all users that needs an
+administrator is left for Finder.
+
 ### Startup items
 
 `pepel startup` and the Startup screen read `~/Library/LaunchAgents`, `/Library/LaunchAgents`,

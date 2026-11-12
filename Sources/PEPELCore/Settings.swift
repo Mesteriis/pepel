@@ -114,6 +114,8 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     public var unusedApplicationHours = 6
     /// Applications never listed as unused (by name), such as a music player or a messenger.
     public var keepApplications: [String] = []
+    /// Suggest removing an installed application nobody has opened for this many days.
+    public var appUnusedDays = 30
     /// Control-Option-Command-M opens Free memory from anywhere.
     public var freeMemoryHotkey = false
     /// Run the preselected Free memory steps whenever the screen is locked.

@@ -24,6 +24,8 @@ public final class PepelStore: Sendable {
         // Every version: the record of what PEPEL moved to the Trash (added after v2, idempotent).
         defer {
             try? db.execute(
+                "CREATE TABLE IF NOT EXISTS app_usage(day TEXT NOT NULL, bundle TEXT NOT NULL, name TEXT NOT NULL, foreground REAL NOT NULL, running REAL NOT NULL, PRIMARY KEY(day, bundle))")
+            try? db.execute(
                 "CREATE TABLE IF NOT EXISTS trash(id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, source TEXT NOT NULL, original TEXT NOT NULL, trashed TEXT NOT NULL, bytes INTEGER NOT NULL, restored REAL)")
         }
         guard version < 1 else { return }
@@ -139,6 +141,35 @@ public final class PepelStore: Sendable {
                 initiator: row[3].text ?? "", subject: row[4].text ?? "", outcome: row[5].text ?? "",
                 bytes: row[6].int, detail: detail ?? [:])
         }
+    }
+
+    // MARK: Application usage
+
+    /// Adds seconds an application was in front and open on a day (yyyy-MM-dd, local).
+    public func addAppUsage(day: String, bundleID: String, name: String, foreground: Double, running: Double) {
+        try? db.execute(
+            """
+            INSERT INTO app_usage(day, bundle, name, foreground, running) VALUES(?,?,?,?,?)
+            ON CONFLICT(day, bundle) DO UPDATE SET name = excluded.name, foreground = foreground + excluded.foreground, running = running + excluded.running
+            """, [.text(day), .text(bundleID), .text(name), .double(foreground), .double(running)])
+    }
+
+    /// Per application since `day`: seconds in front, seconds open, and the last day it was open.
+    public func appUsage(sinceDay day: String) -> [String: AppUsageTotal] {
+        let rows = (try? db.query(
+            "SELECT bundle, MAX(name), SUM(foreground), SUM(running), MAX(day), COUNT(DISTINCT day) FROM app_usage WHERE day >= ? GROUP BY bundle", [.text(day)])) ?? []
+        var result: [String: AppUsageTotal] = [:]
+        for row in rows {
+            let id = row[0].text ?? ""
+            result[id] = AppUsageTotal(name: row[1].text ?? id, foregroundSeconds: row[2].double, runningSeconds: row[3].double, lastDay: row[4].text ?? "", days: Int(row[5].int))
+        }
+        return result
+    }
+
+    /// The last day each application was seen open, over all recorded history.
+    public func appLastSeen() -> [String: String] {
+        let rows = (try? db.query("SELECT bundle, MAX(day) FROM app_usage GROUP BY bundle")) ?? []
+        return Dictionary(rows.map { ($0[0].text ?? "", $0[1].text ?? "") }, uniquingKeysWith: { a, _ in a })
     }
 
     // MARK: Trash

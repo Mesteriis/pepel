@@ -465,6 +465,26 @@
         }
       }
     },
+    "%@ could go to the Trash": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ можно отправить в Корзину"
+          }
+        }
+      }
+    },
+    "%@ could not be moved to the Trash; an application installed for all users needs an administrator: drag it to the Trash in Finder.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ не удалось отправить в Корзину: приложению, установленному для всех пользователей, нужен администратор — перетащите его в Корзину в Finder."
+          }
+        }
+      }
+    },
     "%@ did not accept the request to quit.": {
       "localizations": {
         "ru": {
@@ -497,6 +517,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Найдено %@, из них используется %@"
+          }
+        }
+      }
+    },
+    "%@ h": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ч"
           }
         }
       }
@@ -573,6 +603,110 @@
         }
       }
     },
+    "%@ in front over %lld days": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ in front over %lld day"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ in front over %lld days"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ на переднем плане за %lld дня"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ на переднем плане за %lld дней"
+                }
+              },
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ на переднем плане за %lld день"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ на переднем плане за %lld дней"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%@ in front, on %lld days": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ in front, on %lld day"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ in front, on %lld days"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ на переднем плане, %lld дня"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ на переднем плане, %lld дней"
+                }
+              },
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ на переднем плане, %lld день"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ на переднем плане, %lld дней"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%@ in idle tabs": {
       "localizations": {
         "ru": {
@@ -589,6 +723,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ в старых копиях"
+          }
+        }
+      }
+    },
+    "%@ in your Library": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ в вашей Библиотеке"
           }
         }
       }
@@ -703,6 +847,22 @@
         }
       }
     },
+    "%@ is in the Trash (%@). It can be put back from the Overview until the Trash is emptied.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@ is in the Trash (%2$@). It can be put back from the Overview until the Trash is emptied."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ в Корзине (%@). Вернуть можно на «Обзоре», пока Корзина не очищена."
+          }
+        }
+      }
+    },
     "%@ is marked as not to be cleaned.": {
       "localizations": {
         "ru": {
@@ -729,6 +889,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ не установлен."
+          }
+        }
+      }
+    },
+    "%@ is open; quit it first.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ открыто; сначала закройте его."
           }
         }
       }
@@ -1219,6 +1389,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ больше не трогается. Он в списке Настройки › Не трогать."
+          }
+        }
+      }
+    },
+    "%@ with their data": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ вместе с данными"
           }
         }
       }
@@ -3476,6 +3656,16 @@
         }
       }
     },
+    "%lld min": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld мин"
+          }
+        }
+      }
+    },
     "%lld more": {
       "localizations": {
         "ru": {
@@ -5282,6 +5472,16 @@
         }
       }
     },
+    "Agents cannot remove applications.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Агенты не могут удалять приложения."
+          }
+        }
+      }
+    },
     "Agents cannot remove backups.": {
       "localizations": {
         "ru": {
@@ -5470,6 +5670,58 @@
         }
       }
     },
+    "Also its data: %lld places, %@": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Also its data: %lld place, %@"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Also its data: %lld places, %@"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "И его данные: %lld места, %@"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "И его данные: %lld мест, %@"
+                }
+              },
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "И его данные: %lld место, %@"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "И его данные: %lld мест, %@"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "Also never taken: anything with a Finder tag, anything opened within the age above, and a folder marked DO_NOT_CLEAN. Unfinished downloads go after a day. Only screenshots macOS marked as such are touched on the Desktop.": {
       "localizations": {
         "ru": {
@@ -5636,6 +5888,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Приложения могут подвиснуть."
+          }
+        }
+      }
+    },
+    "Apps": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Приложения"
           }
         }
       }
@@ -8980,6 +9242,16 @@
         }
       }
     },
+    "Every app was opened recently, is open now, starts on its own, or is on the keep list.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Каждое приложение недавно открывали, оно открыто сейчас, запускается само или в списке исключений."
+          }
+        }
+      }
+    },
     "Every application": {
       "localizations": {
         "ru": {
@@ -9046,6 +9318,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Всё остальное"
+          }
+        }
+      }
+    },
+    "Everything goes to the Trash and can be put back from the Overview until the Trash is emptied. Settings and documents you saved elsewhere are not touched.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Всё уходит в Корзину, вернуть можно на «Обзоре», пока Корзина не очищена. Настройки и документы, сохранённые в других местах, не трогаются."
           }
         }
       }
@@ -9842,6 +10124,40 @@
         }
       }
     },
+    "How much each installed app is used and what it occupies with its data. PEPEL suggests removing what nobody has opened for %lld days; it removes nothing on its own, and what you remove goes to the Trash.": {
+      "localizations": {
+        "ru": {
+          "variations": {
+            "plural": {
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Как часто используется каждое приложение и сколько места оно занимает вместе с данными. PEPEL предлагает удалить то, что не открывали %lld дня; сам он ничего не удаляет, а удалённое вами уходит в Корзину."
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Как часто используется каждое приложение и сколько места оно занимает вместе с данными. PEPEL предлагает удалить то, что не открывали %lld дней; сам он ничего не удаляет, а удалённое вами уходит в Корзину."
+                }
+              },
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Как часто используется каждое приложение и сколько места оно занимает вместе с данными. PEPEL предлагает удалить то, что не открывали %lld день; сам он ничего не удаляет, а удалённое вами уходит в Корзину."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Как часто используется каждое приложение и сколько места оно занимает вместе с данными. PEPEL предлагает удалить то, что не открывали %lld дней; сам он ничего не удаляет, а удалённое вами уходит в Корзину."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "How the Free memory action can be started without opening the menu, and what it may do without asking.": {
       "localizations": {
         "ru": {
@@ -10026,6 +10342,16 @@
         }
       }
     },
+    "In use: %lld apps": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Используются: %lld"
+          }
+        }
+      }
+    },
     "Inside agent servers": {
       "localizations": {
         "ru": {
@@ -10090,6 +10416,26 @@
         }
       }
     },
+    "Installed": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Установлено"
+          }
+        }
+      }
+    },
+    "Installed %@ ago.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Установлено %@ назад."
+          }
+        }
+      }
+    },
     "Installed dependencies": {
       "localizations": {
         "ru": {
@@ -10136,6 +10482,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Имеет метку pepel.keep."
+          }
+        }
+      }
+    },
+    "It comes with macOS.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Входит в macOS."
           }
         }
       }
@@ -10316,6 +10672,16 @@
         }
       }
     },
+    "It is open now.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыто сейчас."
+          }
+        }
+      }
+    },
     "It is part of macOS.": {
       "localizations": {
         "ru": {
@@ -10424,6 +10790,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Он простаивал дольше допустимого и занимал %@; занятая память уменьшилась на %@."
+          }
+        }
+      }
+    },
+    "It starts on its own (%@): switch that off in Startup first if you no longer need it.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запускается само (%@): если оно больше не нужно, сначала выключите это в «Автозагрузке»."
           }
         }
       }
@@ -10610,6 +10986,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Его файл .plist не найден."
+          }
+        }
+      }
+    },
+    "Its startup items stay until you switch them off in Startup: %@.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Его элементы автозагрузки останутся, пока вы не выключите их в «Автозагрузке»: %@."
           }
         }
       }
@@ -10944,6 +11330,16 @@
         }
       }
     },
+    "Largest data": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Больше всего данных"
+          }
+        }
+      }
+    },
     "Largest memory consumers": {
       "localizations": {
         "ru": {
@@ -11032,6 +11428,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Последняя заведомо рабочая сборка."
+          }
+        }
+      }
+    },
+    "Last opened %@.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Последний раз открыто %@."
           }
         }
       }
@@ -11150,6 +11556,16 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "Last used comes from macOS's own record of opening an app and from what PEPEL has seen open. Data of sandboxed apps (~/Library/Containers) is protected by macOS and is not touched.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Последнее использование берётся из записей macOS об открытии приложения и из того, что PEPEL видел открытым. Данные приложений в песочнице (~/Library/Containers) защищены macOS и не трогаются."
           }
         }
       }
@@ -12489,6 +12905,16 @@
         }
       }
     },
+    "Never suggest it again (Settings › Applications)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Больше не предлагать (Настройки › Приложения)"
+          }
+        }
+      }
+    },
     "Never taken from Downloads (file extensions):": {
       "localizations": {
         "ru": {
@@ -12895,6 +13321,16 @@
         }
       }
     },
+    "No record of being opened.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет записей об открытии."
+          }
+        }
+      }
+    },
     "No roots configured.": {
       "localizations": {
         "ru": {
@@ -12983,6 +13419,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "В автозагрузке нет элемента %@."
+          }
+        }
+      }
+    },
+    "No such application.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Такого приложения нет."
           }
         }
       }
@@ -13415,6 +13861,58 @@
         }
       }
     },
+    "Not opened for %lld days": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Not opened for %lld day"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Not opened for %lld days"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Не открывались %lld дня"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Не открывались %lld дней"
+                }
+              },
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Не открывались %lld день"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Не открывались %lld дней"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "Not opened for 90+ days, 500 MB or more: %lld files, %@.": {
       "localizations": {
         "en": {
@@ -13463,6 +13961,16 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "Not opened lately": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Давно не открывались"
           }
         }
       }
@@ -15459,6 +15967,16 @@
         }
       }
     },
+    "PEPEL does not remove itself.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PEPEL не удаляет сам себя."
+          }
+        }
+      }
+    },
     "PEPEL does not start at login.": {
       "localizations": {
         "ru": {
@@ -15655,6 +16173,16 @@
         }
       }
     },
+    "PEPEL never removes an application on its own.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PEPEL никогда не удаляет приложения сам."
+          }
+        }
+      }
+    },
     "PEPEL never removes named volumes: they hold data rebuilding does not bring back. Remove one yourself with docker volume rm.": {
       "localizations": {
         "ru": {
@@ -15671,6 +16199,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "PEPEL сообщит, если появится новое"
+          }
+        }
+      }
+    },
+    "PEPEL records time in front while it runs": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PEPEL записывает время на переднем плане, пока работает"
           }
         }
       }
@@ -16943,6 +17481,16 @@
         }
       }
     },
+    "Quit it first.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сначала закройте его."
+          }
+        }
+      }
+    },
     "Quit…": {
       "localizations": {
         "ru": {
@@ -17243,6 +17791,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Удалить %@"
+          }
+        }
+      }
+    },
+    "Remove %@?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить %@?"
           }
         }
       }
@@ -18225,6 +18783,16 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "Remove…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить…"
           }
         }
       }
@@ -19370,6 +19938,16 @@
         }
       }
     },
+    "Show apps that come with macOS": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показывать приложения macOS"
+          }
+        }
+      }
+    },
     "Show fewer": {
       "localizations": {
         "ru": {
@@ -20302,6 +20880,58 @@
           "stringUnit": {
             "state": "translated",
             "value": "Резкий рост хранилища"
+          }
+        }
+      }
+    },
+    "Suggest removing an installed app nobody opened for %lld days": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Suggest removing an installed app nobody opened for %lld day"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Suggest removing an installed app nobody opened for %lld days"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Предлагать удалить приложение, которое не открывали %lld дня"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Предлагать удалить приложение, которое не открывали %lld дней"
+                }
+              },
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Предлагать удалить приложение, которое не открывали %lld день"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Предлагать удалить приложение, которое не открывали %lld дней"
+                }
+              }
+            }
           }
         }
       }
@@ -23022,6 +23652,16 @@
         }
       }
     },
+    "Used %@ ago.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Использовалось %@ назад."
+          }
+        }
+      }
+    },
     "Used %@ of a core over the %@ PEPEL has watched it.": {
       "localizations": {
         "en": {
@@ -23054,6 +23694,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Используется контейнерами"
+          }
+        }
+      }
+    },
+    "Used most · 30 days": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Чаще всего · 30 дней"
           }
         }
       }
@@ -24222,6 +24872,22 @@
         }
       }
     },
+    "app %@ · data %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "app %1$@ · data %2$@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "приложение %@ · данные %@"
+          }
+        }
+      }
+    },
     "application name, for example Telegram": {
       "localizations": {
         "ru": {
@@ -25104,6 +25770,16 @@
         }
       }
     },
+    "last opened %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "открывалось %@"
+          }
+        }
+      }
+    },
     "latest %@ %@": {
       "localizations": {
         "en": {
@@ -25448,6 +26124,16 @@
         }
       }
     },
+    "no data": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "нет данных"
+          }
+        }
+      }
+    },
     "no emulator": {
       "localizations": {
         "ru": {
@@ -25504,6 +26190,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "без проекта"
+          }
+        }
+      }
+    },
+    "no record of being opened": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "нет записей об открытии"
           }
         }
       }
@@ -26328,6 +27024,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "пропущено — %@"
+          }
+        }
+      }
+    },
+    "starts on its own": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "запускается само"
           }
         }
       }

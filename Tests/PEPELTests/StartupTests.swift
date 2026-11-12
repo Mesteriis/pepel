@@ -125,3 +125,81 @@ struct StartupOwnerTests {
         #expect(StartupInventory.owner(program: "2BUA8C4S2C.com.1password.browser-helper", label: "2BUA8C4S2C.com.1password.browser-helper") == "1password browser-helper")
     }
 }
+
+@Suite("Installed applications")
+struct InstalledAppsTests {
+    func app(_ f: Fixture, _ name: String, id: String) -> String {
+        let path = f.root + "/Applications/\(name).app"
+        _ = f.file(path + "/Contents/MacOS/\(name)", bytes: 4096)
+        let plist = try! PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": id, "CFBundleName": name, "CFBundleShortVersionString": "1.0"], format: .xml, options: 0)
+        FileManager.default.createFile(atPath: path + "/Contents/Info.plist", contents: plist)
+        return path
+    }
+
+    @Test("Suggestion: unused long enough and nothing else keeps it")
+    func judge() {
+        let now = Date()
+        func make(_ last: Double?, added: Double = 400) -> InstalledApp {
+            InstalledApp(
+                bundleID: "x.app", name: "X", path: "/Applications/X.app", version: nil, lastUsed: last.map { now.addingTimeInterval(-$0 * 86_400) }, useCount: nil,
+                added: now.addingTimeInterval(-added * 86_400), bundleBytes: 1, data: [], isApple: false)
+        }
+        var old = make(40); old.judge(days: 30, keep: [], now: now); #expect(old.isSuggested)
+        var recent = make(3); recent.judge(days: 30, keep: [], now: now); #expect(!recent.isSuggested)
+        var fresh = make(nil, added: 5); fresh.judge(days: 30, keep: [], now: now); #expect(!fresh.isSuggested)
+        var kept = make(40); kept.judge(days: 30, keep: ["x.app"], now: now); #expect(!kept.isSuggested)
+        var open = make(40); open.isRunning = true; open.judge(days: 30, keep: [], now: now); #expect(!open.isSuggested)
+        var background = make(40); background.startupLabels = ["x.agent"]; background.judge(days: 30, keep: [], now: now); #expect(!background.isSuggested)
+    }
+
+    @Test("Apps are listed once with their data; links to apps are skipped; usage PEPEL recorded is counted")
+    func scanAndUninstall() async throws {
+        let f = Fixture()
+        let path = app(f, "Bionic", id: "com.example.bionic")
+        try FileManager.default.createSymbolicLink(atPath: f.root + "/Applications/Link.app", withDestinationPath: path)
+        _ = f.file(f.home + "/Library/Application Support/com.example.bionic/state.db", bytes: 8192)
+        _ = f.file(f.home + "/Library/Caches/com.example.bionic/c", bytes: 4096)
+        _ = f.file(f.home + "/Library/Preferences/com.example.bionic.plist", bytes: 100)
+        let scanner = InstalledAppsScanner(home: f.home, folders: [f.root + "/Applications"])
+        let apps = scanner.apps()
+        #expect(apps.count == 1 && apps[0].name == "Bionic" && apps[0].data.count == 3)
+
+        let store = try PepelStore.inMemory()
+        store.addAppUsage(day: PepelEngine.day(Date()), bundleID: "com.example.bionic", name: "Bionic", foreground: 600, running: 1200)
+        #expect(store.appUsage(sinceDay: "2000-01-01")["com.example.bionic"]?.foregroundSeconds == 600)
+
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: FakeProcessSource(processes: []), telemetry: { SystemTelemetry() })
+        #expect(await engine.uninstallApp(path, includeData: true, confirmed: true, initiator: .agent).denial != nil)
+        #expect(await engine.uninstallApp(path, includeData: true, confirmed: true, initiator: .automatic).denial != nil)
+        #expect(PathUtil.exists(path))
+    }
+
+    @Test("Removing moves the app and its data to the Trash, records each for the restore center, and can be put back")
+    func uninstallAndRestore() async throws {
+        let f = Fixture()
+        let folder = f.home + "/Applications"
+        _ = f.file(folder + "/Bionic.app/Contents/MacOS/Bionic", bytes: 4096)
+        let plist = try PropertyListSerialization.data(fromPropertyList: ["CFBundleIdentifier": "com.example.bionic", "CFBundleName": "Bionic"], format: .xml, options: 0)
+        FileManager.default.createFile(atPath: folder + "/Bionic.app/Contents/Info.plist", contents: plist)
+        let support = f.home + "/Library/Application Support/com.example.bionic"
+        _ = f.file(support + "/state.db", bytes: 8192)
+        _ = f.file(f.home + "/Library/Application Support/Unrelated/keep.db", bytes: 10)
+        let store = try PepelStore.inMemory()
+        let engine = try PepelEngine(
+            paths: AppPaths(home: f.home, supportDirectory: f.root + "/support"), store: store, tools: .disabled, analyzers: [],
+            processSource: FakeProcessSource(processes: []), telemetry: { SystemTelemetry() })
+        let apps = await engine.installedApps()
+        #expect(apps.map(\.name) == ["Bionic"])
+        #expect(await engine.uninstallApp(folder + "/Bionic.app", includeData: true, confirmed: false, initiator: .user).denial != nil)
+        let result = await engine.uninstallApp(folder + "/Bionic.app", includeData: true, confirmed: true, initiator: .user)
+        #expect(result.denial == nil && result.bytes > 0)
+        #expect(!PathUtil.exists(folder + "/Bionic.app") && !PathUtil.exists(support))
+        #expect(PathUtil.exists(f.home + "/Library/Application Support/Unrelated/keep.db"), "other apps' data stays")
+        let center = engine.restoreCenter()
+        #expect(center.restorable.count == 2 && center.restorable.allSatisfy { $0.source == "Uninstall" })
+        for record in center.restorable { #expect(engine.restoreTrashed(id: record.id) == nil) }
+        #expect(PathUtil.exists(folder + "/Bionic.app/Contents/Info.plist") && PathUtil.exists(support + "/state.db"))
+    }
+}
