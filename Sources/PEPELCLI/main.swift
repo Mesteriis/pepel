@@ -1282,6 +1282,19 @@ case "self":
     let settings = await engine.currentSettings()
     if let warning = usage.warning(memoryLimitMB: settings.selfMemoryWarnMB) { print(warning) }
 
+case "login":
+    // macOS registers a login item only for the app itself; the app applies this setting as soon as it sees it.
+    if let verb = arguments.positional.first {
+        guard verb == "on" || verb == "off" else { Out.error("usage: pepel login [on|off]"); exit(2) }
+        _ = try await engine.update { $0.launchAtLogin = verb == "on" }
+    }
+    let on = await engine.currentSettings().launchAtLogin
+    if arguments.json { Out.json(["launchAtLogin": on]); break }
+    print(on ? "PEPEL starts when you log in." : "PEPEL does not start at login.")
+    if arguments.positional.first != nil {
+        print("The running PEPEL app registers the change with macOS within a few seconds; if macOS asks, approve it in System Settings › General › Login Items.")
+    }
+
 case "preset":
     let settings = await engine.currentSettings()
     guard let name = arguments.positional.first else {

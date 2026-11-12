@@ -232,6 +232,7 @@ struct SettingsSection: View {
                 }
                 .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(Theme.copper)
             }
+            startup
             presets(s)
             leaveAloneGroup(s)
             Caption("General").padding(.top, 6)
@@ -288,8 +289,6 @@ struct SettingsSection: View {
                     stepper(s.quietHours.endHour, 0...23, label: { "to \($0):00" }) { v in model.updateSettings { $0.quietHours.endHour = v } }
                 }
                 picker("Menu bar shows", selection: s.menuBarMode, options: [(.memoryGraphAndDisk, "Memory graph, memory and disk"), (.memoryGraph, "Memory graph"), (.memoryAndDisk, "Memory and disk"), (.reclaimable, "Reclaimable storage"), (.memoryPressure, "Memory pressure"), (.activeBuilds, "Active builds"), (.iconOnly, "Icon only")]) { value in model.updateSettings { $0.menuBarMode = value } }
-                Toggle("Launch PEPEL at login", isOn: Binding(get: { LoginItem.isEnabled }, set: { model.setLaunchAtLogin($0) })).font(.system(size: 12)).toggleStyle(.checkbox)
-                Text(model.loginItemStatus).font(.system(size: 11)).foregroundStyle(Theme.tertiary)
             }
 
             group("Cleanup", "How approved items are removed.") {
@@ -826,6 +825,21 @@ struct SettingsSection: View {
         case "Protection rules": return ("\(model.protections.count)", !model.protections.isEmpty)
         default: return nil
         }
+    }
+
+    /// Starting with the Mac: on top and always open, since it decides whether PEPEL runs at all.
+    private var startup: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Toggle("Start PEPEL when you log in", isOn: Binding(get: { LoginItem.isEnabled || LoginItem.awaitsApproval }, set: { model.setLaunchAtLogin($0) }))
+                .font(.system(size: 13, weight: .semibold)).toggleStyle(.switch).controlSize(.small)
+            Spacer(minLength: 8)
+            Text(model.loginItemStatus).font(.system(size: 11)).foregroundStyle(LoginItem.awaitsApproval ? Theme.amber : Theme.tertiary)
+                .multilineTextAlignment(.trailing)
+            if LoginItem.awaitsApproval {
+                Button("Open Login Items") { LoginItem.openSettings() }.buttonStyle(QuietButtonStyle())
+            }
+        }
+        .panel()
     }
 
     /// Three ready-made sets for the daily disk rules, with what a choice would change shown first.

@@ -182,6 +182,7 @@ public final class AppModel {
             await engine.setFrontmostProvider { frontmost.get() }
             await engine.setJournaling(true)
             settings = await engine.currentSettings()
+            applyLaunchAtLogin()
             storage = await engine.storage
             refreshSecondary()
             let stream = await monitor.events()
@@ -199,7 +200,10 @@ public final class AppModel {
             // Settings changed from the command line show up in the interface too.
             Task {
                 let current = await engine.currentSettings()
-                if current != settings { settings = current }
+                if current != settings {
+                    settings = current
+                    applyLaunchAtLogin()
+                }
             }
         case .scanStarted:
             isScanning = true
@@ -439,6 +443,16 @@ public final class AppModel {
 
     public func togglePause() {
         updateSettings { $0.paused.toggle() }
+    }
+
+    /// The setting may be changed from the command line (`pepel login on`); only the app itself can
+    /// register with macOS, so it brings the system in line with the setting when it sees a change.
+    func applyLaunchAtLogin() {
+        guard LoginItem.supported, settings.launchAtLogin != LoginItem.isEnabled else { return }
+        // Waiting for approval in System Settings counts as asked; asking again would not help.
+        if settings.launchAtLogin, LoginItem.awaitsApproval { loginItemStatus = LoginItem.statusText; return }
+        if let problem = LoginItem.set(settings.launchAtLogin) { message = problem }
+        loginItemStatus = LoginItem.statusText
     }
 
     public func setLaunchAtLogin(_ enabled: Bool) {

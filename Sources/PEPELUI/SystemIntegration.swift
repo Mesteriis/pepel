@@ -65,6 +65,7 @@ enum LoginItem {
     static var supported: Bool { Bundle.main.bundleURL.pathExtension == "app" }
 
     static var isEnabled: Bool { supported && SMAppService.mainApp.status == .enabled }
+    static var awaitsApproval: Bool { supported && SMAppService.mainApp.status == .requiresApproval }
 
     static var statusText: String {
         guard supported else { return L("Available when PEPEL runs from its app bundle.") }
@@ -75,6 +76,8 @@ enum LoginItem {
         default: return L("PEPEL does not start at login.")
         }
     }
+
+    static func openSettings() { SMAppService.openSystemSettingsLoginItems() }
 
     /// Returns a message when the change could not be made.
     static func set(_ enabled: Bool) -> String? {

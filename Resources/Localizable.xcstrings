@@ -10989,6 +10989,7 @@
       }
     },
     "Launch PEPEL at login": {
+      "extractionState": "stale",
       "localizations": {
         "ru": {
           "stringUnit": {
@@ -14838,6 +14839,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Открывать «Освободить память» сочетанием Control-Option-Command-M откуда угодно"
+          }
+        }
+      }
+    },
+    "Open Login Items": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть «Объекты входа»"
           }
         }
       }
@@ -19431,6 +19442,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Место освобождается только после очистки Корзины."
+          }
+        }
+      }
+    },
+    "Start PEPEL when you log in": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запускать PEPEL при входе в систему"
           }
         }
       }
