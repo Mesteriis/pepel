@@ -222,6 +222,18 @@ and never over something new. Removals for good are listed, not undoable. Rule s
 (`pepel preset`, Settings › Rule set) only change the switches and ages of the daily disk rules;
 the change is shown and confirmed first, and keep lists and protections stay as they are.
 
+### Startup items
+
+`pepel startup` and the Startup screen read `~/Library/LaunchAgents`, `/Library/LaunchAgents`,
+`/Library/LaunchDaemons` and `launchctl list` / `print-disabled` / `print` in your session; daemons
+are matched to running processes by name through `sysctl`, without extra permissions. The list of
+apps opened at login is not read (it would need Automation of System Events). Switching an agent
+off runs `launchctl disable gui/<uid>/<label>` and `bootout`; on runs `enable` and `bootstrap`.
+Only a person does this, after confirming; never the automatic rules, never the agent API.
+macOS's own jobs, PEPEL itself, daemons (root) and helpers registered by apps are shown only.
+Property lists are never edited or deleted. Hourly, something new is recorded in the audit log
+(`startup` / `appeared`) and announced once (`notifyNewStartupItems`).
+
 ### PEPEL watching itself
 
 The app reads its own memory and CPU each pass (and `pepel self` does on request), notes which
