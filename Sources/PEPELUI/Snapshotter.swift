@@ -34,6 +34,7 @@ public enum Snapshotter {
         model.leases = model.engine.store.leases()
         model.plan = await model.engine.cleanupPlan(initiator: .user)
         model.activity.plan = await model.engine.actionPlan()
+        model.startup.items = await model.engine.startupItems()
         model.activity.restore = model.engine.restoreCenter()
         _ = await model.engine.selfUsage()
         try? await Task.sleep(for: .seconds(1))

@@ -4,7 +4,7 @@ import PEPELEngine
 import SwiftUI
 
 public enum DashboardSection: String, CaseIterable, Identifiable, Sendable {
-    case overview, storage, map, memory, builds, projects, agents, cleanup, history, settings
+    case overview, storage, map, memory, startup, builds, projects, agents, cleanup, history, settings
 
     public var id: String { rawValue }
     /// The name shown in the sidebar; `rawValue` stays the identity.
@@ -14,6 +14,7 @@ public enum DashboardSection: String, CaseIterable, Identifiable, Sendable {
         case .storage: L("Storage")
         case .map: L("Disk map")
         case .memory: L("Memory")
+        case .startup: L("Startup")
         case .builds: L("Builds")
         case .projects: L("Projects")
         case .agents: L("Agents")
@@ -29,6 +30,7 @@ public enum DashboardSection: String, CaseIterable, Identifiable, Sendable {
         case .storage: "internaldrive"
         case .map: "square.grid.3x3.topleft.filled"
         case .memory: "memorychip"
+        case .startup: "power"
         case .builds: "hammer"
         case .projects: "folder"
         case .agents: "sparkles"
@@ -82,11 +84,14 @@ public final class AppModel {
 
     /// What the rules will do next, what they did, and what PEPEL itself costs.
     public let activity: ActivityModel
+    /// What macOS starts on its own.
+    public let startup: StartupModel
 
     public init(engine: PepelEngine) {
         self.engine = engine
         self.monitor = MonitorService(engine: engine)
         self.activity = ActivityModel(engine: engine)
+        self.startup = StartupModel(engine: engine)
     }
 
     /// A heavy job's name in words. The names themselves stay English: they are stored and the
@@ -240,6 +245,7 @@ public final class AppModel {
                 case .closure: guard s.notifyClosures else { continue }
                 case .cleanup: guard s.notifyCleanups else { continue }
                 case .freeze: guard s.notifyFreezes else { continue }
+                case .startup: guard s.notifyNewStartupItems else { continue }
                 }
                 Notifier.post(id: notice.id, title: notice.title, body: notice.body)
             }
@@ -1223,5 +1229,6 @@ public final class AppModel {
     public func open(_ section: DashboardSection) {
         self.section = section
         if section == .cleanup { prepareCleanup() }
+        if section == .startup { startup.refresh() }
     }
 }

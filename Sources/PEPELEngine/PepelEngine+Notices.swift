@@ -3,7 +3,7 @@ import PEPELCore
 
 /// A notification about something PEPEL did on its own: what it closed or removed, and what that freed.
 public struct ActionNotice: Sendable, Hashable, Identifiable {
-    public enum Kind: String, Sendable { case closure, cleanup, freeze }
+    public enum Kind: String, Sendable { case closure, cleanup, freeze, startup }
     public var id: String
     public var kind: Kind
     public var title: String
@@ -20,7 +20,8 @@ extension PepelEngine {
     /// remembers where the log is, so old actions are not announced again.
     public func actionNotices() -> [ActionNotice] {
         let entries = store.audit(limit: 400)
-        guard let newest = entries.first?.id else { return [] }
+        // An empty log is a position too: the first action after it must not be missed.
+        let newest = entries.first?.id ?? 0
         guard let cursor = store.value(Self.noticeCursorKey).flatMap(Int64.init) else {
             try? store.setValue(String(newest), for: Self.noticeCursorKey)
             return []
@@ -62,6 +63,12 @@ extension PepelEngine {
                         ?? L("No agent worked in the project for a while; they start again with docker compose start.")))
             case (.container, let outcome) where outcome.hasPrefix("restarted") && entry.subject == "Docker Desktop VM":
                 notices.append(ActionNotice(id: "vm-\(entry.id)", kind: .closure, title: L("Restarted Docker's VM"), body: L("Its memory is handed back to the Mac; the containers that ran were started again.")))
+            case (.startup, "appeared"):
+                let kind = entry.detail["kind"].flatMap(StartupItem.Kind.init(rawValue:))
+                let owner = entry.detail["owner"] ?? entry.subject
+                notices.append(ActionNotice(
+                    id: "startup-\(entry.id)", kind: .startup, title: L("New in startup: \(owner)"),
+                    body: L("\(entry.subject) (\(kind?.title ?? "")) will start on its own. Startup in PEPEL shows what it runs and can switch it off.")))
             case (.cleanup, "removed"), (.cleanup, "trashed"):
                 if let rule = ruleTitle(entry.subject) { cleanups.append((rule, entry.bytes, entry.outcome == "trashed")) }
             default:

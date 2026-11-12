@@ -1282,6 +1282,38 @@ case "self":
     let settings = await engine.currentSettings()
     if let warning = usage.warning(memoryLimitMB: settings.selfMemoryWarnMB) { print(warning) }
 
+case "startup":
+    let verb = arguments.positional.first
+    if verb == "disable" || verb == "enable", arguments.positional.count == 2 {
+        let label = arguments.positional[1], on = verb == "enable"
+        guard let item = await engine.startupItems().first(where: { $0.label == label }) else { Out.error("no startup item is called \(label)"); exit(1) }
+        if let refusal = item.managementRefusal { Out.error(refusal); exit(1) }
+        let question = on
+            ? "Switch \(label) on? It is loaded now and starts as its property list says (\(item.schedule))."
+            : "Switch \(label) off?\(item.isRunning ? " It stops now (\(Bytes.format(item.footprintBytes)))." : "") It will not start at login; the property list stays."
+        guard arguments.flags.contains("yes") || Out.confirm(question) else { print("Nothing changed."); break }
+        if let problem = await engine.setStartupItem(label, enabled: on, confirmed: true, initiator: .cli) { Out.error(problem); exit(1) }
+        print(on ? "\(label) is switched on." : "\(label) is switched off.")
+        break
+    } else if verb != nil {
+        Out.error("usage: pepel startup [disable|enable <label>] [--yes]"); exit(2)
+    }
+    let items = await engine.startupItems()
+    if arguments.json { Out.json(items); break }
+    let running = items.filter(\.isRunning)
+    print("\(items.filter { !$0.disabled }.count) start on their own, \(running.count) running now, holding \(Bytes.format(running.reduce(0) { $0 + $1.footprintBytes })).")
+    for kind in StartupItem.Kind.allCases {
+        let group = items.filter { $0.kind == kind }
+        guard !group.isEmpty else { continue }
+        print("\n\(kind.title.uppercased())")
+        Out.table(
+            ["STATE", "MEMORY", "STARTS", "OWNER", "LABEL"],
+            group.map {
+                [$0.disabled ? "off" : $0.isRunning ? "running" : $0.loaded ? "loaded" : "—", $0.isRunning && $0.processCount > 0 ? Bytes.format($0.footprintBytes) : "", $0.schedule, Out.truncate($0.owner, 28), $0.label]
+            })
+    }
+    print("\nApps that open at login are listed in System Settings › General › Login Items.")
+
 case "login":
     // macOS registers a login item only for the app itself; the app applies this setting as soon as it sees it.
     if let verb = arguments.positional.first {

@@ -76,6 +76,7 @@ public struct DashboardView: View {
             }
         case .builds: return model.live.flatMap { $0.activeBuildCount == 0 ? nil : "\($0.activeBuildCount)" }
         case .agents: return model.live.flatMap { $0.agentSessions.isEmpty ? nil : "\($0.agentSessions.count)" }
+        case .startup: return model.startup.newCount == 0 ? nil : "\(model.startup.newCount)"
         case .cleanup: return model.storage.flatMap { $0.reclaimableBytes > 0 ? Bytes.format($0.reclaimableBytes) : nil }
         default: return nil
         }
@@ -87,6 +88,7 @@ public struct DashboardView: View {
         case .storage: StorageSection()
         case .map: DiskMapSection()
         case .memory: MemorySection()
+        case .startup: StartupSection()
         case .builds: BuildsSection()
         case .projects: ProjectsSection()
         case .agents: AgentsSection()

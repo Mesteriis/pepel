@@ -109,6 +109,7 @@ pepel plan leave|forget <id|path>  Keep the daily rules off one item, or let the
 pepel restore [N] [--days N]     What PEPEL removed lately; put item N back from the Trash
 pepel preset [careful|normal|aggressive] [--yes]  Ready-made sets for the daily disk rules
 pepel self                       What PEPEL itself costs in memory and CPU
+pepel startup [disable|enable <label>] [--yes]  Launch agents, daemons and login helpers, what they hold; switch an agent off or on
 pepel login [on|off]             Whether PEPEL starts when you log in (the app registers it with macOS)
 pepel journal [--days N] [path]  The memory journal: what the last days say, and where it is kept
 pepel docker [clean …|compact]   What Docker keeps on disk; remove what is unused for N days; trim its disk image

@@ -45,6 +45,22 @@
         }
       }
     },
+    "%@ (%@) will start on its own. Startup in PEPEL shows what it runs and can switch it off.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@ (%2$@) will start on its own. Startup in PEPEL shows what it runs and can switch it off."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ (%@) будет запускаться сам. Раздел «Автозагрузка» в PEPEL покажет, что он запускает, и может его выключить."
+          }
+        }
+      }
+    },
     "%@ (%@, booted %@)": {
       "localizations": {
         "en": {
@@ -671,6 +687,22 @@
         }
       }
     },
+    "%@ is enabled and loaded now; it then starts as its property list says (%@).": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@ is enabled and loaded now; it then starts as its property list says (%2$@)."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ сейчас включится и загрузится, а дальше будет запускаться, как указано в его файле (%@)."
+          }
+        }
+      }
+    },
     "%@ is marked as not to be cleaned.": {
       "localizations": {
         "ru": {
@@ -737,6 +769,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ ещё работает; возможно, спрашивает о несохранённых изменениях. PEPEL не стал закрывать его принудительно."
+          }
+        }
+      }
+    },
+    "%@ is switched off: it stopped and will not start at login.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ выключен: он остановлен и не запустится при входе в систему."
+          }
+        }
+      }
+    },
+    "%@ is switched on again.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ снова включён."
           }
         }
       }
@@ -4192,6 +4244,40 @@
         }
       }
     },
+    "%lld switched off": {
+      "localizations": {
+        "ru": {
+          "variations": {
+            "plural": {
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld выключено"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld выключено"
+                }
+              },
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld выключен"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld выключено"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld unreadable entries": {
       "localizations": {
         "en": {
@@ -4786,6 +4872,16 @@
         }
       }
     },
+    "A system daemon runs as root; switching it needs an administrator, so PEPEL only shows it.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Системный демон работает от root; чтобы его переключить, нужен администратор, поэтому PEPEL его только показывает."
+          }
+        }
+      }
+    },
     "A ticked app is asked to quit the normal way, never forced. It is left alone while it is in front, while it is busy with no window (playing, exporting, syncing), and when an agent session or a build runs inside it. A window that is minimised, hidden or on another Space counts as open.": {
       "localizations": {
         "ru": {
@@ -5062,6 +5158,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Агенты могут регистрировать сборки и рабочие пространства, брать пути в аренду или защищать их, отмечать свои временные файлы, запрашивать сканирование и предпросмотр очистки. Удалять файлы и завершать процессы они не могут."
+          }
+        }
+      }
+    },
+    "Agents cannot change what starts at login.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Агенты не могут менять автозагрузку."
           }
         }
       }
@@ -5530,6 +5636,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Приложения могут подвиснуть."
+          }
+        }
+      }
+    },
+    "Apps that open at login": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Приложения, открывающиеся при входе"
           }
         }
       }
@@ -9584,6 +9700,16 @@
         }
       }
     },
+    "Helpers apps registered to run at login": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Помощники, которых приложения запускают при входе"
+          }
+        }
+      }
+    },
     "Hermes state": {
       "localizations": {
         "ru": {
@@ -10110,6 +10236,16 @@
         }
       }
     },
+    "It is PEPEL itself; use Settings › Start PEPEL when you log in.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Это сам PEPEL; используйте «Настройки › Запускать PEPEL при входе в систему»."
+          }
+        }
+      }
+    },
     "It is a developer process; it is not terminated just because its application quit.": {
       "localizations": {
         "ru": {
@@ -10176,6 +10312,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Входит в список «не трогать»."
+          }
+        }
+      }
+    },
+    "It is part of macOS.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Это часть macOS."
           }
         }
       }
@@ -10292,12 +10438,32 @@
         }
       }
     },
+    "It stops now, freeing about %@.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Он остановится сейчас и освободит около %@."
+          }
+        }
+      }
+    },
     "It was already put back.": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Уже возвращено."
+          }
+        }
+      }
+    },
+    "It will not start at login until you switch it on again. The property list %@ stays where it is.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "При входе в систему он не запустится, пока вы его снова не включите. Файл %@ останется на месте."
           }
         }
       }
@@ -10434,6 +10600,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Его проект исключён из очистки."
+          }
+        }
+      }
+    },
+    "Its property list was not found.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Его файл .plist не найден."
           }
         }
       }
@@ -10995,6 +11171,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Запускать PEPEL при входе"
+          }
+        }
+      }
+    },
+    "Launch agents installed by apps": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Агенты запуска, установленные приложениями"
           }
         }
       }
@@ -11801,6 +11987,16 @@
         }
       }
     },
+    "Memory they hold": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Занимают памяти"
+          }
+        }
+      }
+    },
     "Memory used %@ → %@, free %@ → %@. %@.": {
       "localizations": {
         "en": {
@@ -11973,6 +12169,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Самая свежая сборка."
+          }
+        }
+      }
+    },
+    "Most: %@, %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Most: %1$@, %2$@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Больше всех: %@, %@"
           }
         }
       }
@@ -12287,6 +12499,16 @@
         }
       }
     },
+    "New in startup: %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Новое в автозагрузке: %@"
+          }
+        }
+      }
+    },
     "New limit: %lld GiB": {
       "localizations": {
         "ru": {
@@ -12317,6 +12539,16 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "New this week": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Новое за неделю"
           }
         }
       }
@@ -12741,6 +12973,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Нет признаков работы за %@ наблюдения: ни записей, кроме служебных, ни всплесков CPU, ни новых процессов."
+          }
+        }
+      }
+    },
+    "No startup item is called %@.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В автозагрузке нет элемента %@."
           }
         }
       }
@@ -15403,12 +15645,32 @@
         }
       }
     },
+    "PEPEL never changes what starts at login on its own.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PEPEL никогда не меняет автозагрузку сам."
+          }
+        }
+      }
+    },
     "PEPEL never removes named volumes: they hold data rebuilding does not bring back. Remove one yourself with docker volume rm.": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "PEPEL никогда не удаляет именованные тома: в них данные, которые пересборка не вернёт. Удалите такой том сами командой docker volume rm."
+          }
+        }
+      }
+    },
+    "PEPEL notifies when something new appears": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PEPEL сообщит, если появится новое"
           }
         }
       }
@@ -18663,6 +18925,16 @@
         }
       }
     },
+    "Running now": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Работают сейчас"
+          }
+        }
+      }
+    },
     "Running sessions": {
       "localizations": {
         "ru": {
@@ -19490,6 +19762,16 @@
         }
       }
     },
+    "Start on their own": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запускаются сами"
+          }
+        }
+      }
+    },
     "Started %@ ago; the rule waits %lld days.": {
       "localizations": {
         "en": {
@@ -19624,6 +19906,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Начальная папка"
+          }
+        }
+      }
+    },
+    "Startup": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Автозагрузка"
           }
         }
       }
@@ -20294,6 +20586,46 @@
         }
       }
     },
+    "Switch %@ off?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выключить %@?"
+          }
+        }
+      }
+    },
+    "Switch %@ on?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Включить %@?"
+          }
+        }
+      }
+    },
+    "Switch off": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выключить"
+          }
+        }
+      }
+    },
+    "Switch on": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Включить"
+          }
+        }
+      }
+    },
     "Switch to %@": {
       "localizations": {
         "ru": {
@@ -20320,6 +20652,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Символы для подключавшихся устройств; создаются заново при подключении устройства."
+          }
+        }
+      }
+    },
+    "System daemons installed by apps": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Системные демоны, установленные приложениями"
           }
         }
       }
@@ -20790,6 +21132,16 @@
         }
       }
     },
+    "The app manages it; switch it in System Settings › General › Login Items.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Им управляет приложение; переключить его можно в «Системные настройки › Основные › Объекты входа»."
+          }
+        }
+      }
+    },
     "The application and its helper processes.": {
       "localizations": {
         "ru": {
@@ -21036,6 +21388,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Предел не изменён."
+          }
+        }
+      }
+    },
+    "The list of apps macOS opens when you log in is kept by System Settings. Reading it would need permission to control System Events, which PEPEL does not ask for; each app there also shows on the Memory screen while it runs.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Список приложений, которые macOS открывает при входе, хранится в Системных настройках. Чтобы его прочитать, нужно разрешение управлять System Events, а PEPEL его не запрашивает; каждое такое приложение, пока работает, видно на экране «Память»."
           }
         }
       }
@@ -23164,6 +23526,16 @@
         }
       }
     },
+    "What macOS starts on its own, what it holds right now, and switching launch agents off. PEPEL only reads until you confirm a change; property lists are never deleted.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Что macOS запускает сама, сколько это занимает прямо сейчас, и выключение агентов запуска. PEPEL только читает, пока вы не подтвердите изменение; файлы .plist никогда не удаляются."
+          }
+        }
+      }
+    },
     "What removed applications left behind is only moved to the Trash when you ask.": {
       "localizations": {
         "ru": {
@@ -23220,6 +23592,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Когда простаивающая сессия агента замораживается"
+          }
+        }
+      }
+    },
+    "When something new starts on its own (launch agent, daemon, login helper)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Когда в автозагрузке появляется новое (агент, демон, помощник входа)"
           }
         }
       }
@@ -23420,6 +23802,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Вы попросили PEPEL освободить память, включая простаивающие сессии."
+          }
+        }
+      }
+    },
+    "Your launch agents": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ваши агенты запуска"
           }
         }
       }
@@ -23690,6 +24082,16 @@
         }
       }
     },
+    "always kept running": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "работает постоянно"
+          }
+        }
+      }
+    },
     "and %lld failed": {
       "localizations": {
         "ru": {
@@ -23870,6 +24272,16 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "at login": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "при входе"
           }
         }
       }
@@ -24310,6 +24722,16 @@
         }
       }
     },
+    "every %lld min": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "каждые %lld мин"
+          }
+        }
+      }
+    },
     "everything goes to the Trash": {
       "localizations": {
         "ru": {
@@ -24326,6 +24748,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "всё удаляется навсегда"
+          }
+        }
+      }
+    },
+    "exited with %lld": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "завершился с кодом %lld"
           }
         }
       }
@@ -24586,6 +25018,16 @@
         }
       }
     },
+    "inside apps": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "внутри приложений"
+          }
+        }
+      }
+    },
     "installed": {
       "localizations": {
         "ru": {
@@ -24678,6 +25120,16 @@
         }
       }
     },
+    "launchctl did not accept the change.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "launchctl не принял изменение."
+          }
+        }
+      }
+    },
     "lease": {
       "localizations": {
         "ru": {
@@ -24694,6 +25146,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "почти нечего вернуть"
+          }
+        }
+      }
+    },
+    "loaded, waiting": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "загружен, ждёт"
           }
         }
       }
@@ -24932,6 +25394,16 @@
         }
       }
     },
+    "new": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "новое"
+          }
+        }
+      }
+    },
     "newest of %lld": {
       "localizations": {
         "ru": {
@@ -25086,12 +25558,32 @@
         }
       }
     },
+    "not loaded": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "не загружен"
+          }
+        }
+      }
+    },
     "not read": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "не прочитано"
+          }
+        }
+      }
+    },
+    "not running": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "не запущен"
           }
         }
       }
@@ -25199,6 +25691,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "от аккумулятора"
+          }
+        }
+      }
+    },
+    "on demand": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "по запросу"
           }
         }
       }
@@ -25634,6 +26136,42 @@
         }
       }
     },
+    "running as root, PID %lld": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "работает от root, PID %lld"
+          }
+        }
+      }
+    },
+    "running, %lld processes, PID %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "running, %1$lld processes, PID %2$lld"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "работает, процессов: %lld, PID %lld"
+          }
+        }
+      }
+    },
+    "running, PID %lld": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "работает, PID %lld"
+          }
+        }
+      }
+    },
     "safe": {
       "localizations": {
         "ru": {
@@ -25794,6 +26332,16 @@
         }
       }
     },
+    "startup": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "автозагрузка"
+          }
+        }
+      }
+    },
     "succeeded": {
       "localizations": {
         "ru": {
@@ -25830,6 +26378,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "swiftpm"
+          }
+        }
+      }
+    },
+    "switched off": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "выключен"
           }
         }
       }

@@ -49,6 +49,10 @@ public actor PepelEngine {
     var windowlessAsked: Set<ProcessIdentity> = []
     /// Replaces the `docker` command line; tests use a scripted one.
     nonisolated(unsafe) var containerRunner: ContainerStopper.Runner?
+    /// Replaces `launchctl` and the folders it reads; tests use a scripted one.
+    nonisolated(unsafe) var startupOverride: StartupInventory?
+
+    public func setStartupInventory(_ inventory: StartupInventory?) { startupOverride = inventory }
 
     public func setContainerRunner(_ runner: ContainerStopper.Runner?, report: ContainerReport? = nil) {
         containerRunner = runner

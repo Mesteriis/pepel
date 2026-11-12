@@ -84,6 +84,7 @@ extension PepelEngine {
         await freezePass()
         await resumeContainersOfActiveProjects()
         await windowlessPass()
+        watchStartupItems()
         guard !settings.paused else { return (nil, []) }
         _ = await stopIdleProjectContainers()
         _ = await nightlyVMRefresh()

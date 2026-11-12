@@ -77,6 +77,8 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     public var notifyCleanups = true
     /// Say when an idle agent session was paused (frequent; off by default).
     public var notifyFreezes = false
+    /// Say when something new starts on its own (a launch agent, daemon or login helper appeared).
+    public var notifyNewStartupItems = true
     public var launchAtLogin = false
 
     public var deletionMode: DeletionMode = .automatic

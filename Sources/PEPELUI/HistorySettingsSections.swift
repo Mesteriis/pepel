@@ -154,6 +154,7 @@ struct HistorySection: View {
         case .alert: L("alert")
         case .agent: L("agent")
         case .container: L("container")
+        case .startup: L("startup")
         }
     }
 
@@ -265,6 +266,7 @@ struct SettingsSection: View {
                     toggle("When PEPEL closes an app, ends a process or stops containers, and what that freed", s.notifyClosures) { v in model.updateSettings { $0.notifyClosures = v } }
                     toggle("What the daily disk rules removed or moved to the Trash", s.notifyCleanups) { v in model.updateSettings { $0.notifyCleanups = v } }
                     toggle("When an idle agent session is paused", s.notifyFreezes) { v in model.updateSettings { $0.notifyFreezes = v } }
+                    toggle("When something new starts on its own (launch agent, daemon, login helper)", s.notifyNewStartupItems) { v in model.updateSettings { $0.notifyNewStartupItems = v } }
                 }
                 .padding(.leading, 20).disabled(!s.notificationsEnabled)
                 HStack(spacing: 8) {

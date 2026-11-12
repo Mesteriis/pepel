@@ -108,6 +108,7 @@ enum Out {
           pepel plan leave|forget <id|path>  Keep the daily rules off one item, or let them act on it again
           pepel restore [N] [--days N]     What PEPEL removed lately; put back item N from the Trash
           pepel preset [careful|normal|aggressive] [--yes]  Ready-made sets for the daily disk rules
+          pepel startup [disable|enable <label>] [--yes]  What starts on its own and what it holds; switch a launch agent off or on
           pepel login [on|off]             Whether PEPEL starts when you log in
           pepel self                       What PEPEL itself costs in memory and CPU, and which heavy job runs
           pepel budget [set <owner> <GB>]  Memory budgets per owner (a name, or kind:agentSession); alerts when exceeded
