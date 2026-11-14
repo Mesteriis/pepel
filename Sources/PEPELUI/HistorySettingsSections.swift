@@ -512,6 +512,7 @@ struct SettingsSection: View {
                 stepper(s.bbThreadIdleMinutes, 5...120, step: 5, label: { "Release a BB thread after \($0) min of quiet (BB itself waits 30)" }) { v in model.updateSettings { $0.bbThreadIdleMinutes = v } }
                 toggle("Suspend agent sessions that have gone quiet, instead of waiting to end them", s.freezeIdleAgents) { v in model.updateSettings { $0.freezeIdleAgents = v } }
                 stepper(s.freezeAfterMinutes, 5...240, step: 5, label: { "Suspend after \($0) min of quiet" }) { v in model.updateSettings { $0.freezeAfterMinutes = v } }
+                toggle("Only while memory is short (pressure elevated or a shortage forecast); a suspended session keeps its memory until macOS needs it", s.freezeOnlyUnderPressure) { v in model.updateSettings { $0.freezeOnlyUnderPressure = v } }
                 stepper(s.freezePeekMinutes, 2...120, label: { "Look for waiting work every \($0) min" }) { v in model.updateSettings { $0.freezePeekMinutes = v } }
                 Text("A suspended session keeps everything and continues the moment its application comes to the front. In between PEPEL wakes it briefly to see whether work arrived (a message from another device, a finished task); if so it stays awake. Sessions PEPEL cannot tie to an application, such as ones inside tmux, are never suspended automatically. Quitting or pausing PEPEL wakes everything.")
                     .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true)

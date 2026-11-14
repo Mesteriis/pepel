@@ -40,6 +40,7 @@ public enum BBProcesses {
         public var runtimeProcesses = 0
         public var appBytes: Int64 = 0
         public var plugins: [String: (bytes: Int64, count: Int)] = [:]
+        public var runtimes: [BBRuntime] = []
     }
 
     /// What BB holds right now, split into the app, thread runtimes and plugins.
@@ -49,10 +50,19 @@ public enum BBProcesses {
         var counted = Set<ProcessIdentity>()
         for worker in processes where isRuntimeWorker(worker) {
             let all = [worker] + tree.descendants(of: worker)
+            let bytes = all.reduce(0) { $0 + $1.footprintBytes }
             usage.runtimeCount += 1
             usage.runtimeProcesses += all.count
-            usage.runtimeBytes += all.reduce(0) { $0 + $1.footprintBytes }
+            usage.runtimeBytes += bytes
             counted.formUnion(all.map(\.identity))
+            // The agent is the worker's largest child; its folder is the thread's environment.
+            let agent = tree.children(of: worker).max { $0.footprintBytes < $1.footprintBytes }
+            let provider = pluginName(worker, home: home).map { $0.hasPrefix("provider-") ? String($0.dropFirst("provider-".count)) : $0 } ?? "agent"
+            let path = agent?.workingDirectory
+            usage.runtimes.append(
+                BBRuntime(
+                    workerPID: worker.pid, provider: provider, path: path, bytes: bytes, processCount: all.count,
+                    isMaintenance: path.map { $0.hasPrefix(home + "/.bb/") } ?? false))
         }
         for p in processes where !counted.contains(p.identity) {
             let plugin = pluginName(p, home: home) ?? (isPluginWorker(p) ? "plugin" : nil)

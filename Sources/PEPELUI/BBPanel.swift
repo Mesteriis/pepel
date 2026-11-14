@@ -81,12 +81,13 @@ struct BBPanel: View {
         case "running": L(LocalizedStringResource("bb.running", defaultValue: "running"))
         case "error": L(LocalizedStringResource("bb.error", defaultValue: "error"))
         case "waiting": L(LocalizedStringResource("bb.waiting", defaultValue: "waiting"))
+        case "busy": L("busy")
         default: status
         }
     }
 
     private func releasable(_ state: BBState) -> [BBThread] {
-        state.threads.filter { $0.isReleasable(minutes: 0) }
+        state.threads.filter { $0.environmentHasRuntime && $0.isReleasable(minutes: 0) }
     }
 
     private func header(_ state: BBState) -> some View {
@@ -99,7 +100,7 @@ struct BBPanel: View {
             Button(L("Release idle threads")) { model.bb.confirmRelease = true }
                 .buttonStyle(CopperButtonStyle(prominent: false))
                 .disabled(releasable(state).isEmpty || model.bb.isReleasing)
-                .help(L("\(releasable(state).count) idle threads quiet for less than a day may still hold an agent runtime"))
+                .help(L("\(releasable(state).count) idle threads work in an environment with a live runtime"))
         }
     }
 
@@ -122,28 +123,47 @@ struct BBPanel: View {
         }
     }
 
+    /// The runtimes, biggest first: what each holds, where it works, and its threads there.
     private func threads(_ state: BBState) -> some View {
-        let recent = state.threads.filter { Date().timeIntervalSince($0.lastActivity) < BBThread.runtimeWindow }
         let settings = model.settings
+        let byID = Dictionary(state.threads.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         return VStack(alignment: .leading, spacing: 0) {
-            ForEach(recent.prefix(12)) { thread in
+            if state.runtimes.isEmpty {
+                Text("No agent runtime is loaded: every thread is released.").font(.system(size: 12)).foregroundStyle(Theme.secondary).padding(.vertical, 4)
+            }
+            ForEach(state.runtimes) { runtime in
+                let threads = runtime.threadIDs.compactMap { byID[$0] }.filter { Date().timeIntervalSince($0.lastActivity) < BBThread.runtimeWindow }
+                let idle = threads.filter { $0.status == "idle" && !$0.busy }
                 Divider().overlay(Theme.stroke.opacity(0.6))
-                HStack(spacing: 8) {
-                    Badge(text: thread.busy ? L("busy") : Self.statusTitle(thread.status), tint: thread.status == "idle" && !thread.busy ? Theme.tertiary : thread.status == "error" ? Theme.amber : Theme.forest)
-                    Text(verbatim: thread.title).font(.system(size: 12)).foregroundStyle(Theme.text).lineLimit(1).truncationMode(.tail)
-                    if let project = thread.projectName { Text(verbatim: project).font(.system(size: 11)).foregroundStyle(Theme.tertiary).lineLimit(1) }
-                    Spacer(minLength: 6)
-                    Text(verbatim: thread.releasedAt.map { _ in L("released") } ?? L("quiet \(TimeFormat.age(Date().timeIntervalSince(thread.lastActivity)))"))
-                        .font(.system(size: 11)).monospacedDigit().foregroundStyle(Theme.tertiary)
-                    Button("Release") { model.bb.release([thread.id]) }
-                        .buttonStyle(QuietButtonStyle())
-                        .disabled(thread.status != "idle" || thread.busy || model.bb.isReleasing)
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(verbatim: runtime.provider.capitalized).font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text)
+                            Text(verbatim: runtime.isMaintenance ? L("BB's own maintenance") : PathUtil.display(runtime.path ?? "—"))
+                                .font(Theme.mono).foregroundStyle(Theme.tertiary).lineLimit(1).truncationMode(.middle)
+                        }
+                        if !runtime.isMaintenance {
+                            Text(verbatim: threads.isEmpty ? L("No recent thread in this environment") : threads.prefix(3).map { "\(Self.statusTitle($0.busy ? "busy" : $0.status)) · \($0.title)" }.joined(separator: "   "))
+                                .font(.system(size: 11)).foregroundStyle(Theme.secondary).lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text(verbatim: Bytes.format(runtime.bytes)).font(.system(size: 12, weight: .medium)).monospacedDigit().foregroundStyle(Theme.text)
+                        Text(L("\(runtime.processCount) processes")).font(.system(size: 10)).foregroundStyle(Theme.tertiary)
+                    }
+                    if !runtime.isMaintenance {
+                        Button("Release") { model.bb.release(idle.map(\.id)) }
+                            .buttonStyle(QuietButtonStyle())
+                            .disabled(idle.isEmpty || model.bb.isReleasing)
+                            .help(idle.isEmpty ? L("Its threads are working or have something pending.") : L("Releases \(idle.count) idle threads of this environment; they resume with the next message."))
+                    }
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, 5)
             }
             Text(settings.releaseIdleBBThreads
-                ? L("Idle threads are released after \(settings.bbThreadIdleMinutes) min of quiet (Settings › Agent sessions). \(state.threads.count - recent.count) older threads hold no runtime.")
-                : L("BB releases an idle thread's runtime after 30 min; PEPEL can do it sooner (Settings › Agent sessions). \(state.threads.count - recent.count) older threads hold no runtime."))
+                ? L("Idle threads with a runtime are released after \(settings.bbThreadIdleMinutes) min of quiet (Settings › Agent sessions). BB itself waits 30.")
+                : L("BB releases an idle thread's runtime after 30 min; PEPEL can do it sooner (Settings › Agent sessions)."))
                 .font(.system(size: 11)).foregroundStyle(Theme.tertiary).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
         }
     }

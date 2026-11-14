@@ -50,6 +50,8 @@ public enum RoleClassifier {
         if base == "claude" || first == "claude" || joined.contains("@anthropic-ai/claude-code") { return .claudeCode }
         if base == "codex" || base.hasPrefix("codex-") || first == "codex" || joined.contains("@openai/codex") { return .codex }
         if base == "opencode" || first == "opencode" || joined.contains("opencode-ai") { return .openCode }
+        // Pi renames its Node process to "pi"; the name alone would be too short to trust.
+        if (p.name == "pi" || first == "pi"), (p.executablePath ?? "").hasSuffix("/node") { return .pi }
         if base == "hermes-agent" || first == "hermes-agent" || (base == "hermes" && !(p.executablePath ?? "").contains("node_modules")) {
             return .hermes
         }

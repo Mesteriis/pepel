@@ -1328,16 +1328,18 @@ case "self":
 case "bb":
     // BB, the agent IDE: its threads, what they hold, and releasing idle ones through BB itself.
     if arguments.positional.first == "release" {
-        let ids = Array(arguments.positional.dropFirst())
+        var ids = Array(arguments.positional.dropFirst())
         let state = await engine.bbState()
         guard state.cliAvailable else { Out.error(state.running ? "the bb command line did not answer" : "BB is not running"); exit(1) }
-        let chosen = state.threads.filter { ids.isEmpty ? $0.isReleasable(minutes: 0) : (ids.contains($0.id) && $0.status == "idle" && !$0.busy) }
-        guard !chosen.isEmpty else { print("No idle thread with nothing pending."); break }
+        // A runtime's worker PID stands for the idle threads of its environment.
+        ids = ids.flatMap { id in Int32(id).flatMap { pid in state.runtimes.first { $0.workerPID == pid }?.threadIDs } ?? [id] }
+        let chosen = state.threads.filter { ids.isEmpty ? ($0.environmentHasRuntime && $0.isReleasable(minutes: 0)) : (ids.contains($0.id) && $0.status == "idle" && !$0.busy) }
+        guard !chosen.isEmpty else { print("No idle thread with nothing pending holds a runtime."); break }
         for thread in chosen { print("  \(thread.id)  \(Out.truncate(thread.title, 60))  quiet \(TimeFormat.age(Date().timeIntervalSince(thread.lastActivity)))") }
         guard arguments.flags.contains("yes") || Out.confirm("Ask BB to release the agent runtime of these \(chosen.count) threads? They stay and resume with the next message.") else { print("Nothing changed."); break }
-        let result = await engine.releaseBBThreads(ids.isEmpty ? nil : chosen.map(\.id), confirmed: true, initiator: .cli)
+        let result = await engine.releaseBBThreads(chosen.map(\.id), confirmed: true, initiator: .cli)
         if let denial = result.denial { Out.error(denial); exit(1) }
-        print("Released \(result.released.count) thread\(result.released.count == 1 ? "" : "s"); BB's runtimes hold \(Bytes.format(result.freedBytes)) less.")
+        print("Released \(result.released.count) thread\(result.released.count == 1 ? "" : "s"); the runtimes that ended held \(Bytes.format(result.freedBytes)).")
         break
     } else if arguments.positional.first != nil {
         Out.error("usage: pepel bb [release [<thread id>…] [--yes]]"); exit(2)
@@ -1348,6 +1350,21 @@ case "bb":
     let settings = await engine.currentSettings()
     print("BB holds \(Bytes.format(state.totalBytes)): app \(Bytes.format(state.appBytes)), \(state.runtimeCount) agent runtimes \(Bytes.format(state.runtimeBytes)) in \(state.runtimeProcesses) processes" + (state.plugins.isEmpty ? "." : ", plugins " + state.plugins.map { "\($0.name) \(Bytes.format($0.bytes))" }.joined(separator: ", ") + "."))
     if !state.cliAvailable { print("The bb command line did not answer; threads are unknown."); break }
+    if !state.runtimes.isEmpty {
+        print("\nAgent runtimes (`pepel bb release <PID>` releases the idle threads of one):")
+        let titles = Dictionary(state.threads.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        Out.table(
+            ["PID", "MEMORY", "PROCS", "AGENT", "WORKS IN", "THREADS THERE"],
+            state.runtimes.map { runtime in
+                let threads = runtime.threadIDs.compactMap { titles[$0] }
+                let recent = threads.filter { Date().timeIntervalSince($0.lastActivity) < BBThread.runtimeWindow }
+                return [
+                    "\(runtime.workerPID)", Bytes.format(runtime.bytes), "\(runtime.processCount)", runtime.provider,
+                    runtime.isMaintenance ? "BB maintenance" : Out.truncate(PathUtil.display(runtime.path ?? "—", home: appPaths.home), 40),
+                    runtime.isMaintenance ? "" : "\(recent.count) recent of \(threads.count)" + (recent.first.map { ": " + Out.truncate($0.title, 30) } ?? ""),
+                ]
+            })
+    }
     print("")
     Out.table(
         ["STATUS", "QUIET", "PROJECT", "THREAD", "ID"],

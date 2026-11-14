@@ -105,8 +105,21 @@ extension PepelEngine {
         return trees.count
     }
 
+    static let lastFrontKey = "apps.lastFront"
+
+    /// When each application (by PID) was last in front, as the app saw it come forward.
+    nonisolated func lastFront() -> [Int32: Date] {
+        let stored = store.loadCodable([String: Date].self, key: Self.lastFrontKey) ?? [:]
+        return Dictionary(stored.compactMap { key, value in Int32(key).map { ($0, value) } }, uniquingKeysWith: { a, _ in a })
+    }
+
     /// The application with this PID came to the front: wake what lives in it, right away.
     public nonisolated func applicationActivated(pid: Int32) {
+        var stored = store.loadCodable([String: Date].self, key: Self.lastFrontKey) ?? [:]
+        stored[String(pid)] = Date()
+        // Applications that quit long ago fall out after a day.
+        stored = stored.filter { Date().timeIntervalSince($0.value) < 86_400 }
+        try? store.saveCodable(stored, key: Self.lastFrontKey)
         for tree in frozenTrees() where tree.ownerAppPID == pid { thaw(tree.root, reason: "\(tree.ownerAppName ?? "its application") came to the front") }
     }
 
@@ -165,11 +178,21 @@ extension PepelEngine {
         }
 
         guard settings.freezeIdleAgents, let live else { return }
+        // With memory to spare a suspended session saves nothing: its pages stay in RAM until macOS
+        // needs them, and waking it again (as soon as its application comes forward) is pure churn.
+        if settings.freezeOnlyUnderPressure, live.telemetry.pressure == .normal, live.forecast == nil { return }
         let suspended = Set(frozenTrees().map(\.root))
         let woken = wokenAt()
         let threshold = TimeInterval(effectiveSettings.freezeAfterMinutes) * 60
-        for session in live.agentSessions where !session.isService && session.state != .working && !suspended.contains(session.root) {
+        let processTree = ProcessTree(processSource.snapshot())
+        let fronted = lastFront(), inFront = frontmostPID()
+        for session in live.agentSessions where !session.isService && session.hostApp == nil && session.state != .working && !suspended.contains(session.root) {
             if let last = woken[Self.wokenID(session.root)], now.timeIntervalSince(last) < threshold { continue }
+            // A session whose application was in front lately is likely to be looked at again soon.
+            if let root = processTree.process(session.root), let owner = Self.ownerApp(of: root, tree: processTree) {
+                if owner.pid == inFront { continue }
+                if let last = fronted[owner.pid], now.timeIntervalSince(last) < threshold { continue }
+            }
             // Cheap check first; `freeze` decides again on a fresh sample.
             let quiet = session.quietSince.map { now.timeIntervalSince($0) } ?? 0
             guard quiet >= threshold else { continue }

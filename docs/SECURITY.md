@@ -228,8 +228,11 @@ PEPEL recognises BB's processes (the app, its server and host daemon, one provid
 thread with the agent and its MCP servers below it, and plugin processes, including ones a plugin
 left running on their own) and reads its threads with `bb thread list --json`. A Codex or other
 agent under a BB provider worker is marked as BB's; like every agent server it is never
-suspended or signalled. Freeing it goes through BB: `bb thread stop <id>`, which keeps the
+suspended or signalled. Pi (a Node process named `pi`) is recognised as an agent too. Freeing it goes through BB: `bb thread stop <id>`, which keeps the
 thread, its history and environment and only ends the runtime; the next message starts it again.
+Each runtime is joined to threads through its environment folder (the agent's working folder is
+the environment's path), so only threads whose environment has a live runtime are asked, and
+what is recorded as freed is what the runtimes that ended held.
 Only threads BB reports `idle` with nothing queued and no background agents, commands, plans or
 workflows are released; a person confirms, or the rule `releaseIdleBBThreads` (off by default)
 does it after `bbThreadIdleMinutes` of quiet, at most every five minutes, and only for threads

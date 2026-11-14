@@ -614,7 +614,17 @@ struct EngineTests {
         _ = await engine.automaticPass()
         #expect(source.signals.isEmpty)
 
+        // With memory to spare (pressure normal, no shortage forecast) suspending gains nothing.
         front.set(999)
+        _ = await engine.automaticPass()
+        #expect(source.signals.isEmpty, "only while memory is short, by default")
+        _ = try await engine.update { $0.freezeOnlyUnderPressure = false }
+        // Its application was in front a moment ago: it is likely to be looked at again.
+        engine.applicationActivated(pid: 100)
+        _ = await engine.automaticPass()
+        #expect(source.signals.isEmpty, "Terminal came forward less than the threshold ago")
+        try store.saveCodable([String: Date](), key: "apps.lastFront")
+
         _ = await engine.automaticPass()
         #expect(stops() == [11, 10], "the helper first, then the session; neither the working one nor the one inside tmux")
         #expect(engine.frozenTrees().map(\.root.pid) == [10] && engine.frozenTrees().first?.ownerAppName == "Terminal")

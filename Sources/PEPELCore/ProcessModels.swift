@@ -227,7 +227,7 @@ public struct ProcessObservation: Codable, Sendable, Hashable {
 }
 
 public enum AgentKind: String, Codable, Sendable, CaseIterable {
-    case claudeCode, codex, openCode, hermes
+    case claudeCode, codex, openCode, hermes, pi
 
     public var displayName: String {
         switch self {
@@ -235,6 +235,7 @@ public enum AgentKind: String, Codable, Sendable, CaseIterable {
         case .codex: "Codex"
         case .openCode: "OpenCode"
         case .hermes: "Hermes"
+        case .pi: "Pi"
         }
     }
 }

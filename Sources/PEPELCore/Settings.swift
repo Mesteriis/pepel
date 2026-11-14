@@ -199,6 +199,9 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     public var releaseIdleBBThreads = false
     public var bbThreadIdleMinutes = 15
     public var freezeIdleAgents = false
+    /// Suspend only while memory is short (pressure elevated or a shortage forecast). A suspended
+    /// session keeps its memory until macOS needs it, so with enough memory suspending gains nothing.
+    public var freezeOnlyUnderPressure = true
     public var freezeAfterMinutes = 20
     /// How often a frozen session is woken for a moment to see whether work is waiting.
     public var freezePeekMinutes = 10

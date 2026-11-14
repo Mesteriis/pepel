@@ -6,6 +6,7 @@ public struct BBThread: Codable, Sendable, Identifiable, Hashable {
     public var title: String
     public var projectID: String?
     public var projectName: String?
+    public var environmentID: String?
     public var providerID: String?
     /// BB's own status: idle, running, error, waiting…
     public var status: String
@@ -15,12 +16,18 @@ public struct BBThread: Codable, Sendable, Identifiable, Hashable {
     public var busy: Bool
     /// When PEPEL last asked BB to release this thread's runtime, if it has since been quiet.
     public var releasedAt: Date?
+    /// A live agent runtime works in this thread's environment, so it may be this thread's.
+    public var environmentHasRuntime = false
 
-    public init(id: String, title: String, projectID: String?, projectName: String?, providerID: String?, status: String, lastActivity: Date, busy: Bool, releasedAt: Date? = nil) {
+    public init(
+        id: String, title: String, projectID: String?, projectName: String?, environmentID: String? = nil, providerID: String?, status: String, lastActivity: Date, busy: Bool,
+        releasedAt: Date? = nil
+    ) {
         self.id = id
         self.title = title
         self.projectID = projectID
         self.projectName = projectName
+        self.environmentID = environmentID
         self.providerID = providerID
         self.status = status
         self.lastActivity = lastActivity
@@ -38,6 +45,33 @@ public struct BBThread: Codable, Sendable, Identifiable, Hashable {
         guard status == "idle", !busy, quiet >= Double(minutes) * 60, quiet < Self.runtimeWindow else { return false }
         if let releasedAt, releasedAt >= lastActivity { return false }
         return true
+    }
+}
+
+/// One agent runtime BB keeps alive: a provider worker with its agent and the agent's MCP servers.
+public struct BBRuntime: Codable, Sendable, Hashable, Identifiable {
+    public var workerPID: Int32
+    /// "codex", "pi"…
+    public var provider: String
+    /// Where its agent works: the environment's folder.
+    public var path: String?
+    public var bytes: Int64
+    public var processCount: Int
+    /// Threads whose environment is that folder; one of them owns this runtime.
+    public var threadIDs: [String]
+    /// BB's own maintenance work, not a thread of yours.
+    public var isMaintenance: Bool
+
+    public var id: Int32 { workerPID }
+
+    public init(workerPID: Int32, provider: String, path: String?, bytes: Int64, processCount: Int, threadIDs: [String] = [], isMaintenance: Bool = false) {
+        self.workerPID = workerPID
+        self.provider = provider
+        self.path = path
+        self.bytes = bytes
+        self.processCount = processCount
+        self.threadIDs = threadIDs
+        self.isMaintenance = isMaintenance
     }
 }
 
@@ -65,6 +99,7 @@ public struct BBState: Codable, Sendable, Hashable {
     /// The app, its server and daemon.
     public var appBytes: Int64
     public var plugins: [Plugin]
+    public var runtimes: [BBRuntime] = []
     public var at: Date
 
     public init(running: Bool, cliAvailable: Bool, threads: [BBThread], runtimeCount: Int, runtimeBytes: Int64, runtimeProcesses: Int, appBytes: Int64, plugins: [Plugin], at: Date = Date()) {

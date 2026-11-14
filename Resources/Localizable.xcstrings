@@ -3298,6 +3298,7 @@
       }
     },
     "%lld idle threads quiet for less than a day may still hold an agent runtime": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "variations": {
@@ -3342,6 +3343,58 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "%lld простаивающих потоков, затихших меньше суток назад, могут ещё держать рантайм агента"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld idle threads work in an environment with a live runtime": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld idle thread works in an environment with a live runtime"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld idle threads work in an environment with a live runtime"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld простаивающих потока работают в окружении с живым рантаймом"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld простаивающих потоков работают в окружении с живым рантаймом"
+                }
+              },
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld простаивающий поток работает в окружении с живым рантаймом"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld простаивающих потоков работают в окружении с живым рантаймом"
                 }
               }
             }
@@ -6416,7 +6469,18 @@
         }
       }
     },
+    "BB releases an idle thread's runtime after 30 min; PEPEL can do it sooner (Settings › Agent sessions).": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "BB освобождает рантайм простаивающего потока через 30 мин; PEPEL может делать это раньше (Настройки › Сессии агентов)."
+          }
+        }
+      }
+    },
     "BB releases an idle thread's runtime after 30 min; PEPEL can do it sooner (Settings › Agent sessions). %lld older threads hold no runtime.": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "variations": {
@@ -6484,6 +6548,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "BB остановит агента и его MCP-серверы у каждого простаивающего потока без отложенной работы. Потоки, их история и окружения останутся; следующее сообщение запустит их снова."
+          }
+        }
+      }
+    },
+    "BB's own maintenance": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "служебная работа BB"
           }
         }
       }
@@ -10617,6 +10691,7 @@
       }
     },
     "Idle threads are released after %lld min of quiet (Settings › Agent sessions). %lld older threads hold no runtime.": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -10628,6 +10703,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Простаивающие потоки освобождаются через %lld мин тишины (Настройки › Сессии агентов). Старых потоков без рантайма: %lld."
+          }
+        }
+      }
+    },
+    "Idle threads with a runtime are released after %lld min of quiet (Settings › Agent sessions). BB itself waits 30.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Простаивающие потоки с рантаймом освобождаются через %lld мин тишины (Настройки › Сессии агентов). Сам BB ждёт 30."
           }
         }
       }
@@ -11378,6 +11463,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Его элементы автозагрузки останутся, пока вы не выключите их в «Автозагрузке»: %@."
+          }
+        }
+      }
+    },
+    "Its threads are working or have something pending.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Его потоки работают или ждут своей очереди."
           }
         }
       }
@@ -13473,6 +13568,16 @@
         }
       }
     },
+    "No agent runtime is loaded: every thread is released.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ни один рантайм агента не загружен: все потоки освобождены."
+          }
+        }
+      }
+    },
     "No agent worked in the project for a while. %@ inside Docker's VM is free again; they start again with docker compose start.": {
       "localizations": {
         "ru": {
@@ -13699,6 +13804,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Замеров пока нет. Первый записывается в течение пяти минут после запуска PEPEL."
+          }
+        }
+      }
+    },
+    "No recent thread in this environment": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Недавних потоков в этом окружении нет"
           }
         }
       }
@@ -15911,6 +16026,16 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "Only while memory is short (pressure elevated or a shortage forecast); a suspended session keeps its memory until macOS needs it": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Только когда памяти мало (давление повышено или прогноз нехватки); замороженная сессия держит память, пока она не понадобится macOS"
           }
         }
       }
@@ -18187,6 +18312,58 @@
           "stringUnit": {
             "state": "translated",
             "value": "Освободить простаивающие"
+          }
+        }
+      }
+    },
+    "Releases %lld idle threads of this environment; they resume with the next message.": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Releases %lld idle thread of this environment; it resumes with the next message."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Releases %lld idle threads of this environment; they resume with the next message."
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Освободит %lld простаивающих потока этого окружения; они продолжатся со следующим сообщением."
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Освободит %lld простаивающих потоков этого окружения; они продолжатся со следующим сообщением."
+                }
+              },
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Освободит %lld простаивающий поток этого окружения; он продолжится со следующим сообщением."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Освободит %lld простаивающих потоков этого окружения; они продолжатся со следующим сообщением."
+                }
+              }
+            }
           }
         }
       }
@@ -27389,6 +27566,7 @@
       }
     },
     "released": {
+      "extractionState": "stale",
       "localizations": {
         "ru": {
           "stringUnit": {
