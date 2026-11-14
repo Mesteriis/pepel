@@ -931,7 +931,7 @@ struct SettingsSection: View {
     }
 
     private func toggle(_ title: LocalizedStringKey, _ value: Bool, set: @escaping @MainActor @Sendable (Bool) -> Void) -> some View {
-        Toggle(title, isOn: Binding(get: { value }, set: set)).font(.system(size: 12)).toggleStyle(.checkbox)
+        Toggle(title, isOn: Binding(get: { value }, set: { set($0) })).font(.system(size: 12)).toggleStyle(.checkbox)
     }
 
     /// The label is one whole sentence with the number in it, so a translation can decline it.
@@ -945,7 +945,7 @@ struct SettingsSection: View {
     }
 
     private func picker<T: Hashable & Sendable>(_ title: LocalizedStringKey, selection: T, options: [(T, LocalizedStringKey)], set: @escaping @MainActor @Sendable (T) -> Void) -> some View {
-        Picker(title, selection: Binding(get: { selection }, set: set)) {
+        Picker(title, selection: Binding(get: { selection }, set: { set($0) })) {
             ForEach(options.indices, id: \.self) { Text(options[$0].1).tag(options[$0].0) }
         }
         .font(.system(size: 12)).frame(maxWidth: 420)
