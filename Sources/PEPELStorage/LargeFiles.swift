@@ -15,7 +15,7 @@ public struct LargeFiles: Sendable {
     /// Left out of the walk: application state, agents' folders, caches with rules of their own,
     /// the Trash, and the folders macOS guards unless asked.
     func skipped(includeGuarded: Bool) -> Set<String> {
-        var paths = Set(["Library", ".Trash", ".cache", ".claude", ".codex", ".hermes", ".local/share/opencode", ".npm", ".cargo", ".rustup", ".gradle", ".android", "go/pkg"].map { home + "/" + $0 })
+        var paths = Set(["Library", ".Trash", ".cache", ".claude", ".codex", ".hermes", ".bb", ".local/share/opencode", ".npm", ".cargo", ".rustup", ".gradle", ".android", "go/pkg"].map { home + "/" + $0 })
         if !includeGuarded { paths.formUnion(DiskMapScanner(home: home).restricted) }
         return paths
     }

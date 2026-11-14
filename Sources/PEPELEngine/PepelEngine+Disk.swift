@@ -393,7 +393,7 @@ extension PepelEngine {
     /// Names that hold secrets or the repository itself; never listed, whatever their size.
     static let neverIgnoredCandidates: Set<String> = [".git", ".env", ".envrc", ".ssh", ".gnupg", ".aws", ".kube", "secrets", ".secrets"]
     /// Agents' own working state and worktrees: never offered, per the owner's rules.
-    static let agentFolders: Set<String> = [".claude", ".codex", ".hermes", ".opencode", ".superset", "worktrees", ".worktrees"]
+    static let agentFolders: Set<String> = [".claude", ".codex", ".hermes", ".bb", ".opencode", ".superset", "worktrees", ".worktrees"]
 
     /// Asks git, per project, which folders it ignores, and measures those that no analyzer
     /// accounts for. Linked worktrees are left out: they are someone's parallel line of work.

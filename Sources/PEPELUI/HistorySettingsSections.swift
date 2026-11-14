@@ -508,6 +508,8 @@ struct SettingsSection: View {
             }
 
             group("Agent sessions", "What happens to a session that has gone quiet. A working session is never touched.") {
+                toggle("BB: release the agent runtime of a thread that has gone quiet (it stays and resumes with the next message)", s.releaseIdleBBThreads) { v in model.updateSettings { $0.releaseIdleBBThreads = v } }
+                stepper(s.bbThreadIdleMinutes, 5...120, step: 5, label: { "Release a BB thread after \($0) min of quiet (BB itself waits 30)" }) { v in model.updateSettings { $0.bbThreadIdleMinutes = v } }
                 toggle("Suspend agent sessions that have gone quiet, instead of waiting to end them", s.freezeIdleAgents) { v in model.updateSettings { $0.freezeIdleAgents = v } }
                 stepper(s.freezeAfterMinutes, 5...240, step: 5, label: { "Suspend after \($0) min of quiet" }) { v in model.updateSettings { $0.freezeAfterMinutes = v } }
                 stepper(s.freezePeekMinutes, 2...120, label: { "Look for waiting work every \($0) min" }) { v in model.updateSettings { $0.freezePeekMinutes = v } }

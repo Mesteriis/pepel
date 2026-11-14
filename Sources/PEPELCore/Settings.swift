@@ -194,6 +194,10 @@ public struct PepelSettings: Codable, Sendable, Equatable {
     public var tidyKeepExtensions: [String] = ["dmg", "pkg", "mpkg", "app", "iso", "img", "xip", "zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar", "tar.gz", "tar.xz"]
     /// Move to the Trash (default) or remove for good.
     public var tidyAction: TidyAction = .trash
+    /// Ask BB to release the agent runtime of a thread that has been idle this long (BB itself
+    /// waits 30 minutes). The thread, its history and environment stay; the next message resumes it.
+    public var releaseIdleBBThreads = false
+    public var bbThreadIdleMinutes = 15
     public var freezeIdleAgents = false
     public var freezeAfterMinutes = 20
     /// How often a frozen session is woken for a moment to see whether work is waiting.

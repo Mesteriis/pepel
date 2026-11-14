@@ -36,6 +36,7 @@ public enum Snapshotter {
         model.activity.plan = await model.engine.actionPlan()
         model.startup.items = await model.engine.startupItems()
         model.installed.apps = await model.engine.installedApps()
+        model.bb.state = await model.engine.bbState()
         model.activity.restore = model.engine.restoreCenter()
         _ = await model.engine.selfUsage()
         try? await Task.sleep(for: .seconds(1))

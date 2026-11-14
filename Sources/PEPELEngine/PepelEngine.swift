@@ -50,6 +50,10 @@ public actor PepelEngine {
     var windowlessAsked: Set<ProcessIdentity> = []
     /// Replaces the `docker` command line; tests use a scripted one.
     nonisolated(unsafe) var containerRunner: ContainerStopper.Runner?
+    /// Replaces the `bb` command line; tests use a scripted one.
+    nonisolated(unsafe) var bbOverride: (@Sendable ([String]) -> String?)?
+
+    public func setBBCommand(_ run: (@Sendable ([String]) -> String?)?) { bbOverride = run }
     /// Replaces `launchctl` and the folders it reads; tests use a scripted one.
     nonisolated(unsafe) var startupOverride: StartupInventory?
 

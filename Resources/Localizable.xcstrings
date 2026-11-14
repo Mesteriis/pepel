@@ -593,6 +593,58 @@
         }
       }
     },
+    "%@ in %lld processes": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ in %lld process"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ in %lld processes"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ в %lld процессах"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ в %lld процессах"
+                }
+              },
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ в %lld процессе"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%@ в %lld процессах"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%@ in extra copies": {
       "localizations": {
         "ru": {
@@ -1399,6 +1451,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ вместе с данными"
+          }
+        }
+      }
+    },
+    "%@ · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@ · %2$@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@"
           }
         }
       }
@@ -3222,6 +3290,58 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "%lld процессов простаивающих вкладок браузера занимают %@."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld idle threads quiet for less than a day may still hold an agent runtime": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld idle thread quiet for less than a day may still hold an agent runtime"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld idle threads quiet for less than a day may still hold an agent runtime"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld простаивающих потока, затихших меньше суток назад, могут ещё держать рантайм агента"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld простаивающих потоков, затихших меньше суток назад, могут ещё держать рантайм агента"
+                }
+              },
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld простаивающий поток, затихший меньше суток назад, может ещё держать рантайм агента"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld простаивающих потоков, затихших меньше суток назад, могут ещё держать рантайм агента"
                 }
               }
             }
@@ -5242,6 +5362,16 @@
         }
       }
     },
+    "Agent runtimes": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Рантаймы агентов"
+          }
+        }
+      }
+    },
     "Agent scratch %@": {
       "localizations": {
         "ru": {
@@ -5468,6 +5598,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Агенты не могут сбрасывать файловый кэш."
+          }
+        }
+      }
+    },
+    "Agents cannot release BB threads.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Агенты не могут освобождать потоки BB."
           }
         }
       }
@@ -5842,6 +5982,16 @@
         }
       }
     },
+    "App, server and daemon": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Приложение, сервер и демон"
+          }
+        }
+      }
+    },
     "Application": {
       "localizations": {
         "ru": {
@@ -6180,6 +6330,222 @@
           "stringUnit": {
             "state": "translated",
             "value": "Доступно, когда PEPEL запущен из пакета приложения."
+          }
+        }
+      }
+    },
+    "BB": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "BB"
+          }
+        }
+      }
+    },
+    "BB did not accept the request.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "BB не принял запрос."
+          }
+        }
+      }
+    },
+    "BB is not running.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "BB не запущен."
+          }
+        }
+      }
+    },
+    "BB released %lld threads; its runtimes hold %@ less. The threads resume with the next message.": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "BB released %lld thread; its runtimes hold %@ less. The thread resumes with the next message."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "BB released %lld threads; its runtimes hold %@ less. The threads resume with the next message."
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "BB освободил %lld потока; его рантаймы занимают на %@ меньше. Потоки продолжатся со следующим сообщением."
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "BB освободил %lld потоков; его рантаймы занимают на %@ меньше. Потоки продолжатся со следующим сообщением."
+                }
+              },
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "BB освободил %lld поток; его рантаймы занимают на %@ меньше. Поток продолжится со следующим сообщением."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "BB освободил %lld потоков; его рантаймы занимают на %@ меньше. Потоки продолжатся со следующим сообщением."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "BB releases an idle thread's runtime after 30 min; PEPEL can do it sooner (Settings › Agent sessions). %lld older threads hold no runtime.": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "BB releases an idle thread's runtime after 30 min; PEPEL can do it sooner (Settings › Agent sessions). %lld older thread holds no runtime."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "BB releases an idle thread's runtime after 30 min; PEPEL can do it sooner (Settings › Agent sessions). %lld older threads hold no runtime."
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "BB освобождает рантайм простаивающего потока через 30 мин; PEPEL может делать это раньше (Настройки › Сессии агентов). %lld старых потока рантайма не держат."
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "BB освобождает рантайм простаивающего потока через 30 мин; PEPEL может делать это раньше (Настройки › Сессии агентов). %lld старых потоков рантайма не держат."
+                }
+              },
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "BB освобождает рантайм простаивающего потока через 30 мин; PEPEL может делать это раньше (Настройки › Сессии агентов). %lld старый поток рантайма не держит."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "BB освобождает рантайм простаивающего потока через 30 мин; PEPEL может делать это раньше (Настройки › Сессии агентов). %lld старых потоков рантайма не держат."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "BB state": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Состояние BB"
+          }
+        }
+      }
+    },
+    "BB stops the agent and its MCP servers of each idle thread with nothing pending. The threads, their history and environments stay; the next message starts them again.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "BB остановит агента и его MCP-серверы у каждого простаивающего потока без отложенной работы. Потоки, их история и окружения останутся; следующее сообщение запустит их снова."
+          }
+        }
+      }
+    },
+    "BB: release the agent runtime of a thread that has gone quiet (it stays and resumes with the next message)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "BB: освобождать рантайм агента у затихшего потока (поток остаётся и продолжится со следующим сообщением)"
+          }
+        }
+      }
+    },
+    "BB: released %lld idle threads": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "BB: released %lld idle thread"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "BB: released %lld idle threads"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "BB: освобождено %lld простаивающих потока"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "BB: освобождено %lld простаивающих потоков"
+                }
+              },
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "BB: освобождён %lld простаивающий поток"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "BB: освобождено %lld простаивающих потоков"
+                }
+              }
+            }
           }
         }
       }
@@ -10250,6 +10616,22 @@
         }
       }
     },
+    "Idle threads are released after %lld min of quiet (Settings › Agent sessions). %lld older threads hold no runtime.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Idle threads are released after %1$lld min of quiet (Settings › Agent sessions). %2$lld older threads hold no runtime."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Простаивающие потоки освобождаются через %lld мин тишины (Настройки › Сессии агентов). Старых потоков без рантайма: %lld."
+          }
+        }
+      }
+    },
     "If it ignores SIGTERM for %lld seconds, force-quit it (SIGKILL)": {
       "localizations": {
         "en": {
@@ -13577,6 +13959,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Нет файлов от 500 МБ."
+          }
+        }
+      }
+    },
+    "None of these threads is idle with nothing pending.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ни один из этих потоков не простаивает без отложенной работы."
           }
         }
       }
@@ -17005,6 +17397,16 @@
         }
       }
     },
+    "Plugins": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Плагины"
+          }
+        }
+      }
+    },
     "Point at a tile to see what it is. Folders macOS guards, such as Documents and Photos, are not read until you open them.": {
       "localizations": {
         "ru": {
@@ -17745,6 +18147,56 @@
           "stringUnit": {
             "state": "translated",
             "value": "Зарегистрировано как защищённый сервис."
+          }
+        }
+      }
+    },
+    "Release": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Освободить"
+          }
+        }
+      }
+    },
+    "Release a BB thread after %lld min of quiet (BB itself waits 30)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Освобождать поток BB через %lld мин тишины (сам BB ждёт 30)"
+          }
+        }
+      }
+    },
+    "Release idle BB threads?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Освободить простаивающие потоки BB?"
+          }
+        }
+      }
+    },
+    "Release idle threads": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Освободить простаивающие"
+          }
+        }
+      }
+    },
+    "Releasing idle BB threads is not switched on.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Освобождение простаивающих потоков BB не включено."
           }
         }
       }
@@ -21782,6 +22234,26 @@
         }
       }
     },
+    "The bb command line did not answer, so BB's threads are not known. Install it from BB (Settings › Command line) to manage them here.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Командная строка bb не ответила, поэтому потоки BB неизвестны. Установите её из BB (Settings › Command line), чтобы управлять ими здесь."
+          }
+        }
+      }
+    },
+    "The bb command line did not answer.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Командная строка bb не ответила."
+          }
+        }
+      }
+    },
     "The change was not made: %@": {
       "localizations": {
         "ru": {
@@ -22552,6 +23024,26 @@
         }
       }
     },
+    "Their agents and MCP servers stopped. The threads stay and resume with the next message.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Их агенты и MCP-серверы остановлены. Потоки остаются и продолжатся со следующим сообщением."
+          }
+        }
+      }
+    },
+    "Their agents and MCP servers stopped; %@ of memory is free again. The threads stay and resume with the next message.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Их агенты и MCP-серверы остановлены; освобождено памяти: %@. Потоки остаются и продолжатся со следующим сообщением."
+          }
+        }
+      }
+    },
     "These containers are not tied to a known project.": {
       "localizations": {
         "ru": {
@@ -22816,6 +23308,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Это повышает предел: ВМ сможет вырасти до %@."
+          }
+        }
+      }
+    },
+    "Threads, projects, plugins and their models of BB.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Потоки, проекты, плагины и их модели BB."
           }
         }
       }
@@ -24998,6 +25500,74 @@
         }
       }
     },
+    "bb.error": {
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "error"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ошибка"
+          }
+        }
+      }
+    },
+    "bb.idle": {
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "idle"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "простаивает"
+          }
+        }
+      }
+    },
+    "bb.running": {
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "running"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "работает"
+          }
+        }
+      }
+    },
+    "bb.waiting": {
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "waiting"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ждёт ответа"
+          }
+        }
+      }
+    },
     "booted %@ · %lld processes": {
       "localizations": {
         "en": {
@@ -25108,6 +25678,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "инструмент сборки"
+          }
+        }
+      }
+    },
+    "busy": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "занят"
           }
         }
       }
@@ -25614,6 +26194,16 @@
         }
       }
     },
+    "holds %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "занимает %@"
+          }
+        }
+      }
+    },
     "iPhone and iPad backups": {
       "localizations": {
         "ru": {
@@ -26046,6 +26636,22 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "most: %@, %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "most: %1$@, %2$@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "больше всех: %@, %@"
           }
         }
       }
@@ -26778,6 +27384,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "зарегистрирован"
+          }
+        }
+      }
+    },
+    "released": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "освобождён"
           }
         }
       }

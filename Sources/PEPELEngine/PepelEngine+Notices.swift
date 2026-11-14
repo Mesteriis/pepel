@@ -50,6 +50,13 @@ extension PepelEngine {
                 notices.append(ActionNotice(
                     id: "ended-\(entry.id)", kind: .closure, title: L("Ended \(entry.subject)"),
                     body: freed.map { L("It sat idle past its limit. It held \(held); memory in use dropped by \($0).") } ?? L("It sat idle past its limit. It held \(held).")))
+            case (.termination, "released") where entry.subject.hasPrefix("BB threads:"):
+                let count = entry.detail["threads"]?.split(separator: "\n").count ?? 1
+                notices.append(ActionNotice(
+                    id: "bb-\(entry.id)", kind: .closure, title: L("BB: released \(count) idle threads"),
+                    body: entry.bytes > 0
+                        ? L("Their agents and MCP servers stopped; \(Bytes.format(entry.bytes)) of memory is free again. The threads stay and resume with the next message.")
+                        : L("Their agents and MCP servers stopped. The threads stay and resume with the next message.")))
             case (.termination, "suspended"):
                 frozen.append(entry)
             case (.container, let outcome) where outcome.hasPrefix("stopped") || outcome.hasPrefix("paused"):

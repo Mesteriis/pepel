@@ -39,6 +39,7 @@ public enum AgentDetector {
                     recentlyActive: percents.isEmpty ? nil : percents.contains { $0 >= ActivityAnalyzer.idleThresholdPercent },
                     startedAt: p.identity.startDate)
             session.isService = AgentActivity.isService(p)
+            session.hostApp = BBProcesses.isRuntime(p, ancestors: tree.ancestors(of: p)) ? "BB" : nil
             session.state = verdict.state
             session.quietSince = verdict.quietSince
             session.observedFor = verdict.observedFor

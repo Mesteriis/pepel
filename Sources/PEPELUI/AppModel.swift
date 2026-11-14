@@ -90,6 +90,8 @@ public final class AppModel {
     public let startup: StartupModel
     /// Installed applications, their use and size.
     public let installed: InstalledAppsModel
+    /// BB, the agent IDE.
+    public let bb: BBModel
 
     public init(engine: PepelEngine) {
         self.engine = engine
@@ -97,6 +99,7 @@ public final class AppModel {
         self.activity = ActivityModel(engine: engine)
         self.startup = StartupModel(engine: engine)
         self.installed = InstalledAppsModel(engine: engine)
+        self.bb = BBModel(engine: engine)
     }
 
     /// A heavy job's name in words. The names themselves stay English: they are stored and the
@@ -1236,5 +1239,6 @@ public final class AppModel {
         if section == .cleanup { prepareCleanup() }
         if section == .startup { startup.refresh() }
         if section == .apps, installed.apps == nil { installed.refresh() }
+        if section == .agents { bb.refresh() }
     }
 }

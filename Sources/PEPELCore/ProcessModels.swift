@@ -266,6 +266,9 @@ public struct AgentSession: Codable, Sendable, Identifiable, Hashable {
     /// app-server`, `claude mcp serve`) rather than as a session someone talks to. Servers are
     /// quiet by nature and are never treated as asleep.
     public var isService = false
+    /// The application that runs this session for its own threads ("BB"), when one does. Such a
+    /// session is that application's to start and stop; PEPEL asks the application, never signals it.
+    public var hostApp: String?
     /// When the session last showed activity, as far back as PEPEL's observations reach.
     public var quietSince: Date?
     /// How long PEPEL has been watching this session.

@@ -111,6 +111,7 @@ enum Out {
           pepel apps installed [--all]     Installed apps: last used, time in front, size with data; which to remove
           pepel apps uninstall <name> [--keep-data] [--yes]  Move an app and its data to the Trash (pepel restore puts it back)
           pepel apps keep|unkeep <name>    Never suggest an app for removal, or judge it again
+          pepel bb [release [<id>…]] [--yes]  BB threads and what BB holds; release idle threads' agent runtimes
           pepel startup [disable|enable <label>] [--yes]  What starts on its own and what it holds; switch a launch agent off or on
           pepel login [on|off]             Whether PEPEL starts when you log in
           pepel self                       What PEPEL itself costs in memory and CPU, and which heavy job runs

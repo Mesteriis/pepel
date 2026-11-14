@@ -87,6 +87,7 @@ extension PepelEngine {
         watchStartupItems()
         guard !settings.paused else { return (nil, []) }
         _ = await stopIdleProjectContainers()
+        await autoReleaseBBThreads()
         _ = await nightlyVMRefresh()
         _ = await autoCleanDocker()
         _ = await autoTrimCaches()

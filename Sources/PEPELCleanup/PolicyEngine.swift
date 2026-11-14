@@ -122,7 +122,7 @@ public struct CleanupPolicyEngine: Sendable {
     /// Home-relative locations that are never cleaned, whatever an analyzer says.
     static let forbiddenHomePaths = [
         ".ssh", ".gnupg", ".aws", ".kube", ".azure", ".netrc", ".config/gh", ".config/gcloud", ".config/op", ".docker/config.json",
-        ".claude", ".codex", ".hermes", ".config/opencode", ".local/share/opencode", ".ollama", ".cache/huggingface", ".lmstudio",
+        ".claude", ".codex", ".hermes", ".bb", ".config/opencode", ".local/share/opencode", ".ollama", ".cache/huggingface", ".lmstudio",
         "Library/Keychains", "Library/Application Support", "Library/Containers", "Library/Group Containers", "Library/Preferences",
         "Library/Mail", "Library/Messages", "Library/Mobile Documents", "Library/Developer/Xcode/Archives",
         "Library/Developer/CoreSimulator/Devices",

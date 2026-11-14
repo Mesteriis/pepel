@@ -222,6 +222,21 @@ and never over something new. Removals for good are listed, not undoable. Rule s
 (`pepel preset`, Settings › Rule set) only change the switches and ages of the daily disk rules;
 the change is shown and confirmed first, and keep lists and protections stay as they are.
 
+### BB, the agent IDE
+
+PEPEL recognises BB's processes (the app, its server and host daemon, one provider worker per
+thread with the agent and its MCP servers below it, and plugin processes, including ones a plugin
+left running on their own) and reads its threads with `bb thread list --json`. A Codex or other
+agent under a BB provider worker is marked as BB's; like every agent server it is never
+suspended or signalled. Freeing it goes through BB: `bb thread stop <id>`, which keeps the
+thread, its history and environment and only ends the runtime; the next message starts it again.
+Only threads BB reports `idle` with nothing queued and no background agents, commands, plans or
+workflows are released; a person confirms, or the rule `releaseIdleBBThreads` (off by default)
+does it after `bbThreadIdleMinutes` of quiet, at most every five minutes, and only for threads
+quiet less than a day (older ones BB has released itself). Never through the agent API. The
+memory freed is measured on BB's runtimes before and after, and recorded. `~/.bb` is protected
+from every cleanup.
+
 ### Installed applications
 
 `pepel apps installed` and the Apps screen read the bundles in `/Applications` (one level of

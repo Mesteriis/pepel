@@ -114,6 +114,7 @@ struct AgentsSection: View {
                 title: "Agents",
                 subtitle: "Agent sessions are found by watching processes, not by reading the agents' private files. Their state, history and credentials are always protected.")
             sessions
+            BBPanel()
             helpers
             serverBranches
             leases
@@ -133,7 +134,7 @@ struct AgentsSection: View {
                         )
                         .frame(width: 62, alignment: .leading)
                         .help(session.evidence.joined(separator: "\n"))
-                        Text(session.isService ? L("\(session.kind.displayName) server") : session.kind.displayName).font(.system(size: 12, weight: .semibold)).frame(width: 110, alignment: .leading).lineLimit(1)
+                        Text(session.hostApp.map { L("\(session.kind.displayName) · \($0)") } ?? (session.isService ? L("\(session.kind.displayName) server") : session.kind.displayName)).font(.system(size: 12, weight: .semibold)).frame(width: 110, alignment: .leading).lineLimit(1)
                         VStack(alignment: .leading, spacing: 1) {
                             HStack(spacing: 6) {
                                 Text(model.projectName(session.projectID) ?? L("No known project")).font(.system(size: 12))

@@ -98,6 +98,7 @@ public struct AIToolsAnalyzer: StorageAnalyzer {
         (".local/share/opencode", L("OpenCode state"), .agentState, L("Sessions and history of OpenCode.")),
         (".config/opencode", L("OpenCode configuration"), .agentState, L("Configuration and credentials of OpenCode.")),
         (".hermes", L("Hermes state"), .agentState, L("Sessions, memory and configuration of Hermes.")),
+        (".bb", L("BB state"), .agentState, L("Threads, projects, plugins and their models of BB.")),
         (".ollama/models", L("Ollama models"), .modelWeights, L("Model weights pulled by Ollama. Re-downloading can take hours.")),
         (".cache/huggingface", L("Hugging Face cache"), .modelWeights, L("Models and datasets downloaded through Hugging Face libraries, including MLX models.")),
         (".lmstudio/models", L("LM Studio models"), .modelWeights, L("Model weights downloaded by LM Studio.")),

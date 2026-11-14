@@ -757,7 +757,7 @@ case "agents":
         ["PID", "AGENT", "STATE", "QUIET FOR", "MEMORY", "PROCS", "PROJECT", "WHY"],
         live.agentSessions.map {
             [
-                String($0.root.pid), $0.kind.displayName + ($0.isService ? " (server)" : ""), $0.frozenSince == nil ? $0.state.rawValue : "suspended",
+                String($0.root.pid), $0.kind.displayName + ($0.hostApp.map { " · " + $0 } ?? ($0.isService ? " (server)" : "")), $0.frozenSince == nil ? $0.state.rawValue : "suspended",
                 $0.quietSince.map { TimeFormat.age(Date().timeIntervalSince($0)) } ?? "—", Bytes.format($0.footprintBytes),
                 String($0.processCount), Out.truncate($0.projectID.map { ($0 as NSString).lastPathComponent } ?? "—", 18),
                 Out.truncate($0.evidence.first ?? "", 90),
@@ -1324,6 +1324,40 @@ case "self":
     print(usage.heavyTasks.isEmpty ? "\nNo heavy job is running." : "\nRunning: " + usage.heavyTasks.joined(separator: ", ") + ".")
     let settings = await engine.currentSettings()
     if let warning = usage.warning(memoryLimitMB: settings.selfMemoryWarnMB) { print(warning) }
+
+case "bb":
+    // BB, the agent IDE: its threads, what they hold, and releasing idle ones through BB itself.
+    if arguments.positional.first == "release" {
+        let ids = Array(arguments.positional.dropFirst())
+        let state = await engine.bbState()
+        guard state.cliAvailable else { Out.error(state.running ? "the bb command line did not answer" : "BB is not running"); exit(1) }
+        let chosen = state.threads.filter { ids.isEmpty ? $0.isReleasable(minutes: 0) : (ids.contains($0.id) && $0.status == "idle" && !$0.busy) }
+        guard !chosen.isEmpty else { print("No idle thread with nothing pending."); break }
+        for thread in chosen { print("  \(thread.id)  \(Out.truncate(thread.title, 60))  quiet \(TimeFormat.age(Date().timeIntervalSince(thread.lastActivity)))") }
+        guard arguments.flags.contains("yes") || Out.confirm("Ask BB to release the agent runtime of these \(chosen.count) threads? They stay and resume with the next message.") else { print("Nothing changed."); break }
+        let result = await engine.releaseBBThreads(ids.isEmpty ? nil : chosen.map(\.id), confirmed: true, initiator: .cli)
+        if let denial = result.denial { Out.error(denial); exit(1) }
+        print("Released \(result.released.count) thread\(result.released.count == 1 ? "" : "s"); BB's runtimes hold \(Bytes.format(result.freedBytes)) less.")
+        break
+    } else if arguments.positional.first != nil {
+        Out.error("usage: pepel bb [release [<thread id>…] [--yes]]"); exit(2)
+    }
+    let state = await engine.bbState()
+    if arguments.json { Out.json(state); break }
+    guard state.running else { print("BB is not running."); break }
+    let settings = await engine.currentSettings()
+    print("BB holds \(Bytes.format(state.totalBytes)): app \(Bytes.format(state.appBytes)), \(state.runtimeCount) agent runtimes \(Bytes.format(state.runtimeBytes)) in \(state.runtimeProcesses) processes" + (state.plugins.isEmpty ? "." : ", plugins " + state.plugins.map { "\($0.name) \(Bytes.format($0.bytes))" }.joined(separator: ", ") + "."))
+    if !state.cliAvailable { print("The bb command line did not answer; threads are unknown."); break }
+    print("")
+    Out.table(
+        ["STATUS", "QUIET", "PROJECT", "THREAD", "ID"],
+        (arguments.flags.contains("all") ? state.threads : Array(state.threads.prefix(25))).map {
+            [$0.busy && $0.status == "idle" ? "idle, busy" : $0.status, TimeFormat.age(Date().timeIntervalSince($0.lastActivity)), $0.projectName ?? "", Out.truncate($0.title, 50), $0.id]
+        })
+    let releasable = state.threads.filter { $0.isReleasable(minutes: settings.bbThreadIdleMinutes) }
+    print("\n" + (settings.releaseIdleBBThreads
+        ? "Idle threads are released after \(settings.bbThreadIdleMinutes) min (releaseIdleBBThreads); \(releasable.count) due now."
+        : "Releasing idle threads automatically is off (releaseIdleBBThreads); BB itself releases them after 30 min.") + " `pepel bb release [id…]` releases now." + (state.threads.count > 25 && !arguments.flags.contains("all") ? " \(state.threads.count - 25) older threads not shown (--all)." : ""))
 
 case "startup":
     let verb = arguments.positional.first

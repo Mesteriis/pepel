@@ -32,7 +32,7 @@ guesses.
 | **Apps** | How much each installed app is used (macOS's last-opened date plus PEPEL's own time-in-front record) and what it occupies with its data; suggests removing apps unused for 30 days. Removal goes to the Trash after you confirm. |
 | **Startup** | Every launch agent, daemon and login helper with what it runs and holds now; switch agents off and on; a notification when something new appears. |
 | **Builds & projects** | Repositories, worktrees and build generations with retention and budgets; projects left untouched and folders git ignores. |
-| **Agents** | Detects Claude Code, Codex, OpenCode and Hermes sessions; protects the projects they work in; can pause idle sessions and wake them when you return; offers leases through a local API. |
+| **Agents** | Detects Claude Code, Codex, OpenCode and Hermes sessions, and the threads of the BB agent IDE (whose idle runtimes it asks BB to release); protects the projects they work in; can pause idle sessions and wake them when you return; offers leases through a local API. |
 | **Daily rules** | Optional rules for Docker, tool and app caches, logs, temp files, Android emulators and images, tool backups, Downloads and screenshots — with three ready-made rule sets. |
 | **Cleanup** | One policy engine decides. Dry run, exact preview, revalidation at the moment of removal, audit log, restore center. |
 | **Notifications** | Plain sentences about what PEPEL did on its own — which app it closed and how much memory that freed, what the disk rules removed — and a weekly summary. |
@@ -138,6 +138,7 @@ pepel self                       What PEPEL itself costs in memory and CPU
 pepel apps installed [--all]     Installed apps: last used, time in front, size with data; which to remove
 pepel apps uninstall <name> [--keep-data] [--yes]  Move an app and its data to the Trash (pepel restore puts it back)
 pepel apps keep|unkeep <name>    Never suggest an app for removal, or judge it again
+pepel bb [release [<id>…]] [--yes]  BB threads and what BB holds; release idle threads' agent runtimes
 pepel startup [disable|enable <label>] [--yes]  Launch agents, daemons and login helpers, what they hold; switch an agent off or on
 pepel login [on|off]             Whether PEPEL starts when you log in (the app registers it with macOS)
 pepel journal [--days N] [path]  The memory journal: what the last days say, and where it is kept
