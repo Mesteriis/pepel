@@ -113,11 +113,16 @@ extension PepelEngine {
         try? store.saveCodable(released.filter { now.timeIntervalSince($0.value) < 7 * 86_400 }, key: Self.bbReleasedKey)
         // BB ends the runtime's processes after it answers; give it a moment, then measure.
         try? await Task.sleep(for: .seconds(paths.isRedirected ? 0 : 4))
-        // What went is exactly what the runtimes that are gone now held; others may have grown or
-        // started meanwhile, which says nothing about this release.
-        let alive = Set(BBProcesses.usage(processSource.snapshot(), home: paths.home).runtimes.map(\.workerPID))
-        let gone = before.filter { !alive.contains($0.workerPID) }
-        let freed = gone.reduce(Int64(0)) { $0 + $1.bytes }
+        // A runtime serves every thread of its environment, so it may only shrink (an MCP server
+        // or a sub-agent of the released thread ends) or end once its last thread is released.
+        // Counted: the whole of runtimes that ended, and the shrink of those of these threads'
+        // environments; runtimes elsewhere may grow meanwhile and say nothing about this release.
+        let stoppedIDs = Set(stopped.map(\.id))
+        let touched = before.filter { !$0.threadIDs.isEmpty && !stoppedIDs.isDisjoint(with: $0.threadIDs) }
+        let current = Dictionary(BBProcesses.usage(processSource.snapshot(), home: paths.home).runtimes.map { ($0.workerPID, $0.bytes) }, uniquingKeysWith: { a, _ in a })
+        let gone = before.filter { current[$0.workerPID] == nil }
+        let shrunk = touched.filter { current[$0.workerPID] != nil }.reduce(Int64(0)) { $0 + max(0, $1.bytes - (current[$1.workerPID] ?? 0)) }
+        let freed = gone.reduce(Int64(0)) { $0 + $1.bytes } + shrunk
         store.appendAudit(
             AuditEntry(
                 kind: .termination, initiator: initiator.rawValue, subject: "BB threads: \(stopped.count)", outcome: "released", bytes: freed,
