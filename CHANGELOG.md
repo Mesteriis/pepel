@@ -2,6 +2,11 @@
 
 All notable changes are listed here. Versions follow [Semantic Versioning](https://semver.org).
 
+## 0.1.1 — 2026-11-14
+
+- Builds with Xcode 26 (Swift 6.2): works around a compiler crash and an expression it could not
+  type-check in time. No change in behaviour; CI builds and tests on GitHub's macOS runners.
+
 ## 0.1.0 — 2026-11-14
 
 First public release.
