@@ -7,3 +7,7 @@ DerivedData/
 # Screenshots are rendered from the live state of the machine that produced them and show its
 # project names and command lines. Generate them locally with Scripts/screenshots.sh.
 docs/screenshots/
+
+# Local tool state
+.serena/
+.claude/

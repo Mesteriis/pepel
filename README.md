@@ -1,5 +1,10 @@
 # PEPEL
 
+[![CI](https://github.com/Mesteriis/pepel/actions/workflows/ci.yml/badge.svg)](https://github.com/Mesteriis/pepel/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Mesteriis/pepel)](https://github.com/Mesteriis/pepel/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![macOS 14+](https://img.shields.io/badge/macOS-14%2B-lightgrey)
+
 **Clean the waste. Preserve the work.**
 
 PEPEL is a native macOS menu bar app that watches what a developer workstation generates — build
@@ -20,14 +25,35 @@ guesses.
 
 | Area | What PEPEL does |
 |---|---|
-| **Menu bar** | Shows health and verified reclaimable storage (`● 42 GB`). The popover has disk, reclaimable space, memory pressure, swap, active builds, abandoned-process candidates and 24-hour growth. |
-| **Projects** | Finds repositories, worktrees and manifest-only projects under your project roots; groups worktrees by repository. |
-| **Storage** | Eleven analyzers measure build output, caches, dependencies, simulators, containers and AI-tool data. Allocated blocks, hard links counted once. |
-| **Builds** | Groups artifacts into build generations per repository, applies a retention policy, tracks per-project and global budgets, explains each verdict. |
-| **Memory** | Reads the kernel's own pressure level, compression and swap. Recovers memory only by stopping processes that are verifiably abandoned. |
-| **Processes** | Classifies developer processes as active, deliberately running, or left behind, using PID + start time, process trees and observed CPU activity. |
-| **Agents** | Detects Claude Code, Codex, OpenCode and Hermes sessions from their processes; protects the projects they work in; offers leases through a local API. |
-| **Cleanup** | One policy engine decides. Dry run, exact preview, revalidation at the moment of removal, audit log, undo for trashed items. |
+| **Menu bar** | A small graph of memory in use with memory and free disk beside it (or reclaimable storage, pressure, builds). The popover has disk, memory, swap, builds and one-click Free memory. |
+| **Overview** | What the daily rules will remove in the next 24 hours, with *Leave alone* per item, and everything PEPEL moved to the Trash with *Put back*. |
+| **Storage & disk map** | Analyzers for build output, caches, dependencies, simulators, containers and AI-tool data; a treemap of the whole disk measured folder by folder. |
+| **Memory** | The kernel's pressure, compression and swap; who holds memory; idle browser tabs, apps open but unused, processes living in swap. Memory is recovered only by stopping what is verifiably idle or abandoned. |
+| **Apps** | How much each installed app is used (macOS's last-opened date plus PEPEL's own time-in-front record) and what it occupies with its data; suggests removing apps unused for 30 days. Removal goes to the Trash after you confirm. |
+| **Startup** | Every launch agent, daemon and login helper with what it runs and holds now; switch agents off and on; a notification when something new appears. |
+| **Builds & projects** | Repositories, worktrees and build generations with retention and budgets; projects left untouched and folders git ignores. |
+| **Agents** | Detects Claude Code, Codex, OpenCode and Hermes sessions; protects the projects they work in; can pause idle sessions and wake them when you return; offers leases through a local API. |
+| **Daily rules** | Optional rules for Docker, tool and app caches, logs, temp files, Android emulators and images, tool backups, Downloads and screenshots — with three ready-made rule sets. |
+| **Cleanup** | One policy engine decides. Dry run, exact preview, revalidation at the moment of removal, audit log, restore center. |
+| **Notifications** | Plain sentences about what PEPEL did on its own — which app it closed and how much memory that freed, what the disk rules removed — and a weekly summary. |
+
+Everything in the app is also in the `pepel` command line, and the app speaks English and Russian.
+
+## Install
+
+Download `PEPEL-<version>.zip` from the [latest release](https://github.com/Mesteriis/pepel/releases/latest),
+unzip it and move `PEPEL.app` to `/Applications`. The release is built for Apple Silicon and is not
+notarized, so macOS blocks the first launch: open it once with a right-click → **Open**, or run
+
+```bash
+xattr -dr com.apple.quarantine /Applications/PEPEL.app
+```
+
+Then Settings › *Start PEPEL when you log in* keeps it running. The command line is inside the app:
+
+```bash
+ln -s /Applications/PEPEL.app/Contents/Helpers/pepel /usr/local/bin/pepel
+```
 
 ## Build and run
 

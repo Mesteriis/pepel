@@ -1,0 +1,16 @@
+name: Feature request
+description: Something PEPEL should watch, explain or reclaim
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What wastes memory or disk on your Mac
+      description: The tool, folder or process, and how you notice it today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What PEPEL could do
+      description: Report it, suggest an action, or act on its own under a rule — and what must never be touched.

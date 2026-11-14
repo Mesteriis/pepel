@@ -1,0 +1,42 @@
+name: Bug report
+description: Something PEPEL did, or did not do, that it should not have
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what PEPEL showed or did, and what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce
+      placeholder: "1. …\n2. …"
+  - type: input
+    id: version
+    attributes:
+      label: PEPEL version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version and Mac
+      placeholder: "macOS 15.4, Apple M3"
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Command output
+      description: The output of the `pepel` command involved, if any. Remove paths or names you do not want to share.
+      render: text
+  - type: checkboxes
+    id: data
+    attributes:
+      label: Files or processes
+      options:
+        - label: PEPEL removed, moved or stopped something it should not have (if so, consider the private security report instead)
