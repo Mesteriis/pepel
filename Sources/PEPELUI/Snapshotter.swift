@@ -66,7 +66,13 @@ public enum Snapshotter {
         if reading.history.count < 2 {
             // A believable last few minutes when the snapshot has only one reading.
             let now = reading.memoryTotal > 0 ? Double(reading.memoryUsed) / Double(reading.memoryTotal) : 0.6
-            reading.history = (0..<48).map { i in min(0.98, max(0.05, now - 0.08 + 0.06 * sin(Double(i) / 5) + Double(i) * 0.0015)) }
+            reading.history = (0..<48).map { (i: Int) -> Double in
+                let x = Double(i)
+                let wave: Double = 0.06 * sin(x / 5)
+                let drift: Double = x * 0.0015
+                let value: Double = now - 0.08 + wave + drift
+                return min(0.98, max(0.05, value))
+            }
         }
         let modes: [MenuBarMode] = [.memoryGraphAndDisk, .memoryGraph, .memoryAndDisk, .reclaimable]
         let rowHeight: CGFloat = 30, width: CGFloat = 330, scale: CGFloat = 2
